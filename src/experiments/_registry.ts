@@ -14,6 +14,7 @@ export interface ExperimentMeta extends Required<Omit<ExperimentMetaInput, 'icon
   slug: string
   icon?: string
   component: () => Promise<Component>
+  doc?: string
 }
 
 const metaModules = import.meta.glob<ExperimentMetaInput>('./*/meta.ts', {
@@ -25,6 +26,12 @@ const entryModules = import.meta.glob<Component>('./*/index.vue', {
   import: 'default',
 })
 
+const docModules = import.meta.glob<string>('./*/doc.md', {
+  eager: true,
+  import: 'default',
+  query: '?raw',
+})
+
 function slugFromPath(path: string): string {
   return path.split('/').at(-2) ?? path
 }
@@ -34,6 +41,7 @@ export const experiments: ExperimentMeta[] = Object.entries(metaModules)
     const entryPath = path.replace(/meta\.ts$/, 'index.vue')
     const component = entryModules[entryPath]
     if (!component) return null
+    const docPath = path.replace(/meta\.ts$/, 'doc.md')
     return {
       slug: slugFromPath(path),
       component,
@@ -42,6 +50,7 @@ export const experiments: ExperimentMeta[] = Object.entries(metaModules)
       tags: meta.tags ?? [],
       date: meta.date ?? '',
       icon: meta.icon,
+      doc: docModules[docPath],
     }
   })
   .filter((e): e is ExperimentMeta => e !== null)

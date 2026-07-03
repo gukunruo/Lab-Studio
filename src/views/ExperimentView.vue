@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed, shallowRef, watch, defineAsyncComponent } from 'vue'
+import { computed, ref, shallowRef, watch, defineAsyncComponent } from 'vue'
 import type { Component } from 'vue'
 import { RouterLink } from 'vue-router'
+import { PhFileText } from '@phosphor-icons/vue'
 import { experiments } from '@/experiments/_registry'
 import { useLocaleStore } from '@/stores/locale'
+import MarkdownModal from '@/components/MarkdownModal.vue'
 
 const props = defineProps<{ slug: string }>()
 
 const i18n = useLocaleStore()
 
 const exp = computed(() => experiments.find((e) => e.slug === props.slug))
+const showDoc = ref(false)
 
 const AsyncExp = shallowRef<Component | null>(null)
 
@@ -31,10 +34,20 @@ watch(
         <h1 class="exp__title">{{ i18n.tl(exp.title) }}</h1>
         <span class="exp__slug">{{ exp.slug }}</span>
       </div>
+      <button
+        v-if="exp.doc"
+        class="exp__doc"
+        @click="showDoc = true"
+        :aria-label="i18n.t('exp.doc')"
+      >
+        <PhFileText :size="16" />
+        {{ i18n.t('exp.doc') }}
+      </button>
     </div>
     <div class="exp__stage">
       <component :is="AsyncExp" v-if="AsyncExp" />
     </div>
+    <MarkdownModal v-if="showDoc && exp.doc" :source="exp.doc" @close="showDoc = false" />
   </div>
 </template>
 
@@ -82,6 +95,28 @@ watch(
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--color-text-muted);
+}
+
+.exp__doc {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.4rem 0.7rem;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.exp__doc:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .exp__stage {
