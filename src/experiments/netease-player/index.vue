@@ -92,9 +92,14 @@ const volumePct = computed(() => volume.value * 100)
 <template>
   <div v-if="current" class="player">
     <div class="player__main">
-      <div class="art" :class="{ 'art--playing': isPlaying }">
-        <div class="art__disc">
+      <div class="cover-col">
+        <div class="art" :class="{ 'art--playing': isPlaying }">
+          <div class="art__vinyl"></div>
           <img class="art__cover" :src="current.cover" :alt="current.title" loading="lazy" />
+        </div>
+        <div class="now-playing">
+          <div class="now-playing__title">{{ current.title }}</div>
+          <div class="now-playing__artist">{{ current.artist }} · {{ current.album }}</div>
         </div>
       </div>
 
@@ -110,58 +115,68 @@ const volumePct = computed(() => volume.value * 100)
       </div>
     </div>
 
-    <div class="bar">
-      <span class="bar__time">{{ formatTime(currentTime) }}</span>
-      <input
-        class="bar__progress"
-        type="range"
-        min="0"
-        :max="duration || 0"
-        step="0.1"
-        :value="currentTime"
-        :style="{ '--progress': progressPct + '%' }"
-        @input="onSeek"
-        aria-label="播放进度"
-      />
-      <span class="bar__time">{{ formatTime(duration) }}</span>
+    <div class="controls">
+      <div class="controls__progress">
+        <span class="time">{{ formatTime(currentTime) }}</span>
+        <input
+          class="progress"
+          type="range"
+          min="0"
+          :max="duration || 0"
+          step="0.1"
+          :value="currentTime"
+          :style="{ '--progress': progressPct + '%' }"
+          @input="onSeek"
+          aria-label="播放进度"
+        />
+        <span class="time">{{ formatTime(duration) }}</span>
+      </div>
 
-      <button class="ctrl" @click="prev" aria-label="上一曲">
-        <PhSkipBack :size="20" weight="fill" />
-      </button>
-      <button class="ctrl ctrl--play" @click="toggle" :aria-label="isPlaying ? '暂停' : '播放'">
-        <component :is="isPlaying ? PhPause : PhPlay" :size="22" weight="fill" />
-      </button>
-      <button class="ctrl" @click="next" aria-label="下一曲">
-        <PhSkipForward :size="20" weight="fill" />
-      </button>
+      <div class="controls__row">
+        <div class="controls__side">
+          <select class="rate" :value="playbackRate" @change="onRate" aria-label="倍速">
+            <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
+          </select>
+        </div>
 
-      <select class="rate" :value="playbackRate" @change="onRate" aria-label="倍速">
-        <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
-      </select>
+        <div class="controls__center">
+          <button class="ctrl" @click="prev" aria-label="上一曲">
+            <PhSkipBack :size="22" weight="fill" />
+          </button>
+          <button class="ctrl ctrl--play" @click="toggle" :aria-label="isPlaying ? '暂停' : '播放'">
+            <component :is="isPlaying ? PhPause : PhPlay" :size="26" weight="fill" />
+          </button>
+          <button class="ctrl" @click="next" aria-label="下一曲">
+            <PhSkipForward :size="22" weight="fill" />
+          </button>
+        </div>
 
-      <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
-        <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="18" />
-      </button>
-      <input
-        class="bar__volume"
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        :value="volume"
-        :style="{ '--progress': volumePct + '%' }"
-        @input="onVolume"
-        aria-label="音量"
-      />
-
-      <button
-        class="ctrl"
-        :class="{ 'ctrl--active': showPlaylist }"
-        @click="showPlaylist = !showPlaylist"
-        aria-label="播放列表"
-      >
-        <PhPlaylist :size="20" />
-      </button>
+        <div class="controls__side controls__side--right">
+          <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
+            <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="18" />
+          </button>
+          <input
+            class="volume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            :value="volume"
+            :style="{ '--progress': volumePct + '%' }"
+            @input="onVolume"
+            aria-label="音量"
+          />
+          <button
+            class="ctrl ctrl--list"
+            :class="{ 'ctrl--active': showPlaylist }"
+            @click="showPlaylist = !showPlaylist"
+            aria-label="播放列表"
+          >
+            <PhPlaylist :size="20" />
+            <span class="ctrl__badge">{{ playlist.length }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <transition name="slide">
@@ -202,55 +217,68 @@ const volumePct = computed(() => volume.value * 100)
 
 .player__main {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(0, 320px) 1fr;
   gap: var(--space-8);
   padding: var(--space-8);
   align-items: center;
 }
 
-.art {
-  width: 200px;
-  height: 200px;
-  flex-shrink: 0;
-}
-
-.art__disc {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background:
-    repeating-radial-gradient(circle at center, #0c0c0c 0 2px, #1a1a1a 2px 4px),
-    radial-gradient(circle at center, #1a1a1a, #000);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+.cover-col {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: var(--space-5);
 }
 
-.art--playing .art__disc {
-  animation: spin 10s linear infinite;
+/* NetEase-style: square album cover with a vinyl disc peeking out behind it.
+   The cover sits still; the vinyl spins while playing. */
+.art {
+  position: relative;
+  width: 220px;
+  height: 220px;
 }
 
 .art__cover {
-  width: 44%;
-  height: 44%;
-  border-radius: 50%;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius-sm);
   object-fit: cover;
-  box-shadow: 0 0 0 4px var(--p-bg);
+  z-index: 2;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
 }
 
-.art__disc::after {
+.art__vinyl {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  z-index: 1;
+  background:
+    repeating-radial-gradient(circle at center, #0a0a0a 0 2px, #161616 2px 4px),
+    radial-gradient(circle at center, #1a1a1a, #000);
+  box-shadow: inset 0 0 0 8px #0c0c0c;
+}
+
+.art__vinyl::after {
   content: '';
   position: absolute;
-  width: 10px;
-  height: 10px;
+  inset: 0;
+  margin: auto;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: #000;
-  border: 2px solid #444;
-  z-index: 2;
+  background:
+    radial-gradient(circle, #c20c0c 0 38%, #000 38% 44%, #1a1a1a 44%);
+  border: 2px solid #000;
+}
+
+.art--playing .art__vinyl {
+  animation: spin 8s linear infinite;
 }
 
 @keyframes spin {
@@ -259,8 +287,31 @@ const volumePct = computed(() => volume.value * 100)
   }
 }
 
+.now-playing {
+  text-align: center;
+  max-width: 100%;
+}
+
+.now-playing__title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now-playing__artist {
+  font-size: 0.8rem;
+  color: var(--p-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lyrics {
-  height: 220px;
+  height: 260px;
   overflow-y: auto;
   scroll-behavior: smooth;
   padding: var(--space-4) 0;
@@ -296,17 +347,20 @@ const volumePct = computed(() => volume.value * 100)
   transform: scale(1.03);
 }
 
-.bar {
+.controls {
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  background: var(--p-surface);
+  border-top: 1px solid var(--p-border);
+}
+
+.controls__progress {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  background: var(--p-surface);
-  border-top: 1px solid var(--p-border);
-  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
 }
 
-.bar__time {
+.time {
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--p-muted);
@@ -314,12 +368,35 @@ const volumePct = computed(() => volume.value * 100)
   text-align: center;
 }
 
-.bar__progress {
+.progress {
   flex: 1;
-  min-width: 140px;
 }
 
-.bar__volume {
+.controls__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.controls__center {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.controls__side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 120px;
+}
+
+.controls__side--right {
+  justify-content: flex-end;
+}
+
+.volume {
   width: 80px;
 }
 
@@ -358,11 +435,12 @@ const volumePct = computed(() => volume.value * 100)
 }
 
 .ctrl {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: transparent;
   border: none;
@@ -388,10 +466,11 @@ const volumePct = computed(() => volume.value * 100)
 }
 
 .ctrl--play {
-  width: 46px;
-  height: 46px;
+  width: 56px;
+  height: 56px;
   background: var(--p-accent);
   color: #fff;
+  box-shadow: 0 6px 20px rgba(194, 12, 12, 0.4);
 }
 
 .ctrl--play:hover {
@@ -399,12 +478,28 @@ const volumePct = computed(() => volume.value * 100)
   color: #fff;
 }
 
+.ctrl__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--p-accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
 .rate {
   background: var(--p-surface-2);
   color: var(--p-text);
   border: 1px solid var(--p-border);
-  border-radius: var(--radius-sm);
-  padding: 0.3rem 0.4rem;
+  border-radius: var(--radius-full);
+  padding: 0.3rem 0.6rem;
   font: inherit;
   font-size: 0.76rem;
   cursor: pointer;
@@ -419,7 +514,7 @@ const volumePct = computed(() => volume.value * 100)
   list-style: none;
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  max-height: 200px;
+  max-height: 220px;
   overflow-y: auto;
   border-top: 1px solid var(--p-border);
   background: var(--p-bg);
@@ -477,7 +572,7 @@ const volumePct = computed(() => volume.value * 100)
 .slide-enter-to,
 .slide-leave-from {
   opacity: 1;
-  max-height: 220px;
+  max-height: 240px;
 }
 
 @media (max-width: 720px) {
@@ -486,18 +581,22 @@ const volumePct = computed(() => volume.value * 100)
     justify-items: center;
   }
 
-  .art {
-    width: 160px;
-    height: 160px;
+  .lyrics {
+    height: 180px;
+    width: 100%;
   }
 
-  .bar__volume {
+  .controls__side {
+    min-width: 0;
+  }
+
+  .volume {
     display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .art--playing .art__disc {
+  .art--playing .art__vinyl {
     animation: none;
   }
 
