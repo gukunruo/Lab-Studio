@@ -1,22 +1,31 @@
 // Design tokens for Lab Studio.
-// SCSS variables (build-time): @use '@/styles/tokens' as *; then $color-primary etc.
-// CSS custom properties (runtime): available everywhere via var(--color-primary).
-// Override per-experiment by re-declaring these on a scoped scope.
+// SCSS vars (build-time): @use '@/styles/tokens' as *;
+// CSS custom props (runtime): var(--color-accent) anywhere.
+// Single accent (signal teal) on zinc neutrals — deliberately not the AI blue/violet default.
 
-// ---- Color (neutral light default) ----
+// ---- Neutrals (zinc) ----
 $color-bg: #ffffff;
-$color-surface: #f7f8fa;
-$color-text: #1a1d23;
-$color-text-muted: #6b7280;
-$color-primary: #4f8cff;
-$color-accent: #7c5cff;
-$color-border: rgba(15, 23, 42, 0.08);
+$color-surface: #f7f7f8;
+$color-surface-2: #efefef;
+$color-text: #18181b;
+$color-text-muted: #71717a;
+$color-border: rgba(24, 24, 27, 0.08);
+$color-border-strong: rgba(24, 24, 27, 0.14);
+
+// ---- Single accent (signal teal) ----
+$color-accent: #0d9488;
+$color-accent-strong: #0f766e;
+$color-accent-soft: #ccfbf1;
+
+// ---- Status ----
+$color-danger: #dc2626;
 
 // ---- Spacing (4px base) ----
 $space-1: 0.25rem;
 $space-2: 0.5rem;
 $space-3: 0.75rem;
 $space-4: 1rem;
+$space-5: 1.25rem;
 $space-6: 1.5rem;
 $space-8: 2rem;
 $space-12: 3rem;
@@ -24,29 +33,37 @@ $space-16: 4rem;
 
 // ---- Typography ----
 $font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-  'Microsoft YaHei', Roboto, Helvetica, Arial, sans-serif;
-$font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+$font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'SFMono-Regular',
+  Menlo, Consolas, monospace;
 
-// ---- Radius ----
-$radius-sm: 6px;
-$radius-md: 10px;
-$radius-lg: 16px;
+// ---- Radius (shape lock: all-soft 12px, pills for interactive) ----
+$radius-sm: 8px;
+$radius-md: 12px;
+$radius-lg: 18px;
 $radius-full: 9999px;
 
-// ---- Expose as CSS custom properties (runtime-themable) ----
 :root {
+  color-scheme: light;
+
   --color-bg: #{$color-bg};
   --color-surface: #{$color-surface};
+  --color-surface-2: #{$color-surface-2};
   --color-text: #{$color-text};
   --color-text-muted: #{$color-text-muted};
-  --color-primary: #{$color-primary};
-  --color-accent: #{$color-accent};
   --color-border: #{$color-border};
+  --color-border-strong: #{$color-border-strong};
+
+  --color-accent: #{$color-accent};
+  --color-accent-strong: #{$color-accent-strong};
+  --color-accent-soft: #{$color-accent-soft};
+  --color-danger: #{$color-danger};
 
   --space-1: #{$space-1};
   --space-2: #{$space-2};
   --space-3: #{$space-3};
   --space-4: #{$space-4};
+  --space-5: #{$space-5};
   --space-6: #{$space-6};
   --space-8: #{$space-8};
   --space-12: #{$space-12};
@@ -59,4 +76,22 @@ $radius-full: 9999px;
   --radius-md: #{$radius-md};
   --radius-lg: #{$radius-lg};
   --radius-full: #{$radius-full};
+}
+
+// Dark theme: off-black (never pure #000), brighter teal for contrast parity.
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #0f0f11;
+  --color-surface: #18181b;
+  --color-surface-2: #27272a;
+  --color-text: #f4f4f5;
+  --color-text-muted: #a1a1aa;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+
+  --color-accent: #2dd4bf;
+  --color-accent-strong: #5eead4;
+  --color-accent-soft: rgba(45, 212, 191, 0.16);
+  --color-danger: #f87171;
 }
