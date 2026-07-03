@@ -12,6 +12,7 @@ export function useAudioPlayer(tracks: Track[]) {
   const duration = ref(0)
   const playbackRate = ref(1)
   const volume = ref(0.8)
+  const noAudio = ref(false)
 
   const current = computed<Track | null>(() => playlist.value[currentIndex.value] ?? null)
 
@@ -23,6 +24,7 @@ export function useAudioPlayer(tracks: Track[]) {
     audio.playbackRate = playbackRate.value
     audio.volume = volume.value
     currentTime.value = 0
+    noAudio.value = false
   }
 
   async function play() {
@@ -97,6 +99,10 @@ export function useAudioPlayer(tracks: Track[]) {
   audio.addEventListener('pause', () => {
     isPlaying.value = false
   })
+  audio.addEventListener('error', () => {
+    noAudio.value = true
+    isPlaying.value = false
+  })
 
   load(0)
 
@@ -114,6 +120,7 @@ export function useAudioPlayer(tracks: Track[]) {
     duration,
     playbackRate,
     volume,
+    noAudio,
     play,
     pause,
     toggle,

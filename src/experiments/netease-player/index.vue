@@ -21,6 +21,7 @@ const {
   duration,
   playbackRate,
   volume,
+  noAudio,
   toggle,
   next,
   prev,
@@ -113,6 +114,11 @@ const volumePct = computed(() => volume.value * 100)
           {{ line.text }}
         </p>
       </div>
+    </div>
+
+    <div v-if="noAudio" class="no-audio">
+      <span>未找到音频文件。</span>
+      请把 <code>{{ current.id }}.mp3</code> 放入 <code>public/jay-chou/</code> 后刷新
     </div>
 
     <div class="controls">
@@ -230,51 +236,48 @@ const volumePct = computed(() => volume.value * 100)
   gap: var(--space-5);
 }
 
-/* NetEase-style: square album cover with a vinyl disc peeking out behind it.
-   The cover sits still; the vinyl spins while playing. */
+/* NetEase-style vinyl: circular album cover centered on a grooved disc.
+   Cover inscribed in the disc so nothing overflows; the disc spins. */
 .art {
   position: relative;
-  width: 220px;
-  height: 220px;
-}
-
-.art__cover {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 200px;
-  height: 200px;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-  z-index: 2;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  width: 240px;
+  height: 240px;
 }
 
 .art__vinyl {
   position: absolute;
-  left: 0;
-  top: 10px;
-  width: 200px;
-  height: 200px;
+  inset: 0;
   border-radius: 50%;
   z-index: 1;
   background:
     repeating-radial-gradient(circle at center, #0a0a0a 0 2px, #161616 2px 4px),
     radial-gradient(circle at center, #1a1a1a, #000);
-  box-shadow: inset 0 0 0 8px #0c0c0c;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
 }
 
-.art__vinyl::after {
+.art__cover {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  object-fit: cover;
+  z-index: 2;
+  box-shadow: 0 0 0 6px #0c0c0c, 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.art::after {
   content: '';
   position: absolute;
   inset: 0;
   margin: auto;
-  width: 56px;
-  height: 56px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle, #c20c0c 0 38%, #000 38% 44%, #1a1a1a 44%);
-  border: 2px solid #000;
+  background: #000;
+  border: 2px solid #2a2a2e;
+  z-index: 3;
 }
 
 .art--playing .art__vinyl {
@@ -351,6 +354,23 @@ const volumePct = computed(() => volume.value * 100)
   padding: var(--space-4) var(--space-6) var(--space-5);
   background: var(--p-surface);
   border-top: 1px solid var(--p-border);
+}
+
+.no-audio {
+  padding: var(--space-3) var(--space-6);
+  background: rgba(194, 12, 12, 0.12);
+  border-top: 1px solid var(--p-border);
+  color: var(--p-accent-2);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.no-audio code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
 }
 
 .controls__progress {
