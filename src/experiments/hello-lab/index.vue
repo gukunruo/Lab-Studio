@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useLocaleStore } from '@/stores/locale'
+
+const i18n = useLocaleStore()
 
 const time = ref('')
 let timer = 0
@@ -16,11 +19,13 @@ onUnmounted(() => window.clearInterval(timer))
 <template>
   <div class="hello">
     <div class="hello__word">
-      你好，<span class="hello__lab">Lab</span>
+      {{ i18n.t('hello.wordPre') }}<span class="hello__lab">Lab</span>
     </div>
     <div class="hello__clock">{{ time }}</div>
     <p class="hello__hint">
-      编辑 <code>src/experiments/hello-lab/index.vue</code> 开始你自己的实验。
+      {{ i18n.t('hello.hintPre') }}
+      <code>src/experiments/hello-lab/index.vue</code>
+      {{ i18n.t('hello.hintPost') }}
     </p>
   </div>
 </template>

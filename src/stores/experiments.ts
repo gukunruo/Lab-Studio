@@ -11,8 +11,10 @@ export const useExperimentStore = defineStore('experiments', () => {
     if (!q) return items
     return items.filter(
       (e) =>
-        e.title.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
+        e.title.zh.toLowerCase().includes(q) ||
+        e.title.en.toLowerCase().includes(q) ||
+        e.description.zh.toLowerCase().includes(q) ||
+        e.description.en.toLowerCase().includes(q) ||
         e.slug.toLowerCase().includes(q) ||
         e.tags.some((t) => t.toLowerCase().includes(q)),
     )

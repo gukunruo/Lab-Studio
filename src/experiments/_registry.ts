@@ -1,8 +1,10 @@
 import type { Component } from 'vue'
 
+export type LocalizedString = { zh: string; en: string }
+
 export interface ExperimentMetaInput {
-  title: string
-  description: string
+  title: LocalizedString
+  description: LocalizedString
   tags?: string[]
   date?: string
   icon?: string

@@ -2,8 +2,10 @@
 import { RouterLink, RouterView } from 'vue-router'
 import { experiments } from '@/experiments/_registry'
 import { useThemeStore } from '@/stores/theme'
+import { useLocaleStore } from '@/stores/locale'
 
 const theme = useThemeStore()
+const i18n = useLocaleStore()
 </script>
 
 <template>
@@ -15,14 +17,22 @@ const theme = useThemeStore()
         >Studio</span>
       </RouterLink>
       <div class="shell__right">
-        <span class="shell__count">{{ experiments.length }} 个实验</span>
+        <span class="shell__count">{{ experiments.length }} {{ i18n.t('nav.experimentsUnit') }}</span>
         <button
-          class="shell__theme"
+          class="shell__pill"
+          type="button"
+          @click="i18n.toggle()"
+          :aria-label="i18n.locale === 'zh' ? i18n.t('nav.locale.toEnAria') : i18n.t('nav.locale.toZhAria')"
+        >
+          {{ i18n.locale === 'zh' ? i18n.t('nav.locale.toEn') : i18n.t('nav.locale.toZh') }}
+        </button>
+        <button
+          class="shell__pill"
           type="button"
           @click="theme.toggle()"
-          :aria-label="theme.theme === 'dark' ? '切换到浅色模式' : '切换到暗色模式'"
+          :aria-label="theme.theme === 'dark' ? i18n.t('nav.theme.toLightAria') : i18n.t('nav.theme.toDarkAria')"
         >
-          {{ theme.theme === 'dark' ? '浅色' : '深色' }}
+          {{ theme.theme === 'dark' ? i18n.t('nav.theme.toLight') : i18n.t('nav.theme.toDark') }}
         </button>
       </div>
     </header>
@@ -76,16 +86,17 @@ const theme = useThemeStore()
 .shell__right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .shell__count {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--color-text-muted);
+  margin-right: var(--space-2);
 }
 
-.shell__theme {
+.shell__pill {
   font-family: var(--font-mono);
   font-size: 0.74rem;
   padding: 0.3rem 0.7rem;
@@ -99,12 +110,12 @@ const theme = useThemeStore()
     border-color 0.2s;
 }
 
-.shell__theme:hover {
+.shell__pill:hover {
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
 
-.shell__theme:active {
+.shell__pill:active {
   transform: scale(0.96);
 }
 

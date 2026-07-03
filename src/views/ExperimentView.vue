@@ -3,8 +3,11 @@ import { computed, shallowRef, watch, defineAsyncComponent } from 'vue'
 import type { Component } from 'vue'
 import { RouterLink } from 'vue-router'
 import { experiments } from '@/experiments/_registry'
+import { useLocaleStore } from '@/stores/locale'
 
 const props = defineProps<{ slug: string }>()
+
+const i18n = useLocaleStore()
 
 const exp = computed(() => experiments.find((e) => e.slug === props.slug))
 
@@ -23,9 +26,9 @@ watch(
 <template>
   <div v-if="exp" class="exp">
     <div class="exp__bar">
-      <RouterLink to="/" class="exp__back">← 返回</RouterLink>
+      <RouterLink to="/" class="exp__back">{{ i18n.t('exp.back') }}</RouterLink>
       <div class="exp__meta">
-        <h1 class="exp__title">{{ exp.title }}</h1>
+        <h1 class="exp__title">{{ i18n.tl(exp.title) }}</h1>
         <span class="exp__slug">{{ exp.slug }}</span>
       </div>
     </div>

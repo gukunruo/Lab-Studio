@@ -1,29 +1,29 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { useExperimentStore } from '@/stores/experiments'
+import { useLocaleStore } from '@/stores/locale'
 import ExperimentCard from '@/components/ExperimentCard.vue'
 
 const store = useExperimentStore()
 const { filtered, query } = storeToRefs(store)
+const i18n = useLocaleStore()
 </script>
 
 <template>
   <section class="home">
     <header class="home__head">
-      <h1 class="home__title">实验</h1>
-      <p class="home__lede">
-        自包含的前端实验与想法，每个都在自己的沙盒里。
-      </p>
+      <h1 class="home__title">{{ i18n.t('home.title') }}</h1>
+      <p class="home__lede">{{ i18n.t('home.lede') }}</p>
     </header>
 
     <div class="home__search">
-      <label class="home__search-label" for="exp-search">搜索</label>
+      <label class="home__search-label" for="exp-search">{{ i18n.t('home.searchLabel') }}</label>
       <input
         id="exp-search"
         v-model="query"
         class="home__search-input"
         type="search"
-        placeholder="名称、标签、slug"
+        :placeholder="i18n.t('home.searchPlaceholder')"
       />
     </div>
 
@@ -31,9 +31,9 @@ const { filtered, query } = storeToRefs(store)
       <ExperimentCard v-for="exp in filtered" :key="exp.slug" :exp="exp" />
     </div>
     <div v-else class="home__empty">
-      <p class="home__empty-title">没有匹配的实验。</p>
+      <p class="home__empty-title">{{ i18n.t('home.emptyTitle') }}</p>
       <p class="home__empty-hint">
-        换个关键词，或在 <code>src/experiments/</code> 下新建一个。
+        {{ i18n.t('home.emptyHintPre') }} <code>src/experiments/</code> {{ i18n.t('home.emptyHintPost') }}
       </p>
     </div>
   </section>

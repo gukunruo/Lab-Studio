@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import type { ExperimentMeta } from '@/experiments/_registry'
+import { useLocaleStore } from '@/stores/locale'
 
 defineProps<{ exp: ExperimentMeta }>()
+const i18n = useLocaleStore()
 </script>
 
 <template>
   <RouterLink :to="{ name: 'experiment', params: { slug: exp.slug } }" class="card">
     <div class="card__top">
-      <h2 class="card__title">{{ exp.title }}</h2>
+      <h2 class="card__title">{{ i18n.tl(exp.title) }}</h2>
       <span class="card__date">{{ exp.date }}</span>
     </div>
-    <p class="card__desc">{{ exp.description }}</p>
+    <p class="card__desc">{{ i18n.tl(exp.description) }}</p>
     <div v-if="exp.tags.length" class="card__tags">
       <span v-for="tag in exp.tags" :key="tag" class="card__tag">{{ tag }}</span>
     </div>
