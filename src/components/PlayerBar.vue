@@ -64,79 +64,81 @@ function toggleMute() {
 
 <template>
   <div v-if="current" class="bar">
-    <button class="bar__now" type="button" @click="player.openFull()" aria-label="展开播放器">
-      <img
-        class="bar__cover"
-        :class="{ 'bar__cover--playing': isPlaying }"
-        :src="current.cover"
-        :alt="current.title"
-        loading="lazy"
-      />
-      <span class="bar__meta">
-        <span class="bar__title">{{ current.title }}</span>
-        <span class="bar__artist">{{ current.artist }}</span>
-      </span>
-    </button>
+    <div class="bar__inner">
+      <button class="bar__now" type="button" @click="player.openFull()" aria-label="展开播放器">
+        <img
+          class="bar__cover"
+          :class="{ 'bar__cover--playing': isPlaying }"
+          :src="current.cover"
+          :alt="current.title"
+          loading="lazy"
+        />
+        <span class="bar__meta">
+          <span class="bar__title">{{ current.title }}</span>
+          <span class="bar__artist">{{ current.artist }}</span>
+        </span>
+      </button>
 
-    <div class="bar__center">
-      <div class="bar__controls">
-        <button
-          class="ctrl"
-          :class="{ 'ctrl--active': playMode !== 'list' }"
-          @click="player.cyclePlayMode()"
-          :aria-label="modeLabel"
-          :title="modeLabel"
-        >
-          <component :is="modeIcon" :size="16" />
-        </button>
-        <button class="ctrl" @click="player.prev()" aria-label="上一曲">
-          <PhSkipBack :size="18" weight="fill" />
-        </button>
-        <button class="ctrl ctrl--play" @click="player.toggle()" :aria-label="isPlaying ? '暂停' : '播放'">
-          <component :is="isPlaying ? PhPause : PhPlay" :size="20" weight="fill" />
-        </button>
-        <button class="ctrl" @click="player.next()" aria-label="下一曲">
-          <PhSkipForward :size="18" weight="fill" />
-        </button>
-        <select class="rate" :value="player.playbackRate" @change="onRate" aria-label="倍速">
-          <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
-        </select>
+      <div class="bar__center">
+        <div class="bar__controls">
+          <button
+            class="ctrl"
+            :class="{ 'ctrl--active': playMode !== 'list' }"
+            @click="player.cyclePlayMode()"
+            :aria-label="modeLabel"
+            :title="modeLabel"
+          >
+            <component :is="modeIcon" :size="16" />
+          </button>
+          <button class="ctrl" @click="player.prev()" aria-label="上一曲">
+            <PhSkipBack :size="18" weight="fill" />
+          </button>
+          <button class="ctrl ctrl--play" @click="player.toggle()" :aria-label="isPlaying ? '暂停' : '播放'">
+            <component :is="isPlaying ? PhPause : PhPlay" :size="20" weight="fill" />
+          </button>
+          <button class="ctrl" @click="player.next()" aria-label="下一曲">
+            <PhSkipForward :size="18" weight="fill" />
+          </button>
+          <select class="rate" :value="player.playbackRate" @change="onRate" aria-label="倍速">
+            <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
+          </select>
+        </div>
+        <div class="bar__progress">
+          <span class="time">{{ formatTime(currentTime) }}</span>
+          <input
+            class="progress"
+            type="range"
+            min="0"
+            :max="duration || 0"
+            step="0.1"
+            :value="currentTime"
+            :style="{ '--progress': progressPct + '%' }"
+            @input="onSeek"
+            aria-label="播放进度"
+          />
+          <span class="time">{{ formatTime(duration) }}</span>
+        </div>
       </div>
-      <div class="bar__progress">
-        <span class="time">{{ formatTime(currentTime) }}</span>
+
+      <div class="bar__right">
+        <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
+          <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="16" />
+        </button>
         <input
-          class="progress"
+          class="volume"
           type="range"
           min="0"
-          :max="duration || 0"
-          step="0.1"
-          :value="currentTime"
-          :style="{ '--progress': progressPct + '%' }"
-          @input="onSeek"
-          aria-label="播放进度"
+          max="1"
+          step="0.01"
+          :value="volume"
+          :style="{ '--progress': volumePct + '%' }"
+          @input="onVolume"
+          aria-label="音量"
         />
-        <span class="time">{{ formatTime(duration) }}</span>
+        <button class="ctrl" @click="player.openFull()" aria-label="展开" title="展开">
+          <PhArrowsOutSimple :size="18" />
+        </button>
       </div>
-    </div>
-
-    <div class="bar__right">
-      <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
-        <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="16" />
-      </button>
-      <input
-        class="volume"
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        :value="volume"
-        :style="{ '--progress': volumePct + '%' }"
-        @input="onVolume"
-        aria-label="音量"
-      />
-      <button class="ctrl" @click="player.openFull()" aria-label="展开" title="展开">
-        <PhArrowsOutSimple :size="18" />
-      </button>
     </div>
   </div>
 </template>
@@ -146,15 +148,19 @@ function toggleMute() {
   position: sticky;
   bottom: 0;
   z-index: 20;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+.bar__inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-4);
-  height: 64px;
-  padding: 0 var(--space-4);
-  background: var(--color-bg);
-  border-top: 1px solid var(--color-border);
-  backdrop-filter: saturate(1.2);
+  gap: var(--space-6);
+  max-width: 1200px;
+  margin: 0 auto;
+  height: 68px;
+  padding: 0 var(--space-6);
 }
 
 .bar__now {
@@ -323,12 +329,11 @@ function toggleMute() {
   width: 40px;
   height: 40px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-bg);
 }
 
 .ctrl--play:hover {
-  background: var(--color-accent);
-  color: #fff;
+  color: var(--color-bg);
   filter: brightness(1.08);
 }
 
@@ -350,8 +355,10 @@ function toggleMute() {
 }
 
 @media (max-width: 720px) {
-  .bar {
+  .bar__inner {
     grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    padding: 0 var(--space-4);
   }
 
   .bar__progress,

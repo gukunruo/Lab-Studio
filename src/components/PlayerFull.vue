@@ -314,8 +314,8 @@ const volumePct = computed(() => volume.value * 100)
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 360px) 1fr;
-  gap: var(--space-8);
-  padding: var(--space-10) var(--space-8) var(--space-6);
+  gap: var(--space-10);
+  padding: var(--space-12) var(--space-8) var(--space-8);
   align-items: center;
   max-width: 1100px;
   margin: 0 auto;
@@ -326,7 +326,7 @@ const volumePct = computed(() => volume.value * 100)
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
 
 /* vinyl: circular album cover centered on a grooved disc */
@@ -342,8 +342,8 @@ const volumePct = computed(() => volume.value * 100)
   border-radius: 50%;
   z-index: 1;
   background:
-    repeating-radial-gradient(circle at center, rgba(0, 0, 0, 0.5) 0 2px, transparent 2px 4px),
-    radial-gradient(circle at center, var(--color-surface), var(--color-text));
+    repeating-radial-gradient(circle at center, rgba(255, 255, 255, 0.04) 0 2px, transparent 2px 4px),
+    radial-gradient(circle at center, #2a2a2e, #0a0a0a);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
 }
 
@@ -367,7 +367,7 @@ const volumePct = computed(() => volume.value * 100)
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--color-text);
+  background: #0a0a0a;
   border: 2px solid var(--color-bg);
   z-index: 3;
 }
@@ -444,7 +444,8 @@ const volumePct = computed(() => volume.value * 100)
 }
 
 .controls {
-  padding: var(--space-4) var(--space-6) var(--space-5);
+  padding-block: var(--space-5) var(--space-6);
+  padding-inline: max(var(--space-6), calc((100% - 1100px) / 2));
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
 }
@@ -470,7 +471,7 @@ const volumePct = computed(() => volume.value * 100)
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .time {
@@ -582,13 +583,13 @@ const volumePct = computed(() => volume.value * 100)
   width: 56px;
   height: 56px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-bg);
   box-shadow: 0 6px 20px var(--color-accent-soft);
 }
 
 .ctrl--play:hover {
   filter: brightness(1.08);
-  color: #fff;
+  color: var(--color-bg);
 }
 
 .ctrl__badge {
