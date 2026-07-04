@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { tracks, type Track } from '@/data/tracks'
+import { rocoTracks } from '@/data/roco-tracks'
 
 export type PlayMode = 'list' | 'single' | 'shuffle'
 
@@ -30,6 +31,11 @@ const audio = new Audio()
 audio.preload = 'metadata'
 
 const playlist = ref<Track[]>(tracks)
+const COLLECTIONS = [
+  { key: 'liked', label: '我喜欢', tracks },
+  { key: 'roco', label: '洛克王国', tracks: rocoTracks },
+] as const
+const collectionKey = ref<'liked' | 'roco'>('liked')
 const currentIndex = ref(0)
 const isPlaying = ref(false)
 const currentTime = ref(0)
@@ -135,6 +141,15 @@ function cyclePlayMode() {
   playMode.value = order[(order.indexOf(playMode.value) + 1) % order.length] ?? 'list'
 }
 
+function switchCollection(key: 'liked' | 'roco') {
+  const c = COLLECTIONS.find((c) => c.key === key)
+  if (!c) return
+  collectionKey.value = key
+  playlist.value = c.tracks
+  currentIndex.value = 0
+  load(0)
+}
+
 audio.addEventListener('timeupdate', () => {
   currentTime.value = audio.currentTime
 })
@@ -215,6 +230,9 @@ export const usePlayerStore = defineStore('player', () => {
     showFullPlayer,
     showPlaylist,
     analyser: analyserRef,
+    collectionKey,
+    collections: COLLECTIONS,
+    switchCollection,
     play,
     pause,
     toggle,

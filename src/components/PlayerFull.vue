@@ -32,6 +32,7 @@ const {
   showPlaylist,
   showFullPlayer,
   analyser,
+  collectionKey,
 } = storeToRefs(player)
 
 const lyricsEl = ref<HTMLElement | null>(null)
@@ -355,6 +356,17 @@ onUnmounted(() => {
         <div v-if="showPlaylist" class="playlist-backdrop" @click="player.togglePlaylist()" />
         <transition name="slide">
           <div v-if="showPlaylist" class="playlist">
+            <div class="playlist__collections">
+              <button
+                v-for="c in player.collections"
+                :key="c.key"
+                class="playlist__col"
+                :class="{ 'playlist__col--active': collectionKey === c.key }"
+                @click="player.switchCollection(c.key)"
+              >
+                {{ c.label }}
+              </button>
+            </div>
             <div class="playlist__bar">
               <input
                 class="playlist__search"
@@ -815,6 +827,37 @@ onUnmounted(() => {
   background: var(--color-bg);
   z-index: 3;
   box-shadow: -12px 0 40px rgba(0, 0, 0, 0.18);
+}
+
+.playlist__collections {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) 0;
+}
+
+.playlist__col {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.playlist__col:hover {
+  color: var(--color-text);
+}
+
+.playlist__col--active {
+  color: var(--color-bg);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .playlist__bar {
