@@ -129,7 +129,8 @@ export function useAudioPlayer(tracks: Track[]) {
       audio.currentTime = 0
       play()
     } else {
-      next()
+      load(nextIndex())
+      play()
     }
   })
   audio.addEventListener('play', () => {
