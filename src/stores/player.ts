@@ -30,7 +30,7 @@ function readJSON<T>(key: string, fallback: T): T {
 const persisted = readJSON<Persisted>(PERSIST_KEY, {})
 const savedLiked = readJSON<string[]>(LIKED_KEY, [])
 const savedDisliked = readJSON<string[]>(DISLIKED_KEY, [])
-let savedProgress = readJSON<Progress | null>(PROGRESS_KEY, null)
+const savedProgress = readJSON<Progress | null>(PROGRESS_KEY, null)
 
 // Single Audio instance + reactive state at module scope — survives route
 // changes (the store never unmounts) and is HMR-safe enough for dev.
