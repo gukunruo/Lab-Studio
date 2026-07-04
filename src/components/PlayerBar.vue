@@ -248,17 +248,19 @@ function toggleMute() {
               :size="16"
             />
           </button>
-          <input
-            class="volume"
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            :value="volume"
-            :style="{ '--progress': volumePct + '%' }"
-            @input="onVolume"
-            aria-label="音量"
-          />
+          <div class="vol__pop">
+            <input
+              class="volume vol__slider"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              :value="volume"
+              :style="{ '--progress': volumePct + '%' }"
+              @input="onVolume"
+              aria-label="音量"
+            />
+          </div>
         </div>
         <button
           class="ctrl"
@@ -435,25 +437,44 @@ function toggleMute() {
 }
 
 .vol {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
+  position: relative;
 }
 
-.volume {
-  width: 0;
+.vol__pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.92);
+  transform-origin: bottom center;
   opacity: 0;
   pointer-events: none;
   transition:
-    width 0.2s ease,
-    opacity 0.15s ease;
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  z-index: 30;
+  width: 28px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.vol:hover .volume,
-.vol:focus-within .volume {
-  width: 72px;
+.vol:hover .vol__pop,
+.vol:focus-within .vol__pop {
   opacity: 1;
   pointer-events: auto;
+  transform: translateX(-50%) scale(1);
+}
+
+.vol__slider {
+  width: 80px;
+  height: 4px;
+  transform: rotate(-90deg);
 }
 
 .bar input[type='range'] {
