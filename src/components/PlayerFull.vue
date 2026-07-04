@@ -1008,7 +1008,7 @@ onUnmounted(() => {
 
 .vol__pop {
   position: absolute;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%) scale(0.92);
   transform-origin: bottom center;
@@ -1028,6 +1028,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.vol__pop::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
 }
 
 .vol:hover .vol__pop,
