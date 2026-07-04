@@ -12,31 +12,52 @@ export const PLAY_MODES: { key: PlayMode; label: string }[] = [
 ]
 
 const PERSIST_KEY = 'lab-player'
+const LIKED_KEY = 'lab-player-liked'
+const DISLIKED_KEY = 'lab-player-disliked'
+const PROGRESS_KEY = 'lab-player-progress'
 
 type Persisted = { volume?: number; playMode?: PlayMode }
+type Progress = { collectionKey: 'liked' | 'roco'; currentIndex: number; currentTime: number }
 
-function readPersisted(): Persisted {
+function readJSON<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(PERSIST_KEY)
-    if (raw) return JSON.parse(raw) as Persisted
+    const raw = localStorage.getItem(key)
+    if (raw) return JSON.parse(raw) as T
   } catch {}
-  return {}
+  return fallback
 }
 
-const persisted = readPersisted()
+const persisted = readJSON<Persisted>(PERSIST_KEY, {})
+const savedLiked = readJSON<string[]>(LIKED_KEY, [])
+const savedDisliked = readJSON<string[]>(DISLIKED_KEY, [])
+let savedProgress = readJSON<Progress | null>(PROGRESS_KEY, null)
 
 // Single Audio instance + reactive state at module scope — survives route
 // changes (the store never unmounts) and is HMR-safe enough for dev.
 const audio = new Audio()
 audio.preload = 'metadata'
 
-const playlist = ref<Track[]>(tracks)
 const COLLECTIONS = [
   { key: 'liked', label: '我喜欢', tracks },
   { key: 'roco', label: '洛克王国', tracks: rocoTracks },
 ] as const
-const collectionKey = ref<'liked' | 'roco'>('liked')
-const currentIndex = ref(0)
+
+const likedIds = ref<string[]>(savedLiked)
+const dislikedIds = ref<string[]>(savedDisliked)
+
+function filterDisliked(arr: Track[]): Track[] {
+  return arr.filter((t) => !dislikedIds.value.includes(t.id))
+}
+
+const initKey = savedProgress?.collectionKey ?? 'liked'
+const initTracks = filterDisliked(
+  (COLLECTIONS.find((c) => c.key === initKey) ?? COLLECTIONS[0]).tracks,
+)
+const playlist = ref<Track[]>(initTracks)
+const collectionKey = ref<'liked' | 'roco'>(initKey)
+const currentIndex = ref(
+  savedProgress ? Math.min(savedProgress.currentIndex, initTracks.length - 1) : 0,
+)
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -145,16 +166,56 @@ function switchCollection(key: 'liked' | 'roco') {
   const c = COLLECTIONS.find((c) => c.key === key)
   if (!c) return
   collectionKey.value = key
-  playlist.value = c.tracks
+  playlist.value = filterDisliked(c.tracks)
   currentIndex.value = 0
   load(0)
+}
+
+function toggleLike(id: string) {
+  const i = likedIds.value.indexOf(id)
+  if (i >= 0) likedIds.value.splice(i, 1)
+  else likedIds.value = [...likedIds.value, id]
+  try {
+    localStorage.setItem(LIKED_KEY, JSON.stringify(likedIds.value))
+  } catch {}
+}
+
+function removeFromPlaylist(id: string) {
+  const idx = playlist.value.findIndex((t) => t.id === id)
+  if (idx < 0) return
+  const wasCurrent = idx === currentIndex.value
+  playlist.value = playlist.value.filter((_, i) => i !== idx)
+  if (!dislikedIds.value.includes(id)) {
+    dislikedIds.value = [...dislikedIds.value, id]
+    try {
+      localStorage.setItem(DISLIKED_KEY, JSON.stringify(dislikedIds.value))
+    } catch {}
+  }
+  if (playlist.value.length === 0) {
+    currentIndex.value = 0
+    return
+  }
+  if (wasCurrent) {
+    const ni = Math.min(idx, playlist.value.length - 1)
+    currentIndex.value = ni
+    load(ni)
+    if (isPlaying.value) play()
+  } else if (idx < currentIndex.value) {
+    currentIndex.value--
+  }
 }
 
 audio.addEventListener('timeupdate', () => {
   currentTime.value = audio.currentTime
 })
+let pendingSeek: number | null = savedProgress?.currentTime ?? null
 audio.addEventListener('loadedmetadata', () => {
   duration.value = audio.duration || 0
+  if (pendingSeek != null && pendingSeek > 0 && pendingSeek < (audio.duration || 0)) {
+    audio.currentTime = pendingSeek
+    currentTime.value = pendingSeek
+  }
+  pendingSeek = null
 })
 audio.addEventListener('durationchange', () => {
   duration.value = audio.duration || 0
@@ -203,8 +264,8 @@ function ensureAudioGraph() {
   } catch {}
 }
 
-// load track 0 but do not autoplay — respects browser gesture policy
-load(0)
+// restore last track + position; do not autoplay (browser gesture policy)
+load(currentIndex.value)
 
 export const usePlayerStore = defineStore('player', () => {
   watch([volume, playMode], () => {
@@ -214,6 +275,23 @@ export const usePlayerStore = defineStore('player', () => {
         JSON.stringify({ volume: volume.value, playMode: playMode.value }),
       )
     } catch {}
+  })
+
+  let progressTimer: ReturnType<typeof setTimeout> | null = null
+  watch([collectionKey, currentIndex, currentTime], () => {
+    if (progressTimer) clearTimeout(progressTimer)
+    progressTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          PROGRESS_KEY,
+          JSON.stringify({
+            collectionKey: collectionKey.value,
+            currentIndex: currentIndex.value,
+            currentTime: currentTime.value,
+          }),
+        )
+      } catch {}
+    }, 1500)
   })
 
   return {
@@ -233,6 +311,11 @@ export const usePlayerStore = defineStore('player', () => {
     collectionKey,
     collections: COLLECTIONS,
     switchCollection,
+    likedIds,
+    dislikedIds,
+    isLiked: (id: string) => likedIds.value.includes(id),
+    toggleLike,
+    removeFromPlaylist,
     play,
     pause,
     toggle,

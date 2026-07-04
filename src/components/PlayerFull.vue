@@ -13,6 +13,9 @@ import {
   PhSpeakerSlash,
   PhX,
   PhPlaylist,
+  PhHeart,
+  PhHeartStraight,
+  PhTrash,
 } from '@phosphor-icons/vue'
 import { usePlayerStore } from '@/stores/player'
 import type { Track } from '@/data/tracks'
@@ -326,6 +329,27 @@ onUnmounted(() => {
             </div>
 
             <div class="controls__side controls__side--right">
+              <button
+                class="ctrl"
+                :class="{ 'ctrl--active': player.isLiked(current.id) }"
+                @click="player.toggleLike(current.id)"
+                :aria-label="player.isLiked(current.id) ? '取消喜欢' : '喜欢'"
+                :title="player.isLiked(current.id) ? '取消喜欢' : '喜欢'"
+              >
+                <component
+                  :is="player.isLiked(current.id) ? PhHeart : PhHeartStraight"
+                  :size="18"
+                  :weight="player.isLiked(current.id) ? 'fill' : 'regular'"
+                />
+              </button>
+              <button
+                class="ctrl"
+                @click="player.removeFromPlaylist(current.id)"
+                aria-label="从歌单移除"
+                title="从歌单移除"
+              >
+                <PhTrash :size="18" />
+              </button>
               <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
                 <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="18" />
               </button>
@@ -397,8 +421,19 @@ onUnmounted(() => {
                 @click="player.playTrack(i)"
               >
                 <span class="playlist__idx">{{ String(i + 1).padStart(2, '0') }}</span>
-                <span class="playlist__title">{{ t.title }}</span>
+                <span class="playlist__title"
+                  >{{ t.title
+                  }}<PhHeart v-if="player.isLiked(t.id)" :size="12" weight="fill" class="playlist__liked"
+                /></span>
                 <span class="playlist__artist">{{ t.artist }}</span>
+                <button
+                  class="playlist__remove"
+                  @click.stop="player.removeFromPlaylist(t.id)"
+                  aria-label="从歌单移除"
+                  title="从歌单移除"
+                >
+                  <PhTrash :size="14" />
+                </button>
               </li>
             </ul>
           </div>
@@ -951,7 +986,7 @@ onUnmounted(() => {
 
 .playlist__list li {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: var(--space-3);
   align-items: center;
   padding: var(--space-2) var(--space-3);
@@ -960,6 +995,33 @@ onUnmounted(() => {
   font-size: 0.88rem;
   color: var(--color-text);
   transition: background 0.15s;
+}
+
+.playlist__liked {
+  color: var(--color-accent);
+  margin-left: var(--space-1);
+  vertical-align: middle;
+}
+
+.playlist__remove {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.playlist__list li:hover .playlist__remove {
+  opacity: 1;
+}
+
+.playlist__remove:hover {
+  color: var(--color-accent);
 }
 
 .playlist__list li:hover {

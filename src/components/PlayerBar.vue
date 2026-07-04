@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   PhPlay,
@@ -12,12 +12,16 @@ import {
   PhSpeakerHigh,
   PhSpeakerSlash,
   PhArrowsOutSimple,
+  PhQueue,
+  PhX,
 } from '@phosphor-icons/vue'
 import { usePlayerStore } from '@/stores/player'
 
 const player = usePlayerStore()
 const {
+  playlist,
   current,
+  currentIndex,
   isPlaying,
   currentTime,
   duration,
@@ -26,6 +30,15 @@ const {
 } = storeToRefs(player)
 
 const prevVolume = ref(0.8)
+const showQueue = ref(false)
+const queueListEl = ref<HTMLElement | null>(null)
+
+watch(showQueue, async (v) => {
+  if (!v) return
+  await nextTick()
+  const el = queueListEl.value?.querySelector('[data-active="true"]')
+  el?.scrollIntoView({ block: 'nearest' })
+})
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const modeIcon = computed(() =>
@@ -64,6 +77,29 @@ function toggleMute() {
 
 <template>
   <div v-if="current" class="bar">
+    <transition name="queue">
+      <div v-if="showQueue" class="queue">
+        <div class="queue__head">
+          <span class="queue__title">播放列表 · {{ playlist.length }}</span>
+          <button class="queue__close" @click="showQueue = false" aria-label="关闭列表">
+            <PhX :size="16" />
+          </button>
+        </div>
+        <ul ref="queueListEl" class="queue__list">
+          <li
+            v-for="(t, i) in playlist"
+            :key="t.id"
+            :data-active="i === currentIndex"
+            :class="{ 'queue__item--active': i === currentIndex }"
+            @click="player.playTrack(i); showQueue = false"
+          >
+            <span class="queue__idx">{{ String(i + 1).padStart(2, '0') }}</span>
+            <span class="queue__name">{{ t.title }}</span>
+            <span class="queue__artist">{{ t.artist }}</span>
+          </li>
+        </ul>
+      </div>
+    </transition>
     <div class="bar__inner">
       <button class="bar__now" type="button" @click="player.openFull()" aria-label="展开播放器">
         <img
@@ -135,6 +171,15 @@ function toggleMute() {
           @input="onVolume"
           aria-label="音量"
         />
+        <button
+          class="ctrl"
+          :class="{ 'ctrl--active': showQueue }"
+          @click="showQueue = !showQueue"
+          aria-label="播放列表"
+          title="播放列表"
+        >
+          <PhQueue :size="18" />
+        </button>
         <button class="ctrl" @click="player.openFull()" aria-label="展开" title="展开">
           <PhArrowsOutSimple :size="18" />
         </button>
@@ -355,6 +400,113 @@ function toggleMute() {
   border-color: var(--color-accent);
 }
 
+.queue {
+  position: absolute;
+  bottom: 100%;
+  right: var(--space-6);
+  width: 360px;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+  z-index: 21;
+}
+.queue__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.queue__title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.queue__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+.queue__close:hover {
+  color: var(--color-accent);
+  background: var(--color-bg);
+}
+.queue__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+  flex: 1;
+}
+.queue__list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.84rem;
+  color: var(--color-text);
+  transition: background 0.15s;
+}
+.queue__list li:hover {
+  background: var(--color-bg);
+}
+.queue__item--active {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.queue__idx {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+  min-width: 1.5em;
+}
+.queue__item--active .queue__idx {
+  color: var(--color-accent);
+}
+.queue__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue__artist {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 90px;
+}
+.queue-enter-active,
+.queue-leave-active {
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+.queue-enter-from,
+.queue-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
 @media (max-width: 720px) {
   .bar__inner {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -369,6 +521,13 @@ function toggleMute() {
 
   .bar__right {
     gap: 0;
+  }
+
+  .queue {
+    right: var(--space-4);
+    left: var(--space-4);
+    width: auto;
+    max-height: 320px;
   }
 }
 
