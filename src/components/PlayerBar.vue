@@ -229,7 +229,7 @@ function toggleMute() {
   gap: var(--space-6);
   max-width: 1200px;
   margin: 0 auto;
-  height: 76px;
+  height: 88px;
   padding: 0 var(--space-6);
 }
 
@@ -293,6 +293,7 @@ function toggleMute() {
   gap: var(--space-1);
   align-items: center;
   min-width: 0;
+  padding: var(--space-2) 0;
 }
 
 .bar__controls {

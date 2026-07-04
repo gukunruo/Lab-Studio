@@ -7,22 +7,11 @@ import ExperimentCard from '@/components/ExperimentCard.vue'
 
 const store = useExperimentStore()
 const { filtered, query, activeTag, allTags } = storeToRefs(store)
-const items = store.items
 const i18n = useLocaleStore()
 </script>
 
 <template>
   <section class="home">
-    <header class="hero">
-      <div class="hero__meta">
-        <span class="hero__count">{{ items.length }} experiments</span>
-        <span class="hero__sep">/</span>
-        <span class="hero__year">2026</span>
-      </div>
-      <h1 class="hero__title">{{ i18n.t('home.title') }}<span class="hero__dot">.</span></h1>
-      <p class="hero__lede">{{ i18n.t('home.lede') }}</p>
-    </header>
-
     <div class="home__toolbar">
       <div class="home__search">
         <PhMagnifyingGlass :size="16" class="home__search-icon" />
@@ -67,60 +56,17 @@ const i18n = useLocaleStore()
   padding: var(--space-12) var(--space-6) var(--space-16);
 }
 
-.hero {
-  margin-bottom: var(--space-10);
-}
-
-.hero__meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-4);
-  letter-spacing: 0.02em;
-}
-
-.hero__sep {
-  opacity: 0.5;
-}
-
-.hero__count {
-  color: var(--color-accent);
-}
-
-.hero__title {
-  font-size: clamp(2.2rem, 6vw, 3.4rem);
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
-}
-
-.hero__dot {
-  color: var(--color-accent);
-}
-
-.hero__lede {
-  margin-top: var(--space-4);
-  max-width: 52ch;
-  color: var(--color-text-muted);
-  font-size: 1.02rem;
-  line-height: 1.6;
-}
-
 .home__toolbar {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: var(--space-4);
   margin-bottom: var(--space-8);
-  flex-wrap: wrap;
 }
 
 .home__search {
   position: relative;
-  flex: 0 0 auto;
-  width: 320px;
+  width: 360px;
   max-width: 100%;
 }
 
@@ -227,11 +173,6 @@ const i18n = useLocaleStore()
 }
 
 @media (max-width: 600px) {
-  .home__toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .home__search {
     width: 100%;
   }
