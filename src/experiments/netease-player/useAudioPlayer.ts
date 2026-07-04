@@ -1,6 +1,14 @@
 import { ref, computed, onUnmounted } from 'vue'
 import type { Track } from './mock'
 
+export type PlayMode = 'list' | 'single' | 'shuffle'
+
+export const PLAY_MODES: { key: PlayMode; label: string; icon: string }[] = [
+  { key: 'list', label: '列表循环', icon: 'repeat' },
+  { key: 'single', label: '单曲循环', icon: 'repeat-once' },
+  { key: 'shuffle', label: '随机播放', icon: 'shuffle' },
+]
+
 export function useAudioPlayer(tracks: Track[]) {
   const audio = new Audio()
   audio.preload = 'metadata'
@@ -13,6 +21,7 @@ export function useAudioPlayer(tracks: Track[]) {
   const playbackRate = ref(1)
   const volume = ref(0.8)
   const noAudio = ref(false)
+  const playMode = ref<PlayMode>('list')
 
   const current = computed<Track | null>(() => playlist.value[currentIndex.value] ?? null)
 
@@ -47,8 +56,28 @@ export function useAudioPlayer(tracks: Track[]) {
     else play()
   }
 
+  // index of the next track according to the current play mode
+  function nextIndex(from = currentIndex.value) {
+    const len = playlist.value.length
+    if (len === 0) return 0
+    if (playMode.value === 'shuffle') {
+      if (len === 1) return from
+      let r = from
+      while (r === from) r = Math.floor(Math.random() * len)
+      return r
+    }
+    return (from + 1) % len
+  }
+
+  function prevIndex(from = currentIndex.value) {
+    const len = playlist.value.length
+    if (len === 0) return 0
+    if (playMode.value === 'shuffle') return nextIndex(from)
+    return (from - 1 + len) % len
+  }
+
   function next() {
-    load((currentIndex.value + 1) % playlist.value.length)
+    load(nextIndex())
     if (isPlaying.value) play()
   }
 
@@ -57,7 +86,7 @@ export function useAudioPlayer(tracks: Track[]) {
       audio.currentTime = 0
       return
     }
-    load((currentIndex.value - 1 + playlist.value.length) % playlist.value.length)
+    load(prevIndex())
     if (isPlaying.value) play()
   }
 
@@ -81,6 +110,11 @@ export function useAudioPlayer(tracks: Track[]) {
     play()
   }
 
+  function cyclePlayMode() {
+    const order: PlayMode[] = ['list', 'single', 'shuffle']
+    playMode.value = order[(order.indexOf(playMode.value) + 1) % order.length] ?? 'list'
+  }
+
   audio.addEventListener('timeupdate', () => {
     currentTime.value = audio.currentTime
   })
@@ -91,7 +125,12 @@ export function useAudioPlayer(tracks: Track[]) {
     duration.value = audio.duration || 0
   })
   audio.addEventListener('ended', () => {
-    next()
+    if (playMode.value === 'single') {
+      audio.currentTime = 0
+      play()
+    } else {
+      next()
+    }
   })
   audio.addEventListener('play', () => {
     isPlaying.value = true
@@ -121,6 +160,7 @@ export function useAudioPlayer(tracks: Track[]) {
     playbackRate,
     volume,
     noAudio,
+    playMode,
     play,
     pause,
     toggle,
@@ -130,5 +170,6 @@ export function useAudioPlayer(tracks: Track[]) {
     setRate,
     setVolume,
     playTrack,
+    cyclePlayMode,
   }
 }

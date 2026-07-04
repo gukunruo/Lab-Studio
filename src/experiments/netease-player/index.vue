@@ -8,8 +8,11 @@ import {
   PhPlaylist,
   PhSpeakerHigh,
   PhSpeakerSlash,
+  PhRepeat,
+  PhRepeatOnce,
+  PhShuffle,
 } from '@phosphor-icons/vue'
-import { tracks } from './mock'
+import { tracks, type Track } from './mock'
 import { useAudioPlayer } from './useAudioPlayer'
 
 const {
@@ -22,6 +25,7 @@ const {
   playbackRate,
   volume,
   noAudio,
+  playMode,
   toggle,
   next,
   prev,
@@ -29,12 +33,49 @@ const {
   setRate,
   setVolume,
   playTrack,
+  cyclePlayMode,
 } = useAudioPlayer(tracks)
 
 const showPlaylist = ref(false)
 const lyricsEl = ref<HTMLElement | null>(null)
 const prevVolume = ref(0.8)
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+const modeIcon = computed(() =>
+  playMode.value === 'single' ? PhRepeatOnce : playMode.value === 'shuffle' ? PhShuffle : PhRepeat
+)
+const modeLabel = computed(
+  () => ({ list: '列表循环', single: '单曲循环', shuffle: '随机播放' } as const)[playMode.value]
+)
+
+const searchQuery = ref('')
+const langTab = ref<'all' | 'cn' | 'en' | 'jpkr'>('all')
+const tabs = [
+  { key: 'all', label: '全部' },
+  { key: 'cn', label: '华语' },
+  { key: 'en', label: '欧美' },
+  { key: 'jpkr', label: '日韩' },
+] as const
+function langOf(t: Track) {
+  const s = (t.artist || '') + (t.title || '')
+  if (/[가-힣]/.test(s)) return 'kr'
+  if (/[ぁ-んァ-ヶー]/.test(s)) return 'jp'
+  if (/[一-鿿]/.test(s)) return 'cn'
+  return 'en'
+}
+const filteredTracks = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  return playlist.value
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) => {
+      if (langTab.value !== 'all') {
+        const l = langOf(t)
+        if (langTab.value === 'jpkr' ? l !== 'jp' && l !== 'kr' : l !== langTab.value) return false
+      }
+      if (q && !(t.title + t.artist + t.album).toLowerCase().includes(q)) return false
+      return true
+    })
+})
 
 const activeLyricIndex = computed(() => {
   const t = currentTime.value
@@ -140,6 +181,15 @@ const volumePct = computed(() => volume.value * 100)
 
       <div class="controls__row">
         <div class="controls__side">
+          <button
+            class="ctrl"
+            :class="{ 'ctrl--active': playMode !== 'list' }"
+            @click="cyclePlayMode"
+            :aria-label="modeLabel"
+            :title="modeLabel"
+          >
+            <component :is="modeIcon" :size="18" />
+          </button>
           <select class="rate" :value="playbackRate" @change="onRate" aria-label="倍速">
             <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
           </select>
@@ -186,18 +236,39 @@ const volumePct = computed(() => volume.value * 100)
     </div>
 
     <transition name="slide">
-      <ul v-if="showPlaylist" class="playlist">
-        <li
-          v-for="(t, i) in playlist"
-          :key="t.id"
-          :class="{ 'playlist__item--active': i === currentIndex }"
-          @click="playTrack(i)"
-        >
-          <span class="playlist__idx">{{ String(i + 1).padStart(2, '0') }}</span>
-          <span class="playlist__title">{{ t.title }}</span>
-          <span class="playlist__artist">{{ t.artist }}</span>
-        </li>
-      </ul>
+      <div v-if="showPlaylist" class="playlist">
+        <div class="playlist__bar">
+          <input
+            class="playlist__search"
+            v-model="searchQuery"
+            placeholder="搜索歌曲 / 艺人 / 专辑"
+            aria-label="搜索歌单"
+          />
+          <div class="playlist__tabs">
+            <button
+              v-for="tab in tabs"
+              :key="tab.key"
+              class="playlist__tab"
+              :class="{ 'playlist__tab--active': langTab === tab.key }"
+              @click="langTab = tab.key"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+        </div>
+        <ul class="playlist__list">
+          <li
+            v-for="{ t, i } in filteredTracks"
+            :key="t.id"
+            :class="{ 'playlist__item--active': i === currentIndex }"
+            @click="playTrack(i)"
+          >
+            <span class="playlist__idx">{{ String(i + 1).padStart(2, '0') }}</span>
+            <span class="playlist__title">{{ t.title }}</span>
+            <span class="playlist__artist">{{ t.artist }}</span>
+          </li>
+        </ul>
+      </div>
     </transition>
   </div>
 </template>
@@ -531,16 +602,81 @@ const volumePct = computed(() => volume.value * 100)
 }
 
 .playlist {
-  list-style: none;
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  max-height: 220px;
+  max-height: 320px;
   overflow-y: auto;
   border-top: 1px solid var(--p-border);
   background: var(--p-bg);
 }
 
-.playlist li {
+.playlist__bar {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--p-border);
+  position: sticky;
+  top: 0;
+  background: var(--p-bg);
+  z-index: 1;
+}
+
+.playlist__search {
+  flex: 1;
+  min-width: 0;
+  background: var(--p-surface);
+  border: 1px solid var(--p-border);
+  border-radius: var(--radius-full);
+  padding: 0.35rem 0.8rem;
+  color: var(--p-text);
+  font: inherit;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.playlist__search:focus {
+  border-color: var(--p-accent-2);
+}
+
+.playlist__search::placeholder {
+  color: var(--p-muted);
+}
+
+.playlist__tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.playlist__tab {
+  background: transparent;
+  border: none;
+  color: var(--p-muted);
+  font: inherit;
+  font-size: 0.76rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.playlist__tab:hover {
+  color: var(--p-text);
+}
+
+.playlist__tab--active {
+  color: var(--p-accent-2);
+  background: var(--p-surface);
+}
+
+.playlist__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.playlist__list li {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: var(--space-3);
@@ -552,7 +688,7 @@ const volumePct = computed(() => volume.value * 100)
   transition: background 0.15s;
 }
 
-.playlist li:hover {
+.playlist__list li:hover {
   background: var(--p-surface);
 }
 
@@ -592,7 +728,7 @@ const volumePct = computed(() => volume.value * 100)
 .slide-enter-to,
 .slide-leave-from {
   opacity: 1;
-  max-height: 240px;
+  max-height: 360px;
 }
 
 @media (max-width: 720px) {

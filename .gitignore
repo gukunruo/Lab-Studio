@@ -38,5 +38,6 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 
-# Audio assets (NetEase tracks downloaded via user cookie; copyrighted, kept local)
-public/audio/*.mp3
+# Audio assets kept local if you want to avoid committing MP3s:
+# uncomment to ignore. Currently committed (personal experiment use).
+# public/audio/*.mp3
