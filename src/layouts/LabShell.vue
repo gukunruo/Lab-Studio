@@ -14,6 +14,24 @@ const i18n = useLocaleStore()
   <div class="shell">
     <header class="shell__bar">
       <RouterLink to="/" class="shell__brand">
+        <svg class="shell__logo" viewBox="0 0 100 100" aria-hidden="true">
+          <defs>
+            <mask id="lab-mask">
+              <rect width="100" height="100" fill="white" />
+              <g stroke="black" stroke-width="5" stroke-linecap="round">
+                <line x1="50" y1="50" x2="65.7" y2="23.4" />
+                <line x1="50" y1="50" x2="81.45" y2="50" />
+                <line x1="50" y1="50" x2="65.7" y2="76.6" />
+                <line x1="50" y1="50" x2="34.3" y2="76.6" />
+                <line x1="50" y1="50" x2="18.55" y2="50" />
+                <line x1="50" y1="50" x2="34.3" y2="23.4" />
+              </g>
+            </mask>
+          </defs>
+          <polygon points="50,8 87,29.5 87,70.5 50,92 13,70.5 13,29.5"
+                   fill="currentColor" mask="url(#lab-mask)" />
+          <circle cx="50" cy="50" r="8" fill="var(--color-accent)" />
+        </svg>
         <span class="shell__brand-main">Lab</span><span class="shell__brand-sep">/</span><span
           class="shell__brand-sub"
         >Studio</span>
@@ -67,9 +85,18 @@ const i18n = useLocaleStore()
 }
 
 .shell__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: 0.95rem;
   letter-spacing: -0.01em;
   color: var(--color-text);
+}
+
+.shell__logo {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }
 
 .shell__brand-main {
