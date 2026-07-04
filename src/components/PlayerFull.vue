@@ -343,14 +343,14 @@ onUnmounted(() => {
                 />
               </button>
               <button
-                class="ctrl"
+                class="ctrl ctrl--remove"
                 @click="player.removeFromPlaylist(current.id)"
                 aria-label="从歌单移除"
                 title="从歌单移除"
               >
                 <PhTrash :size="18" />
               </button>
-              <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
+              <button class="ctrl ctrl--mute" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
                 <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="18" />
               </button>
               <input
@@ -446,7 +446,10 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .full {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100dvh;
   z-index: 200;
   display: flex;
   flex-direction: column;
@@ -476,8 +479,8 @@ onUnmounted(() => {
 
 .full__close {
   position: absolute;
-  top: var(--space-4);
-  right: var(--space-5);
+  top: max(var(--space-4), env(safe-area-inset-top));
+  right: max(var(--space-5), env(safe-area-inset-right));
   z-index: 5;
   display: inline-flex;
   align-items: center;
@@ -1083,25 +1086,98 @@ onUnmounted(() => {
   .full__main {
     grid-template-columns: 1fr;
     justify-items: center;
-    padding: var(--space-8) var(--space-4) var(--space-4);
+    gap: var(--space-5);
+    padding: var(--space-6) var(--space-4) var(--space-3);
+  }
+
+  .art {
+    width: 200px;
+    height: 200px;
+  }
+
+  .spectrum {
+    width: 160px;
+    height: 36px;
+  }
+
+  .now-playing__title {
+    font-size: 1rem;
+  }
+
+  .now-playing__artist {
+    font-size: 0.76rem;
   }
 
   .lyrics {
-    height: 200px;
+    height: 180px;
     width: 100%;
+  }
+
+  .lyrics__line {
+    font-size: 0.9rem;
+  }
+
+  .lyrics__line--active {
+    font-size: 1rem;
+  }
+
+  .controls {
+    padding-inline: var(--space-3);
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  }
+
+  .controls__row {
+    gap: var(--space-2);
+  }
+
+  .controls__center {
+    gap: var(--space-3);
   }
 
   .controls__side {
     min-width: 0;
+    gap: var(--space-1);
   }
 
-  .volume {
+  .rate,
+  .volume,
+  .ctrl--mute,
+  .ctrl--remove {
     display: none;
   }
 
+  .ctrl {
+    width: 42px;
+    height: 42px;
+  }
+
+  .ctrl--play {
+    width: 54px;
+    height: 54px;
+  }
+
   .playlist {
-    width: 86%;
+    width: 88%;
     max-width: 360px;
+  }
+
+  .playlist__tabs {
+    display: none;
+  }
+
+  .playlist__list li {
+    grid-template-columns: auto 1fr auto;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    font-size: 0.84rem;
+  }
+
+  .playlist__artist {
+    display: none;
+  }
+
+  .playlist__remove {
+    opacity: 1;
   }
 }
 

@@ -157,7 +157,7 @@ function toggleMute() {
       </div>
 
       <div class="bar__right">
-        <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
+        <button class="ctrl ctrl--mute" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
           <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="16" />
         </button>
         <input
@@ -195,6 +195,7 @@ function toggleMute() {
   z-index: 20;
   background: var(--color-bg);
   border-top: 1px solid var(--color-border);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .bar__inner {
@@ -509,23 +510,48 @@ function toggleMute() {
 
 @media (max-width: 720px) {
   .bar__inner {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-3);
-    padding: 0 var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+  }
+
+  .bar__now {
+    flex: 1;
+  }
+
+  .bar__center {
+    flex: none;
   }
 
   .bar__progress,
-  .bar__right .volume {
+  .bar__right .volume,
+  .rate,
+  .ctrl--mute {
     display: none;
   }
 
+  .bar__controls {
+    gap: var(--space-1);
+  }
+
   .bar__right {
-    gap: 0;
+    gap: var(--space-1);
+    flex: none;
+  }
+
+  .bar__artist {
+    display: none;
+  }
+
+  .bar__cover {
+    width: 38px;
+    height: 38px;
   }
 
   .queue {
-    right: var(--space-4);
-    left: var(--space-4);
+    right: var(--space-3);
+    left: var(--space-3);
     width: auto;
     max-height: 320px;
   }
