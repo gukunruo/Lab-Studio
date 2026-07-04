@@ -39,9 +39,9 @@ const { isPlaying } = storeToRefs(player)
             class="shell__logo-core" :class="{ 'shell__logo-core--playing': isPlaying }"
           />
         </svg>
-        <span class="shell__brand-main">Lab</span><span class="shell__brand-sep">/</span><span
-          class="shell__brand-sub"
-        >Studio</span>
+        <span class="shell__brand-text">
+          <span class="shell__brand-main">Lab</span> <span class="shell__brand-sub">Studio</span>
+        </span>
       </RouterLink>
       <div class="shell__right">
         <span class="shell__count">{{ experiments.length }} {{ i18n.t('nav.experimentsUnit') }}</span>
@@ -134,13 +134,6 @@ const { isPlaying } = storeToRefs(player)
 
 .shell__brand-main {
   font-weight: 600;
-}
-
-.shell__brand-sep {
-  margin: 0 0.35rem;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
 }
 
 .shell__brand-sub {
