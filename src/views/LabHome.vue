@@ -11,13 +11,19 @@ const i18n = useLocaleStore()
 
 <template>
   <section class="home">
-    <header class="home__head">
+    <header
+      class="home__head"
+      v-if="false"
+    >
       <h1 class="home__title">{{ i18n.t('home.title') }}</h1>
       <p class="home__lede">{{ i18n.t('home.lede') }}</p>
     </header>
 
     <div class="home__search">
-      <label class="home__search-label" for="exp-search">{{ i18n.t('home.searchLabel') }}</label>
+      <label
+        class="home__search-label"
+        for="exp-search"
+      >{{ i18n.t('home.searchLabel') }}</label>
       <input
         id="exp-search"
         v-model="query"
@@ -27,10 +33,20 @@ const i18n = useLocaleStore()
       />
     </div>
 
-    <div v-if="filtered.length" class="home__grid">
-      <ExperimentCard v-for="exp in filtered" :key="exp.slug" :exp="exp" />
+    <div
+      v-if="filtered.length"
+      class="home__grid"
+    >
+      <ExperimentCard
+        v-for="exp in filtered"
+        :key="exp.slug"
+        :exp="exp"
+      />
     </div>
-    <div v-else class="home__empty">
+    <div
+      v-else
+      class="home__empty"
+    >
       <p class="home__empty-title">{{ i18n.t('home.emptyTitle') }}</p>
       <p class="home__empty-hint">
         {{ i18n.t('home.emptyHintPre') }} <code>src/experiments/</code> {{ i18n.t('home.emptyHintPost') }}
