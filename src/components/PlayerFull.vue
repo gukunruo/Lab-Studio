@@ -933,6 +933,8 @@ onUnmounted(() => {
 .progress-wrap {
   flex: 1;
   position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .progress {
