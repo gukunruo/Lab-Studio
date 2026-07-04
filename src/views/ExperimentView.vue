@@ -73,24 +73,26 @@ onUnmounted(() => {
         <h1 class="exp__title">{{ i18n.tl(exp.title) }}</h1>
         <span class="exp__slug">{{ exp.slug }}</span>
       </div>
-      <button
-        v-if="exp.doc"
-        class="exp__doc"
-        @click="showDoc = true"
-        :aria-label="i18n.t('exp.doc')"
-      >
-        <PhFileText :size="16" />
-        {{ i18n.t('exp.doc') }}
-      </button>
-      <button
-        class="exp__doc"
-        @click="toggleFullscreen"
-        :aria-label="isFullscreen ? '退出全屏' : '全屏'"
-        :title="isFullscreen ? '退出全屏' : '全屏'"
-      >
-        <component :is="isFullscreen ? PhArrowsInSimple : PhArrowsOutSimple" :size="16" />
-        {{ isFullscreen ? '退出全屏' : '全屏' }}
-      </button>
+      <div class="exp__actions">
+        <button
+          v-if="exp.doc"
+          class="exp__doc"
+          @click="showDoc = true"
+          :aria-label="i18n.t('exp.doc')"
+        >
+          <PhFileText :size="16" />
+          {{ i18n.t('exp.doc') }}
+        </button>
+        <button
+          class="exp__doc"
+          @click="toggleFullscreen"
+          :aria-label="isFullscreen ? '退出全屏' : '全屏'"
+          :title="isFullscreen ? '退出全屏' : '全屏'"
+        >
+          <component :is="isFullscreen ? PhArrowsInSimple : PhArrowsOutSimple" :size="16" />
+          {{ isFullscreen ? '退出全屏' : '全屏' }}
+        </button>
+      </div>
     </div>
     <div class="exp__stage">
       <component :is="AsyncExp" v-if="AsyncExp" />
@@ -145,8 +147,14 @@ onUnmounted(() => {
   color: var(--color-text-muted);
 }
 
-.exp__doc {
+.exp__actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.exp__doc {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);

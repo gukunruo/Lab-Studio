@@ -16,6 +16,7 @@ import {
   PhHeart,
   PhHeartStraight,
   PhTrash,
+  PhMagnifyingGlass,
 } from '@phosphor-icons/vue'
 import { usePlayerStore } from '@/stores/player'
 import type { Track } from '@/data/tracks'
@@ -433,26 +434,31 @@ onUnmounted(() => {
               </button>
             </div>
             <div class="playlist__bar">
-              <input
-                class="playlist__search"
-                v-model="searchQuery"
-                placeholder="搜索歌曲 / 艺人 / 专辑"
-                aria-label="搜索歌单"
-              />
-              <div class="playlist__tabs">
-                <button
-                  v-for="tab in tabs"
-                  :key="tab.key"
-                  class="playlist__tab"
-                  :class="{ 'playlist__tab--active': langTab === tab.key }"
-                  @click="langTab = tab.key"
-                >
-                  {{ tab.label }}
+              <div class="playlist__search-wrap">
+                <PhMagnifyingGlass :size="16" class="playlist__search-icon" />
+                <input
+                  class="playlist__search"
+                  v-model="searchQuery"
+                  placeholder="歌曲 / 艺人 / 专辑"
+                  aria-label="搜索歌单"
+                />
+              </div>
+              <div class="playlist__tabs-row">
+                <div class="playlist__tabs">
+                  <button
+                    v-for="tab in tabs"
+                    :key="tab.key"
+                    class="playlist__tab"
+                    :class="{ 'playlist__tab--active': langTab === tab.key }"
+                    @click="langTab = tab.key"
+                  >
+                    {{ tab.label }}
+                  </button>
+                </div>
+                <button class="playlist__close" @click="player.togglePlaylist()" aria-label="关闭播放列表">
+                  <PhX :size="18" />
                 </button>
               </div>
-              <button class="playlist__close" @click="player.togglePlaylist()" aria-label="关闭播放列表">
-                <PhX :size="18" />
-              </button>
             </div>
             <ul class="playlist__list" ref="playlistListEl">
               <li
@@ -1054,6 +1060,7 @@ onUnmounted(() => {
 
 .playlist__bar {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3);
   border-bottom: 1px solid var(--color-border);
@@ -1063,17 +1070,36 @@ onUnmounted(() => {
   z-index: 1;
 }
 
+.playlist__search-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.playlist__search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+  transition: color 0.2s;
+}
+
+.playlist__search-wrap:focus-within .playlist__search-icon {
+  color: var(--color-accent);
+}
+
 .playlist__search {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
-  padding: 0.35rem 0.8rem;
+  padding: 0.45rem 0.8rem 0.45rem 2.1rem;
   color: var(--color-text);
   font: inherit;
   font-size: 0.8rem;
   outline: none;
+  transition: border-color 0.2s;
 }
 
 .playlist__search:focus {
@@ -1082,6 +1108,13 @@ onUnmounted(() => {
 
 .playlist__search::placeholder {
   color: var(--color-text-muted);
+}
+
+.playlist__tabs-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: center;
 }
 
 .playlist__close {
@@ -1317,6 +1350,10 @@ onUnmounted(() => {
 
   .playlist__tabs {
     display: none;
+  }
+
+  .playlist__tabs-row {
+    justify-content: flex-end;
   }
 
   .playlist__list li {
