@@ -759,6 +759,7 @@ onUnmounted(() => {
 }
 
 .ctrl--play:hover {
+  background: var(--color-accent);
   filter: brightness(1.08);
   color: var(--color-bg);
 }

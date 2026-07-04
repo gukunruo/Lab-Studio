@@ -333,6 +333,7 @@ function toggleMute() {
 }
 
 .ctrl--play:hover {
+  background: var(--color-accent);
   color: var(--color-bg);
   filter: brightness(1.08);
 }
