@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import { storeToRefs } from 'pinia'
 import { experiments } from '@/experiments/_registry'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
+import { usePlayerStore } from '@/stores/player'
 import PlayerBar from '@/components/PlayerBar.vue'
 import PlayerFull from '@/components/PlayerFull.vue'
 
 const theme = useThemeStore()
 const i18n = useLocaleStore()
+const player = usePlayerStore()
+const { isPlaying } = storeToRefs(player)
 </script>
 
 <template>
@@ -30,7 +34,10 @@ const i18n = useLocaleStore()
           </defs>
           <polygon points="50,8 87,29.5 87,70.5 50,92 13,70.5 13,29.5"
                    fill="currentColor" mask="url(#lab-mask)" />
-          <circle cx="50" cy="50" r="8" fill="var(--color-accent)" />
+          <circle
+            cx="50" cy="50" r="8" fill="var(--color-accent)"
+            class="shell__logo-core" :class="{ 'shell__logo-core--playing': isPlaying }"
+          />
         </svg>
         <span class="shell__brand-main">Lab</span><span class="shell__brand-sep">/</span><span
           class="shell__brand-sub"
@@ -97,6 +104,32 @@ const i18n = useLocaleStore()
   width: 24px;
   height: 24px;
   flex-shrink: 0;
+}
+
+.shell__logo-core {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.3s ease;
+}
+
+.shell__logo-core--playing {
+  animation: logo-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes logo-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell__logo-core--playing {
+    animation: none;
+  }
 }
 
 .shell__brand-main {
