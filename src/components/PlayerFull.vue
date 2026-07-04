@@ -233,7 +233,12 @@ onUnmounted(() => {
   <Teleport to="body">
     <transition name="overlay">
       <div v-if="player.showFullPlayer && current" class="full" :style="{ '--vibe': vibeColor }">
-        <button class="full__close" @click="player.closeFull()" aria-label="关闭">
+        <button
+          class="full__close"
+          :class="{ 'full__close--hidden': showPlaylist }"
+          @click="player.closeFull()"
+          aria-label="关闭"
+        >
           <PhX :size="22" />
         </button>
 
@@ -439,7 +444,15 @@ onUnmounted(() => {
   cursor: pointer;
   transition:
     color 0.2s,
-    border-color 0.2s;
+    border-color 0.2s,
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.full__close--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.9);
 }
 
 .full__close:hover {
