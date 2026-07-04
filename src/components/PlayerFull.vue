@@ -255,6 +255,9 @@ const volumePct = computed(() => volume.value * 100)
                   {{ tab.label }}
                 </button>
               </div>
+              <button class="playlist__close" @click="player.togglePlaylist()" aria-label="关闭播放列表">
+                <PhX :size="18" />
+              </button>
             </div>
             <ul class="playlist__list">
               <li
@@ -289,7 +292,7 @@ const volumePct = computed(() => volume.value * 100)
   position: absolute;
   top: var(--space-4);
   right: var(--space-5);
-  z-index: 2;
+  z-index: 5;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -625,10 +628,16 @@ const volumePct = computed(() => volume.value * 100)
 }
 
 .playlist {
-  max-height: 340px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
   overflow-y: auto;
-  border-top: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
   background: var(--color-bg);
+  z-index: 3;
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.18);
 }
 
 .playlist__bar {
@@ -661,6 +670,28 @@ const volumePct = computed(() => volume.value * 100)
 
 .playlist__search::placeholder {
   color: var(--color-text-muted);
+}
+
+.playlist__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.playlist__close:hover {
+  color: var(--color-accent);
+  background: var(--color-surface);
 }
 
 .playlist__tabs {
@@ -751,20 +782,19 @@ const volumePct = computed(() => volume.value * 100)
 .slide-leave-active {
   transition:
     opacity 0.25s ease,
-    max-height 0.25s ease;
-  overflow: hidden;
+    transform 0.25s ease;
 }
 
 .slide-enter-from,
 .slide-leave-to {
   opacity: 0;
-  max-height: 0;
+  transform: translateX(100%);
 }
 
 .slide-enter-to,
 .slide-leave-from {
   opacity: 1;
-  max-height: 360px;
+  transform: translateX(0);
 }
 
 @media (max-width: 720px) {
@@ -785,6 +815,11 @@ const volumePct = computed(() => volume.value * 100)
 
   .volume {
     display: none;
+  }
+
+  .playlist {
+    width: 86%;
+    max-width: 360px;
   }
 }
 
