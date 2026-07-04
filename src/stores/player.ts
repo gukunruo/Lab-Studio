@@ -16,7 +16,7 @@ const LIKED_KEY = 'lab-player-liked'
 const DISLIKED_KEY = 'lab-player-disliked'
 const PROGRESS_KEY = 'lab-player-progress'
 
-type Persisted = { volume?: number; playMode?: PlayMode }
+type Persisted = { volume?: number; playMode?: PlayMode; eqGains?: number[]; eqEnabled?: boolean }
 type Progress = { collectionKey: 'all' | 'roco'; currentIndex: number; currentTime: number }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -71,9 +71,13 @@ const playbackRate = ref(1)
 const volume = ref(typeof persisted.volume === 'number' ? persisted.volume : 0.8)
 const noAudio = ref(false)
 const playMode = ref<PlayMode>(persisted.playMode ?? 'list')
+const eqGains = ref<number[]>(persisted.eqGains ?? [0, 0, 0, 0, 0])
+const eqEnabled = ref(persisted.eqEnabled ?? false)
 
 const showFullPlayer = ref(false)
 const showPlaylist = ref(false)
+const sleepTimer = ref<number | null>(null) // 剩余秒数,null=未启用
+let sleepTimerId: ReturnType<typeof setInterval> | null = null
 
 const current = computed<Track | null>(() => playlist.value[currentIndex.value] ?? null)
 
@@ -169,6 +173,24 @@ function cyclePlayMode() {
   playMode.value = order[(order.indexOf(playMode.value) + 1) % order.length] ?? 'list'
 }
 
+function startSleepTimer(minutes: number) {
+  stopSleepTimer()
+  sleepTimer.value = minutes * 60
+  sleepTimerId = setInterval(() => {
+    if (sleepTimer.value === null) return
+    sleepTimer.value--
+    if (sleepTimer.value <= 0) {
+      pause()
+      stopSleepTimer()
+    }
+  }, 1000)
+}
+function stopSleepTimer() {
+  if (sleepTimerId) clearInterval(sleepTimerId)
+  sleepTimerId = null
+  sleepTimer.value = null
+}
+
 function switchCollection(key: 'all' | 'roco') {
   const c = COLLECTIONS.find((c) => c.key === key)
   if (!c) return
@@ -258,11 +280,22 @@ audio.addEventListener('canplay', () => {
 })
 
 // Web Audio graph for spectrum visualization. Created lazily on first
-// play() (user gesture) so AudioContext starts unlocked. source→analyser→
-// destination keeps audio audible while exposing frequency data.
+// play() (user gesture) so AudioContext starts unlocked. source→EQ chain→
+// analyser→destination keeps audio audible while exposing frequency data.
+const EQ_FREQS = [60, 230, 910, 3600, 14000] as const
+export const EQ_PRESETS: { key: string; label: string; gains: number[] }[] = [
+  { key: 'flat', label: '平直', gains: [0, 0, 0, 0, 0] },
+  { key: 'vocal', label: '人声', gains: [-2, -1, 2, 3, 2] },
+  { key: 'bass', label: '低音', gains: [6, 4, 0, -1, -2] },
+  { key: 'treble', label: '高音', gains: [-1, -1, 0, 3, 6] },
+  { key: 'live', label: '现场', gains: [3, -1, -2, 2, 4] },
+]
+const eqFreqs = ref(EQ_FREQS)
+
 let audioCtx: AudioContext | null = null
 let analyserNode: AnalyserNode | null = null
 let sourceNode: MediaElementAudioSourceNode | null = null
+const filterNodes: BiquadFilterNode[] = []
 const analyserRef = ref<AnalyserNode | null>(null)
 
 function ensureAudioGraph() {
@@ -272,27 +305,64 @@ function ensureAudioGraph() {
     if (!AC) return
     audioCtx = new AC()
     sourceNode = audioCtx.createMediaElementSource(audio)
+    for (const freq of EQ_FREQS) {
+      const f = audioCtx.createBiquadFilter()
+      f.type = 'peaking'
+      f.frequency.value = freq
+      f.Q.value = 1
+      f.gain.value = eqEnabled.value ? eqGains.value[EQ_FREQS.indexOf(freq)] ?? 0 : 0
+      filterNodes.push(f)
+    }
     analyserNode = audioCtx.createAnalyser()
     analyserNode.fftSize = 64
     analyserNode.smoothingTimeConstant = 0.8
-    sourceNode.connect(analyserNode)
+    let prev: AudioNode = sourceNode
+    for (const f of filterNodes) {
+      prev.connect(f)
+      prev = f
+    }
+    prev.connect(analyserNode)
     analyserNode.connect(audioCtx.destination)
     analyserRef.value = analyserNode
   } catch {}
+}
+
+function setEqBand(index: number, gain: number) {
+  if (!filterNodes[index]) return
+  eqGains.value[index] = gain
+  filterNodes[index].gain.value = eqEnabled.value ? gain : 0
+}
+function applyEqPreset(gains: number[]) {
+  for (let i = 0; i < EQ_FREQS.length; i++) eqGains.value[i] = gains[i] ?? 0
+  eqEnabled.value = true
+  for (let i = 0; i < filterNodes.length; i++) {
+    filterNodes[i]!.gain.value = eqGains.value[i] ?? 0
+  }
+}
+function toggleEq() {
+  eqEnabled.value = !eqEnabled.value
+  for (let i = 0; i < filterNodes.length; i++) {
+    filterNodes[i]!.gain.value = eqEnabled.value ? (eqGains.value[i] ?? 0) : 0
+  }
 }
 
 // restore last track + position; do not autoplay (browser gesture policy)
 load(currentIndex.value)
 
 export const usePlayerStore = defineStore('player', () => {
-  watch([volume, playMode], () => {
+  watch([volume, playMode, eqGains, eqEnabled], () => {
     try {
       localStorage.setItem(
         PERSIST_KEY,
-        JSON.stringify({ volume: volume.value, playMode: playMode.value }),
+        JSON.stringify({
+          volume: volume.value,
+          playMode: playMode.value,
+          eqGains: eqGains.value,
+          eqEnabled: eqEnabled.value,
+        }),
       )
     } catch {}
-  })
+  }, { deep: true })
 
   let progressTimer: ReturnType<typeof setTimeout> | null = null
   watch([collectionKey, currentIndex, currentTime], () => {
@@ -344,6 +414,15 @@ export const usePlayerStore = defineStore('player', () => {
     setVolume,
     playTrack,
     cyclePlayMode,
+    eqGains,
+    eqEnabled,
+    eqFreqs,
+    setEqBand,
+    applyEqPreset,
+    toggleEq,
+    sleepTimer,
+    startSleepTimer,
+    stopSleepTimer,
     openFull: () => {
       showFullPlayer.value = true
     },

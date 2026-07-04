@@ -17,8 +17,10 @@ import {
   PhHeartStraight,
   PhTrash,
   PhMagnifyingGlass,
+  PhSliders,
+  PhMoon,
 } from '@phosphor-icons/vue'
-import { usePlayerStore } from '@/stores/player'
+import { usePlayerStore, EQ_PRESETS } from '@/stores/player'
 import type { Track } from '@/data/tracks'
 
 const player = usePlayerStore()
@@ -38,11 +40,17 @@ const {
   showFullPlayer,
   analyser,
   collectionKey,
+  eqGains,
+  eqEnabled,
+  eqFreqs,
+  sleepTimer,
 } = storeToRefs(player)
 
 const lyricsEl = ref<HTMLElement | null>(null)
 const prevVolume = ref(0.8)
 const showShortcuts = ref(false)
+const showEq = ref(false)
+const showSleep = ref(false)
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const modeIcon = computed(() =>
@@ -111,6 +119,15 @@ function formatTime(s: number): string {
   const m = Math.floor(s / 60)
   const sec = Math.floor(s % 60)
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+function formatSleep(s: number): string {
+  return Math.ceil(s / 60) + 'm'
+}
+function formatFreq(f: number): string {
+  return f >= 1000 ? f / 1000 + 'k' : String(f)
+}
+function onEqBand(i: number, e: Event) {
+  player.setEqBand(i, Number((e.target as HTMLInputElement).value))
 }
 function onSeek(e: Event) {
   player.seek(Number((e.target as HTMLInputElement).value))
@@ -205,6 +222,8 @@ function onKey(e: KeyboardEvent) {
       break
     case 'Escape':
       if (showShortcuts.value) showShortcuts.value = false
+      else if (showEq.value) showEq.value = false
+      else if (showSleep.value) showSleep.value = false
       else if (showPlaylist.value) player.togglePlaylist()
       else player.closeFull()
       break
@@ -356,6 +375,25 @@ onUnmounted(() => {
               <select class="rate" :value="playbackRate" @change="onRate" aria-label="倍速">
                 <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
               </select>
+              <button
+                class="ctrl"
+                :class="{ 'ctrl--active': eqEnabled }"
+                @click="showEq = !showEq"
+                aria-label="均衡器"
+                title="均衡器"
+              >
+                <PhSliders :size="18" />
+              </button>
+              <button
+                class="ctrl"
+                :class="{ 'ctrl--active': sleepTimer !== null }"
+                @click="showSleep = !showSleep"
+                aria-label="睡眠定时器"
+                title="睡眠定时器"
+              >
+                <PhMoon :size="18" />
+                <span v-if="sleepTimer !== null" class="ctrl__time">{{ formatSleep(sleepTimer) }}</span>
+              </button>
             </div>
 
             <div class="controls__center">
@@ -507,6 +545,73 @@ onUnmounted(() => {
                 <li><kbd>?</kbd><span>开关此面板</span></li>
                 <li><kbd>Esc</kbd><span>关闭面板 / 播放列表 / 全屏</span></li>
               </ul>
+            </div>
+          </div>
+        </transition>
+
+        <transition name="overlay">
+          <div v-if="showEq" class="eq" @click.self="showEq = false">
+            <div class="eq__panel">
+              <div class="eq__head">
+                <span>均衡器</span>
+                <button
+                  class="eq__toggle"
+                  :class="{ 'eq__toggle--on': eqEnabled }"
+                  @click="player.toggleEq()"
+                >
+                  {{ eqEnabled ? '已启用' : '已关闭' }}
+                </button>
+              </div>
+              <div class="eq__bands">
+                <div v-for="(g, i) in eqGains" :key="i" class="eq__band">
+                  <span class="eq__freq">{{ formatFreq(eqFreqs[i] ?? 0) }}</span>
+                  <input
+                    type="range"
+                    min="-12"
+                    max="12"
+                    step="1"
+                    :value="g"
+                    class="eq__slider"
+                    @input="onEqBand(i, $event)"
+                  />
+                  <span class="eq__gain">{{ g > 0 ? '+' : '' }}{{ g }}dB</span>
+                </div>
+              </div>
+              <div class="eq__presets">
+                <button
+                  v-for="p in EQ_PRESETS"
+                  :key="p.key"
+                  class="eq__preset"
+                  @click="player.applyEqPreset(p.gains)"
+                >
+                  {{ p.label }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </transition>
+
+        <transition name="overlay">
+          <div v-if="showSleep" class="sleep" @click.self="showSleep = false">
+            <div class="sleep__panel">
+              <div class="sleep__head">睡眠定时器</div>
+              <div class="sleep__options">
+                <button
+                  v-for="m in [15, 30, 45, 60, 90]"
+                  :key="m"
+                  class="sleep__opt"
+                  @click="player.startSleepTimer(m); showSleep = false"
+                >
+                  {{ m }} 分钟
+                </button>
+              </div>
+              <button
+                v-if="sleepTimer !== null"
+                class="sleep__cancel"
+                @click="player.stopSleepTimer(); showSleep = false"
+              >
+                取消定时
+              </button>
             </div>
           </div>
         </transition>
@@ -1370,6 +1475,221 @@ onUnmounted(() => {
   .playlist__remove {
     opacity: 1;
   }
+}
+
+.ctrl__time {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--color-accent);
+  background: var(--color-bg);
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+  border: 1px solid var(--color-border);
+}
+
+.eq,
+.sleep {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: var(--space-4);
+}
+
+.eq__panel,
+.sleep__panel {
+  width: 100%;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  padding: var(--space-5);
+}
+
+.eq__panel {
+  max-width: 460px;
+}
+
+.sleep__panel {
+  max-width: 360px;
+}
+
+.eq__head,
+.sleep__head {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--space-4);
+}
+
+.eq__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.eq__toggle {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.eq__toggle--on {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.eq__bands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.eq__band {
+  display: grid;
+  grid-template-columns: 50px 1fr 48px;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.eq__freq {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+}
+
+.eq__gain {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-text);
+  text-align: right;
+}
+
+.eq__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-border);
+  cursor: pointer;
+  outline: none;
+}
+
+.eq__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.eq__slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.eq__presets {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.eq__preset {
+  flex: 1;
+  min-width: 56px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.74rem;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.eq__preset:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.sleep__options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.sleep__opt {
+  padding: 0.5rem 0.4rem;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.sleep__opt:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.sleep__cancel {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.sleep__cancel:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
