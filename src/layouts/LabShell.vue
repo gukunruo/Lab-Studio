@@ -3,6 +3,8 @@ import { RouterLink, RouterView } from 'vue-router'
 import { experiments } from '@/experiments/_registry'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
+import PlayerBar from '@/components/PlayerBar.vue'
+import PlayerFull from '@/components/PlayerFull.vue'
 
 const theme = useThemeStore()
 const i18n = useLocaleStore()
@@ -39,6 +41,8 @@ const i18n = useLocaleStore()
     <main class="shell__main">
       <RouterView />
     </main>
+    <PlayerBar />
+    <PlayerFull />
   </div>
 </template>
 

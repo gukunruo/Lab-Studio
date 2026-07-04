@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, defineAsyncComponent } from 'vue'
+import { computed, ref, shallowRef, watch, defineAsyncComponent, onMounted, onUnmounted } from 'vue'
 import type { Component } from 'vue'
 import { RouterLink } from 'vue-router'
-import { PhFileText } from '@phosphor-icons/vue'
+import { PhFileText, PhArrowsOutSimple, PhArrowsInSimple } from '@phosphor-icons/vue'
 import { experiments } from '@/experiments/_registry'
 import { useLocaleStore } from '@/stores/locale'
 import MarkdownModal from '@/components/MarkdownModal.vue'
@@ -24,10 +24,49 @@ watch(
   },
   { immediate: true },
 )
+
+// fullscreen for the experiment stage
+const expRoot = ref<HTMLElement | null>(null)
+const isFullscreen = ref(false)
+
+function fullscreenEl(): Element | null {
+  const doc = document as Document & { webkitFullscreenElement?: Element }
+  return document.fullscreenElement || doc.webkitFullscreenElement || null
+}
+function toggleFullscreen() {
+  const el = expRoot.value
+  if (!el) return
+  if (!fullscreenEl()) {
+    const anyEl = el as Element & {
+      requestFullscreen?: () => Promise<void>
+      webkitRequestFullscreen?: () => void
+    }
+    if (anyEl.requestFullscreen) anyEl.requestFullscreen().catch(() => {})
+    else if (anyEl.webkitRequestFullscreen) anyEl.webkitRequestFullscreen()
+  } else {
+    const doc = document as Document & {
+      exitFullscreen?: () => Promise<void>
+      webkitExitFullscreen?: () => void
+    }
+    if (doc.exitFullscreen) doc.exitFullscreen().catch(() => {})
+    else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen()
+  }
+}
+function syncFullscreen() {
+  isFullscreen.value = !!fullscreenEl()
+}
+onMounted(() => {
+  document.addEventListener('fullscreenchange', syncFullscreen)
+  document.addEventListener('webkitfullscreenchange', syncFullscreen)
+})
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', syncFullscreen)
+  document.removeEventListener('webkitfullscreenchange', syncFullscreen)
+})
 </script>
 
 <template>
-  <div v-if="exp" class="exp">
+  <div v-if="exp" ref="expRoot" class="exp" :class="{ 'exp--fullscreen': isFullscreen }">
     <div class="exp__bar">
       <RouterLink to="/" class="exp__back">{{ i18n.t('exp.back') }}</RouterLink>
       <div class="exp__meta">
@@ -42,6 +81,15 @@ watch(
       >
         <PhFileText :size="16" />
         {{ i18n.t('exp.doc') }}
+      </button>
+      <button
+        class="exp__doc"
+        @click="toggleFullscreen"
+        :aria-label="isFullscreen ? '退出全屏' : '全屏'"
+        :title="isFullscreen ? '退出全屏' : '全屏'"
+      >
+        <component :is="isFullscreen ? PhArrowsInSimple : PhArrowsOutSimple" :size="16" />
+        {{ isFullscreen ? '退出全屏' : '全屏' }}
       </button>
     </div>
     <div class="exp__stage">
@@ -125,5 +173,26 @@ watch(
   background: var(--color-surface);
   min-height: 320px;
   padding: var(--space-8);
+}
+
+.exp--fullscreen {
+  max-width: none;
+  margin: 0;
+  padding: var(--space-6);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.exp--fullscreen .exp__stage {
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-md);
+}
+
+.exp:fullscreen,
+.exp:-webkit-full-screen {
+  background: var(--color-bg);
 }
 </style>

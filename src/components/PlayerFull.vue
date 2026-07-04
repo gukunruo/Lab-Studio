@@ -1,0 +1,799 @@
+<script setup lang="ts">
+import { ref, computed, watch, nextTick } from 'vue'
+import { storeToRefs } from 'pinia'
+import {
+  PhPlay,
+  PhPause,
+  PhSkipBack,
+  PhSkipForward,
+  PhRepeat,
+  PhRepeatOnce,
+  PhShuffle,
+  PhSpeakerHigh,
+  PhSpeakerSlash,
+  PhX,
+  PhPlaylist,
+} from '@phosphor-icons/vue'
+import { usePlayerStore } from '@/stores/player'
+import type { Track } from '@/data/tracks'
+
+const player = usePlayerStore()
+const {
+  playlist,
+  current,
+  currentIndex,
+  isPlaying,
+  currentTime,
+  duration,
+  playbackRate,
+  volume,
+  noAudio,
+  playMode,
+  showPlaylist,
+} = storeToRefs(player)
+
+const lyricsEl = ref<HTMLElement | null>(null)
+const prevVolume = ref(0.8)
+const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+const modeIcon = computed(() =>
+  playMode.value === 'single' ? PhRepeatOnce : playMode.value === 'shuffle' ? PhShuffle : PhRepeat,
+)
+const modeLabel = computed(
+  () => ({ list: '列表循环', single: '单曲循环', shuffle: '随机播放' } as const)[playMode.value],
+)
+
+const searchQuery = ref('')
+const langTab = ref<'all' | 'cn' | 'en' | 'jpkr'>('all')
+const tabs = [
+  { key: 'all', label: '全部' },
+  { key: 'cn', label: '华语' },
+  { key: 'en', label: '欧美' },
+  { key: 'jpkr', label: '日韩' },
+] as const
+function langOf(t: Track) {
+  const s = (t.artist || '') + (t.title || '')
+  if (/[가-힣]/.test(s)) return 'kr'
+  if (/[ぁ-んァ-ヶー]/.test(s)) return 'jp'
+  if (/[一-鿿]/.test(s)) return 'cn'
+  return 'en'
+}
+const filteredTracks = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  return playlist.value
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) => {
+      if (langTab.value !== 'all') {
+        const l = langOf(t)
+        if (langTab.value === 'jpkr' ? l !== 'jp' && l !== 'kr' : l !== langTab.value) return false
+      }
+      if (q && !(t.title + t.artist + t.album).toLowerCase().includes(q)) return false
+      return true
+    })
+})
+
+const activeLyricIndex = computed(() => {
+  const t = currentTime.value
+  const lines = current.value?.lyrics ?? []
+  let idx = 0
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line && line.time <= t) idx = i
+    else break
+  }
+  return idx
+})
+
+async function scrollLyric(i: number) {
+  await nextTick()
+  const c = lyricsEl.value
+  if (!c) return
+  const line = c.children[i] as HTMLElement | undefined
+  if (!line) return
+  const top = line.offsetTop - c.clientHeight / 2 + line.clientHeight / 2
+  c.scrollTo({ top, behavior: 'smooth' })
+}
+
+watch(activeLyricIndex, scrollLyric)
+watch(currentIndex, () => scrollLyric(0))
+
+function formatTime(s: number): string {
+  if (!s || !isFinite(s)) return '00:00'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+function onSeek(e: Event) {
+  player.seek(Number((e.target as HTMLInputElement).value))
+}
+function onRate(e: Event) {
+  player.setRate(Number((e.target as HTMLSelectElement).value))
+}
+function onVolume(e: Event) {
+  player.setVolume(Number((e.target as HTMLInputElement).value))
+}
+function toggleMute() {
+  if (volume.value > 0) {
+    prevVolume.value = volume.value
+    player.setVolume(0)
+  } else {
+    player.setVolume(prevVolume.value)
+  }
+}
+
+const progressPct = computed(() => (duration.value ? (currentTime.value / duration.value) * 100 : 0))
+const volumePct = computed(() => volume.value * 100)
+</script>
+
+<template>
+  <Teleport to="body">
+    <transition name="overlay">
+      <div v-if="player.showFullPlayer && current" class="full">
+        <button class="full__close" @click="player.closeFull()" aria-label="关闭">
+          <PhX :size="22" />
+        </button>
+
+        <div class="full__main">
+          <div class="cover-col">
+            <div class="art" :class="{ 'art--playing': isPlaying }">
+              <div class="art__vinyl"></div>
+              <img class="art__cover" :src="current.cover" :alt="current.title" loading="lazy" />
+            </div>
+            <div class="now-playing">
+              <div class="now-playing__title">{{ current.title }}</div>
+              <div class="now-playing__artist">{{ current.artist }} · {{ current.album }}</div>
+            </div>
+          </div>
+
+          <div class="lyrics" ref="lyricsEl">
+            <p
+              v-for="(line, i) in current.lyrics"
+              :key="i"
+              :class="['lyrics__line', { 'lyrics__line--active': i === activeLyricIndex }]"
+              @click="player.seek(line.time)"
+            >
+              {{ line.text }}
+            </p>
+          </div>
+        </div>
+
+        <div v-if="noAudio" class="no-audio">
+          <span>未找到音频文件。</span>
+          请把 <code>{{ current.id }}.mp3</code> 放入 <code>public/audio/</code> 后刷新
+        </div>
+
+        <div class="controls">
+          <div class="controls__progress">
+            <span class="time">{{ formatTime(currentTime) }}</span>
+            <input
+              class="progress"
+              type="range"
+              min="0"
+              :max="duration || 0"
+              step="0.1"
+              :value="currentTime"
+              :style="{ '--progress': progressPct + '%' }"
+              @input="onSeek"
+              aria-label="播放进度"
+            />
+            <span class="time">{{ formatTime(duration) }}</span>
+          </div>
+
+          <div class="controls__row">
+            <div class="controls__side">
+              <button
+                class="ctrl"
+                :class="{ 'ctrl--active': playMode !== 'list' }"
+                @click="player.cyclePlayMode()"
+                :aria-label="modeLabel"
+                :title="modeLabel"
+              >
+                <component :is="modeIcon" :size="18" />
+              </button>
+              <select class="rate" :value="playbackRate" @change="onRate" aria-label="倍速">
+                <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
+              </select>
+            </div>
+
+            <div class="controls__center">
+              <button class="ctrl" @click="player.prev()" aria-label="上一曲">
+                <PhSkipBack :size="22" weight="fill" />
+              </button>
+              <button class="ctrl ctrl--play" @click="player.toggle()" :aria-label="isPlaying ? '暂停' : '播放'">
+                <component :is="isPlaying ? PhPause : PhPlay" :size="26" weight="fill" />
+              </button>
+              <button class="ctrl" @click="player.next()" aria-label="下一曲">
+                <PhSkipForward :size="22" weight="fill" />
+              </button>
+            </div>
+
+            <div class="controls__side controls__side--right">
+              <button class="ctrl" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
+                <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="18" />
+              </button>
+              <input
+                class="volume"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                :value="volume"
+                :style="{ '--progress': volumePct + '%' }"
+                @input="onVolume"
+                aria-label="音量"
+              />
+              <button
+                class="ctrl ctrl--list"
+                :class="{ 'ctrl--active': showPlaylist }"
+                @click="player.togglePlaylist()"
+                aria-label="播放列表"
+              >
+                <PhPlaylist :size="20" />
+                <span class="ctrl__badge">{{ playlist.length }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <transition name="slide">
+          <div v-if="showPlaylist" class="playlist">
+            <div class="playlist__bar">
+              <input
+                class="playlist__search"
+                v-model="searchQuery"
+                placeholder="搜索歌曲 / 艺人 / 专辑"
+                aria-label="搜索歌单"
+              />
+              <div class="playlist__tabs">
+                <button
+                  v-for="tab in tabs"
+                  :key="tab.key"
+                  class="playlist__tab"
+                  :class="{ 'playlist__tab--active': langTab === tab.key }"
+                  @click="langTab = tab.key"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+            </div>
+            <ul class="playlist__list">
+              <li
+                v-for="{ t, i } in filteredTracks"
+                :key="t.id"
+                :class="{ 'playlist__item--active': i === currentIndex }"
+                @click="player.playTrack(i)"
+              >
+                <span class="playlist__idx">{{ String(i + 1).padStart(2, '0') }}</span>
+                <span class="playlist__title">{{ t.title }}</span>
+                <span class="playlist__artist">{{ t.artist }}</span>
+              </li>
+            </ul>
+          </div>
+        </transition>
+      </div>
+    </transition>
+  </Teleport>
+</template>
+
+<style scoped lang="scss">
+.full {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.full__close {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-5);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.full__close:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.full__main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 360px) 1fr;
+  gap: var(--space-8);
+  padding: var(--space-10) var(--space-8) var(--space-6);
+  align-items: center;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.cover-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+/* vinyl: circular album cover centered on a grooved disc */
+.art {
+  position: relative;
+  width: 260px;
+  height: 260px;
+}
+
+.art__vinyl {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: 1;
+  background:
+    repeating-radial-gradient(circle at center, rgba(0, 0, 0, 0.5) 0 2px, transparent 2px 4px),
+    radial-gradient(circle at center, var(--color-surface), var(--color-text));
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+}
+
+.art__cover {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  object-fit: cover;
+  z-index: 2;
+  box-shadow: 0 0 0 6px var(--color-bg), 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-text);
+  border: 2px solid var(--color-bg);
+  z-index: 3;
+}
+
+.art--playing .art__vinyl {
+  animation: spin 8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.now-playing {
+  text-align: center;
+  max-width: 100%;
+}
+
+.now-playing__title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.now-playing__artist {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics {
+  height: 320px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: var(--space-4) 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
+  scrollbar-width: none;
+}
+
+.lyrics::-webkit-scrollbar {
+  width: 0;
+}
+
+.lyrics__line {
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.98rem;
+  line-height: 1.6;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    color 0.3s,
+    transform 0.3s;
+}
+
+.lyrics__line:hover {
+  color: var(--color-text);
+}
+
+.lyrics__line--active {
+  color: var(--color-accent);
+  font-size: 1.1rem;
+  font-weight: 600;
+  transform: scale(1.03);
+}
+
+.controls {
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+
+.no-audio {
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-accent-soft);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-accent);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.no-audio code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  background: var(--color-bg);
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+}
+
+.controls__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.time {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  min-width: 40px;
+  text-align: center;
+}
+
+.progress {
+  flex: 1;
+}
+
+.controls__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.controls__center {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.controls__side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 120px;
+}
+
+.controls__side--right {
+  justify-content: flex-end;
+}
+
+.volume {
+  width: 80px;
+}
+
+.full input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-accent) var(--progress, 0%),
+    var(--color-border) var(--progress, 0%)
+  );
+  cursor: pointer;
+  outline: none;
+}
+
+.full input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--color-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.full input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--color-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.ctrl {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    transform 0.1s;
+}
+
+.ctrl:hover {
+  background: var(--color-bg);
+  color: var(--color-accent);
+}
+
+.ctrl:active {
+  transform: scale(0.92);
+}
+
+.ctrl--active {
+  color: var(--color-accent);
+}
+
+.ctrl--play {
+  width: 56px;
+  height: 56px;
+  background: var(--color-accent);
+  color: #fff;
+  box-shadow: 0 6px 20px var(--color-accent-soft);
+}
+
+.ctrl--play:hover {
+  filter: brightness(1.08);
+  color: #fff;
+}
+
+.ctrl__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+.rate {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.rate:focus {
+  border-color: var(--color-accent);
+}
+
+.playlist {
+  max-height: 340px;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.playlist__bar {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  background: var(--color-bg);
+  z-index: 1;
+}
+
+.playlist__search {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0.35rem 0.8rem;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.playlist__search:focus {
+  border-color: var(--color-accent);
+}
+
+.playlist__search::placeholder {
+  color: var(--color-text-muted);
+}
+
+.playlist__tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.playlist__tab {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.76rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.playlist__tab:hover {
+  color: var(--color-text);
+}
+
+.playlist__tab--active {
+  color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+.playlist__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.playlist__list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  transition: background 0.15s;
+}
+
+.playlist__list li:hover {
+  background: var(--color-surface);
+}
+
+.playlist__item--active {
+  color: var(--color-accent);
+}
+
+.playlist__idx {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+}
+
+.playlist__item--active .playlist__idx {
+  color: var(--color-accent);
+}
+
+.playlist__artist {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.overlay-enter-active,
+.overlay-leave-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+.overlay-enter-from,
+.overlay-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition:
+    opacity 0.25s ease,
+    max-height 0.25s ease;
+  overflow: hidden;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.slide-enter-to,
+.slide-leave-from {
+  opacity: 1;
+  max-height: 360px;
+}
+
+@media (max-width: 720px) {
+  .full__main {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: var(--space-8) var(--space-4) var(--space-4);
+  }
+
+  .lyrics {
+    height: 200px;
+    width: 100%;
+  }
+
+  .controls__side {
+    min-width: 0;
+  }
+
+  .volume {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .art--playing .art__vinyl {
+    animation: none;
+  }
+
+  .lyrics {
+    scroll-behavior: auto;
+  }
+}
+</style>
