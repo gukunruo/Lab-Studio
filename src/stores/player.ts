@@ -56,7 +56,7 @@ const initTracks = filterDisliked(
 const playlist = ref<Track[]>(initTracks)
 const collectionKey = ref<'liked' | 'roco'>(initKey)
 const currentIndex = ref(
-  savedProgress ? Math.min(savedProgress.currentIndex, initTracks.length - 1) : 0,
+  savedProgress ? Math.min(savedProgress.currentIndex, initTracks.length - 1) : -1,
 )
 const isPlaying = ref(false)
 const currentTime = ref(0)
