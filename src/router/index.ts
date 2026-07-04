@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LabShell from '@/layouts/LabShell.vue'
 import LabHome from '@/views/LabHome.vue'
-import { experiments } from '@/experiments/_registry'
+import { apps } from '@/apps/_registry'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -13,11 +13,11 @@ const router = createRouter({
         { path: '', name: 'home', component: LabHome },
         {
           path: ':slug',
-          name: 'experiment',
-          component: () => import('@/views/ExperimentView.vue'),
+          name: 'app',
+          component: () => import('@/views/AppView.vue'),
           props: true,
           beforeEnter: (to) => {
-            if (!experiments.some((e) => e.slug === to.params.slug)) {
+            if (!apps.some((e) => e.slug === to.params.slug)) {
               return { name: 'home' }
             }
           },

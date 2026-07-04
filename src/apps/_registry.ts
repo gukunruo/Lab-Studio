@@ -2,7 +2,7 @@ import type { Component } from 'vue'
 
 export type LocalizedString = { zh: string; en: string }
 
-export interface ExperimentMetaInput {
+export interface AppMetaInput {
   title: LocalizedString
   description: LocalizedString
   tags?: string[]
@@ -10,14 +10,14 @@ export interface ExperimentMetaInput {
   icon?: string
 }
 
-export interface ExperimentMeta extends Required<Omit<ExperimentMetaInput, 'icon'>> {
+export interface AppMeta extends Required<Omit<AppMetaInput, 'icon'>> {
   slug: string
   icon?: string
   component: () => Promise<Component>
   doc?: string
 }
 
-const metaModules = import.meta.glob<ExperimentMetaInput>('./*/meta.ts', {
+const metaModules = import.meta.glob<AppMetaInput>('./*/meta.ts', {
   eager: true,
   import: 'default',
 })
@@ -36,8 +36,8 @@ function slugFromPath(path: string): string {
   return path.split('/').at(-2) ?? path
 }
 
-export const experiments: ExperimentMeta[] = Object.entries(metaModules)
-  .map(([path, meta]): ExperimentMeta | null => {
+export const apps: AppMeta[] = Object.entries(metaModules)
+  .map(([path, meta]): AppMeta | null => {
     const entryPath = path.replace(/meta\.ts$/, 'index.vue')
     const component = entryModules[entryPath]
     if (!component) return null
@@ -53,5 +53,5 @@ export const experiments: ExperimentMeta[] = Object.entries(metaModules)
       doc: docModules[docPath],
     }
   })
-  .filter((e): e is ExperimentMeta => e !== null)
+  .filter((e): e is AppMeta => e !== null)
   .sort((a, b) => b.date.localeCompare(a.date))

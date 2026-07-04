@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { messages, type Locale } from '@/i18n/messages'
-import type { LocalizedString } from '@/experiments/_registry'
+import type { LocalizedString } from '@/apps/_registry'
 
 const KEY = 'lab-locale'
 

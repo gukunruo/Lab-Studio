@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { PhMagnifyingGlass } from '@phosphor-icons/vue'
-import { useExperimentStore } from '@/stores/experiments'
+import { useAppStore } from '@/stores/apps'
 import { useLocaleStore } from '@/stores/locale'
-import ExperimentCard from '@/components/ExperimentCard.vue'
+import AppCard from '@/components/AppCard.vue'
 
-const store = useExperimentStore()
+const store = useAppStore()
 const { filtered, query, activeTag, allTags } = storeToRefs(store)
 const i18n = useLocaleStore()
 </script>
@@ -37,12 +37,12 @@ const i18n = useLocaleStore()
     </div>
 
     <div v-if="filtered.length" class="home__grid">
-      <ExperimentCard v-for="exp in filtered" :key="exp.slug" :exp="exp" />
+      <AppCard v-for="exp in filtered" :key="exp.slug" :exp="exp" />
     </div>
     <div v-else class="home__empty">
       <p class="home__empty-title">{{ i18n.t('home.emptyTitle') }}</p>
       <p class="home__empty-hint">
-        {{ i18n.t('home.emptyHintPre') }} <code>src/experiments/</code>
+        {{ i18n.t('home.emptyHintPre') }} <code>src/apps/</code>
         {{ i18n.t('home.emptyHintPost') }}
       </p>
     </div>

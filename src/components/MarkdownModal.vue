@@ -24,10 +24,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 <template>
   <Teleport to="body">
     <div class="md-overlay" @click.self="emit('close')">
-      <div class="md-modal" role="dialog" aria-modal="true" :aria-label="i18n.t('exp.doc')">
+      <div class="md-modal" role="dialog" aria-modal="true" :aria-label="i18n.t('app.doc')">
         <header class="md-modal__bar">
-          <span class="md-modal__title">{{ i18n.t('exp.doc') }}</span>
-          <button class="md-modal__close" @click="emit('close')" :aria-label="i18n.t('exp.docClose')">
+          <span class="md-modal__title">{{ i18n.t('app.doc') }}</span>
+          <button class="md-modal__close" @click="emit('close')" :aria-label="i18n.t('app.docClose')">
             <PhX :size="18" />
           </button>
         </header>

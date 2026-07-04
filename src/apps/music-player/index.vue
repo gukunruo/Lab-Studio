@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { PhPlay, PhArrowsOutSimple, PhMusicNote } from '@phosphor-icons/vue'
 import { usePlayerStore } from '@/stores/player'
+defineOptions({ name: 'MusicPlayerIndex' })
 
 const player = usePlayerStore()
 const { current, isPlaying, playlist, collectionKey } = storeToRefs(player)

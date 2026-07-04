@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useLocaleStore } from '@/stores/locale'
+defineOptions({ name: 'HelloLabIndex' })
 
 const i18n = useLocaleStore()
 
@@ -24,7 +25,7 @@ onUnmounted(() => window.clearInterval(timer))
     <div class="hello__clock">{{ time }}</div>
     <p class="hello__hint">
       {{ i18n.t('hello.hintPre') }}
-      <code>src/experiments/hello-lab/index.vue</code>
+      <code>src/apps/hello-lab/index.vue</code>
       {{ i18n.t('hello.hintPost') }}
     </p>
   </div>

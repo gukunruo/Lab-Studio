@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { experiments } from '@/experiments/_registry'
+import { apps } from '@/apps/_registry'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { usePlayerStore } from '@/stores/player'
@@ -44,7 +44,7 @@ const { isPlaying } = storeToRefs(player)
         </span>
       </RouterLink>
       <div class="shell__right">
-        <span class="shell__count">{{ experiments.length }} {{ i18n.t('nav.experimentsUnit') }}</span>
+        <span class="shell__count">{{ apps.length }} {{ i18n.t('nav.appCount') }}</span>
         <button
           class="shell__pill"
           type="button"

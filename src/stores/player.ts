@@ -301,7 +301,8 @@ const analyserRef = ref<AnalyserNode | null>(null)
 function ensureAudioGraph() {
   if (audioCtx) return
   try {
-    const AC = window.AudioContext || (window as any).webkitAudioContext
+    const w = window as unknown as { webkitAudioContext?: typeof AudioContext }
+    const AC = window.AudioContext || w.webkitAudioContext
     if (!AC) return
     audioCtx = new AC()
     sourceNode = audioCtx.createMediaElementSource(audio)

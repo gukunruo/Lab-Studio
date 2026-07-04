@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { experiments as allExperiments, type ExperimentMeta } from '@/experiments/_registry'
+import { apps as allApps, type AppMeta } from '@/apps/_registry'
 
-export const useExperimentStore = defineStore('experiments', () => {
-  const items = allExperiments as readonly ExperimentMeta[]
+export const useAppStore = defineStore('apps', () => {
+  const items = allApps as readonly AppMeta[]
   const query = ref('')
   const activeTag = ref<string | null>(null)
 
