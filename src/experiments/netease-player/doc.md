@@ -1,6 +1,6 @@
 # 云音乐播放器
 
-仿网易云音乐的播放器实验。周杰伦 8 首歌单作为 mock 数据。
+仿网易云音乐的播放器实验。歌单来自账号「我喜欢的音乐」，音频、封面、歌词均为真实数据。
 
 ## 能力
 
@@ -14,24 +14,13 @@
 
 ## 数据
 
-元数据、专辑封面、逐行 LRC 歌词均来自网易云音乐公开 API（`music.163.com`），是真实数据：
+元数据、专辑封面、逐行 LRC 歌词、音频文件均通过网易云 API 拉取（使用账号自身的 `MUSIC_U` cookie，VIP 账号）：
 
-- 晴天 / 珊瑚海 / 退后 / 枫 / 七里香 / 稻香 / 青花瓷 / 一路向北
+- 调 `/api/v6/playlist/detail` 取「我喜欢的音乐」歌单曲目
+- 调 `/api/song/enhance/player/url` 取每首 320kbps 音频直链并下载
+- 调 `/api/song/detail`、`/api/song/lyric` 补全封面与同步歌词
 
-**音频**：这些曲目在网易云为 VIP，公开直链（`outer/url`）会返回 404。要启用播放，请把本地 MP3 放到 `public/jay-chou/` 目录，文件名对应 `mock.ts` 里的 `slug`：
-
-```
-public/jay-chou/qing-tian.mp3
-public/jay-chou/shan-hu-hai.mp3
-public/jay-chou/tui-hou.mp3
-public/jay-chou/feng.mp3
-public/jay-chou/qi-li-xiang.mp3
-public/jay-chou/dao-xiang.mp3
-public/jay-chou/qing-hua-ci.mp3
-public/jay-chou/yi-lu-xiang-bei.mp3
-```
-
-放入文件后播放器即可完整工作；歌词会自动与音频同步。
+音频文件已下载到 `public/audio/<songId>.mp3`，播放器开箱即用，无需再手动放置文件。歌词会自动与音频同步。
 
 ## 技术选型
 

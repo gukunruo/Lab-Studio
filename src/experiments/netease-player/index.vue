@@ -118,7 +118,7 @@ const volumePct = computed(() => volume.value * 100)
 
     <div v-if="noAudio" class="no-audio">
       <span>未找到音频文件。</span>
-      请把 <code>{{ current.id }}.mp3</code> 放入 <code>public/jay-chou/</code> 后刷新
+      请把 <code>{{ current.id }}.mp3</code> 放入 <code>public/audio/</code> 后刷新
     </div>
 
     <div class="controls">

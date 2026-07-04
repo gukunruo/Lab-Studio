@@ -37,3 +37,6 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Audio assets (NetEase tracks downloaded via user cookie; copyrighted, kept local)
+public/audio/*.mp3
