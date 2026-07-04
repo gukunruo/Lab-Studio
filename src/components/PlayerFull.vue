@@ -687,6 +687,7 @@ onUnmounted(() => {
 
 .full--universe {
   background: #0a0a0c;
+  box-shadow: inset 0 0 240px rgba(0, 0, 0, 0.7);
 }
 
 .full--universe::before {
@@ -698,7 +699,9 @@ onUnmounted(() => {
 }
 
 .full--universe .art {
-  box-shadow: 0 0 120px color-mix(in srgb, var(--vibe, var(--color-accent)) 42%, transparent);
+  box-shadow:
+    0 0 80px color-mix(in srgb, var(--vibe, var(--color-accent)) 30%, transparent),
+    0 0 160px color-mix(in srgb, var(--vibe, var(--color-accent)) 18%, transparent);
 }
 
 .full--universe .now-playing__title {

@@ -10,6 +10,14 @@ interface Particle {
   ringIndex: number
 }
 
+interface Star {
+  x: number
+  y: number
+  size: number
+  phase: number
+  brightness: number
+}
+
 interface RGB {
   r: number
   g: number
@@ -24,6 +32,7 @@ const props = defineProps<{
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 let ctx: CanvasRenderingContext2D | null = null
 let particles: Particle[] = []
+let stars: Star[] = []
 let ro: ResizeObserver | null = null
 let cw = 0
 let ch = 0
@@ -69,6 +78,19 @@ function buildParticles() {
   })
 }
 
+function buildStars() {
+  stars = []
+  for (let i = 0; i < 220; i++) {
+    stars.push({
+      x: Math.random(),
+      y: Math.random(),
+      size: 0.5 + Math.random() * 1.6,
+      phase: Math.random() * Math.PI * 2,
+      brightness: 0.15 + Math.random() * 0.75,
+    })
+  }
+}
+
 function resize() {
   const c = canvasEl.value
   if (!c) return
@@ -103,6 +125,9 @@ function draw(freqData: Uint8Array<ArrayBuffer> | null) {
   rgb.r += (rgbTarget.r - rgb.r) * 0.04
   rgb.g += (rgbTarget.g - rgb.g) * 0.04
   rgb.b += (rgbTarget.b - rgb.b) * 0.04
+  const r = Math.round(rgb.r)
+  const g = Math.round(rgb.g)
+  const b = Math.round(rgb.b)
 
   // compute 4 energy bands from 32 bins
   let subBass = 0
@@ -135,21 +160,75 @@ function draw(freqData: Uint8Array<ArrayBuffer> | null) {
 
   const time = performance.now()
 
-  // dark space background with subtle vibe tint
+  // dark space background
   ctx.fillStyle = '#0a0a0c'
   ctx.fillRect(0, 0, cw, ch)
 
-  // central sun glow driven by sub-bass
-  const sunR = (120 + pulse * 80) * scale
-  const sunGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunR)
-  const sunAlpha = 0.35 + pulse * 0.4
-  sunGrad.addColorStop(0, `rgba(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)},${sunAlpha})`)
-  sunGrad.addColorStop(1, 'rgba(0,0,0,0)')
-  ctx.fillStyle = sunGrad
-  ctx.fillRect(cx - sunR, cy - sunR, sunR * 2, sunR * 2)
+  // 1. background starfield (static twinkle)
+  for (let i = 0; i < stars.length; i++) {
+    const st = stars[i]!
+    const tw = reducedMotion ? 1 : 0.65 + Math.sin(time * 0.0012 + st.phase) * 0.35
+    const a = st.brightness * tw
+    ctx.fillStyle = `rgba(255,255,255,${a})`
+    ctx.fillRect(st.x * cw, st.y * ch, st.size, st.size)
+  }
 
+  // 2. outer diffuse halo around the central body
   ctx.globalCompositeOperation = 'lighter'
+  const outerR = (210 + pulse * 70) * scale
+  const og = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerR)
+  og.addColorStop(0, `rgba(${r},${g},${b},${0.22 + pulse * 0.2})`)
+  og.addColorStop(0.45, `rgba(${r},${g},${b},0.07)`)
+  og.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = og
+  ctx.fillRect(cx - outerR, cy - outerR, outerR * 2, outerR * 2)
 
+  // 3. orbital rings (saturn-like, tilted, slowly rotating)
+  const ringRot = reducedMotion ? 0 : time * 0.00008
+  for (let i = 0; i < 3; i++) {
+    const rr = (175 + i * 55 + pulse * 35) * scale
+    const ry = rr * (0.28 + i * 0.04)
+    ctx.save()
+    ctx.translate(cx, cy)
+    ctx.rotate(ringRot + i * 0.42)
+    ctx.strokeStyle = `rgba(${r},${g},${b},${0.1 + pulse * 0.18})`
+    ctx.lineWidth = 1 + (2 - i) * 0.4
+    ctx.beginPath()
+    ctx.ellipse(0, 0, rr, ry, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // 4. light rays radiating from core, driven by sub-bass
+  if (pulse > 0.06) {
+    const rayLen = (170 + pulse * 240) * scale
+    const rayCount = 10
+    for (let i = 0; i < rayCount; i++) {
+      const ang = (i / rayCount) * Math.PI * 2 + time * 0.00018
+      const ex = cx + Math.cos(ang) * rayLen
+      const ey = cy + Math.sin(ang) * rayLen
+      const rg = ctx.createLinearGradient(cx, cy, ex, ey)
+      rg.addColorStop(0, `rgba(${r},${g},${b},${0.28 * pulse})`)
+      rg.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.strokeStyle = rg
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(ex, ey)
+      ctx.stroke()
+    }
+  }
+
+  // 5. inner core glow (the "planet")
+  const coreR = (95 + pulse * 55) * scale
+  const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR)
+  cg.addColorStop(0, `rgba(${r},${g},${b},${0.5 + pulse * 0.4})`)
+  cg.addColorStop(0.6, `rgba(${r},${g},${b},${0.18})`)
+  cg.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = cg
+  ctx.fillRect(cx - coreR, cy - coreR, coreR * 2, coreR * 2)
+
+  // 6. orbital particles
   for (let i = 0; i < particles.length; i++) {
     const p = particles[i]!
     if (!reducedMotion) {
@@ -161,11 +240,11 @@ function draw(freqData: Uint8Array<ArrayBuffer> | null) {
 
     const ringDim = 1 - p.ringIndex * 0.12
     const twinkle = 1 + Math.sin(time * 0.003 + p.twinklePhase) * twinkleAmp
-    const brightness = Math.max(0.15, (0.6 + mid * 0.4) * ringDim * twinkle)
+    const brightness = Math.max(0.18, (0.62 + mid * 0.4) * ringDim * twinkle)
     const size = p.size * sizeMul * scale
 
     const grad = ctx.createRadialGradient(x, y, 0, x, y, size * 3.5)
-    grad.addColorStop(0, `rgba(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)},${brightness})`)
+    grad.addColorStop(0, `rgba(${r},${g},${b},${brightness})`)
     grad.addColorStop(1, 'rgba(0,0,0,0)')
     ctx.fillStyle = grad
     ctx.fillRect(x - size * 3.5, y - size * 3.5, size * 7, size * 7)
@@ -190,6 +269,7 @@ onMounted(() => {
   ctx = c.getContext('2d')
   reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   buildParticles()
+  buildStars()
   resize()
   rgb = { ...rgbTarget }
   ro = new ResizeObserver(() => resize())
