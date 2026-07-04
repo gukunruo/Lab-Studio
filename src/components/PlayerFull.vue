@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   PhPlay,
@@ -30,6 +30,8 @@ const {
   noAudio,
   playMode,
   showPlaylist,
+  showFullPlayer,
+  analyser,
 } = storeToRefs(player)
 
 const lyricsEl = ref<HTMLElement | null>(null)
@@ -123,12 +125,114 @@ function toggleMute() {
 
 const progressPct = computed(() => (duration.value ? (currentTime.value / duration.value) * 100 : 0))
 const volumePct = computed(() => volume.value * 100)
+
+// vibe color: hash track id to a stable palette entry (no CORS issues)
+const vibePalette = ['#2dd4bf', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#ef4444', '#10b981', '#f97316']
+const vibeColor = computed(() => {
+  const id = current.value?.id || ''
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return vibePalette[h % vibePalette.length]
+})
+
+// keyboard shortcuts (ignored while typing in inputs)
+function isTyping(e: KeyboardEvent): boolean {
+  const el = e.target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+}
+function onKey(e: KeyboardEvent) {
+  if (isTyping(e)) return
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault()
+      player.toggle()
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      player.seek(Math.max(0, currentTime.value - 5))
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      player.seek(Math.min(duration.value || 0, currentTime.value + 5))
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      player.setVolume(Math.min(1, volume.value + 0.05))
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      player.setVolume(Math.max(0, volume.value - 0.05))
+      break
+    case 'KeyM':
+      e.preventDefault()
+      toggleMute()
+      break
+    case 'KeyN':
+      e.preventDefault()
+      player.next()
+      break
+    case 'KeyP':
+      e.preventDefault()
+      player.prev()
+      break
+    case 'Escape':
+      if (showPlaylist.value) player.togglePlaylist()
+      else player.closeFull()
+      break
+  }
+}
+
+// playlist drawer: scroll active track into view on open
+const playlistListEl = ref<HTMLElement | null>(null)
+watch(showPlaylist, async (v) => {
+  if (!v) return
+  await nextTick()
+  setTimeout(() => {
+    const c = playlistListEl.value
+    if (!c) return
+    const active = c.querySelector('.playlist__item--active') as HTMLElement | null
+    if (active) active.scrollIntoView({ block: 'center' })
+  }, 280)
+})
+
+// spectrum: rAF loop reading analyser frequency data into 32 bars
+const BARS = 32
+const bars = ref<number[]>(Array(BARS).fill(0))
+let raf = 0
+function loop() {
+  const an = analyser.value
+  if (an) {
+    const data = new Uint8Array(an.frequencyBinCount)
+    an.getByteFrequencyData(data)
+    const step = Math.max(1, Math.floor(data.length / BARS))
+    const next = Array(BARS).fill(0)
+    for (let i = 0; i < BARS; i++) {
+      let sum = 0
+      for (let j = 0; j < step; j++) sum += data[i * step + j] || 0
+      next[i] = Math.min(1, sum / step / 255)
+    }
+    bars.value = next
+  }
+  raf = requestAnimationFrame(loop)
+}
+watch(showFullPlayer, (v) => {
+  if (v) raf = requestAnimationFrame(loop)
+  else cancelAnimationFrame(raf)
+})
+
+onMounted(() => window.addEventListener('keydown', onKey))
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKey)
+  cancelAnimationFrame(raf)
+})
 </script>
 
 <template>
   <Teleport to="body">
     <transition name="overlay">
-      <div v-if="player.showFullPlayer && current" class="full">
+      <div v-if="player.showFullPlayer && current" class="full" :style="{ '--vibe': vibeColor }">
         <button class="full__close" @click="player.closeFull()" aria-label="关闭">
           <PhX :size="22" />
         </button>
@@ -138,6 +242,14 @@ const volumePct = computed(() => volume.value * 100)
             <div class="art" :class="{ 'art--playing': isPlaying }">
               <div class="art__vinyl"></div>
               <img class="art__cover" :src="current.cover" :alt="current.title" loading="lazy" />
+            </div>
+            <div class="spectrum">
+              <span
+                v-for="(b, i) in bars"
+                :key="i"
+                class="spectrum__bar"
+                :style="{ transform: `scaleY(${b})` }"
+              />
             </div>
             <div class="now-playing">
               <div class="now-playing__title">{{ current.title }}</div>
@@ -235,6 +347,7 @@ const volumePct = computed(() => volume.value * 100)
           </div>
         </div>
 
+        <div v-if="showPlaylist" class="playlist-backdrop" @click="player.togglePlaylist()" />
         <transition name="slide">
           <div v-if="showPlaylist" class="playlist">
             <div class="playlist__bar">
@@ -259,7 +372,7 @@ const volumePct = computed(() => volume.value * 100)
                 <PhX :size="18" />
               </button>
             </div>
-            <ul class="playlist__list">
+            <ul class="playlist__list" ref="playlistListEl">
               <li
                 v-for="{ t, i } in filteredTracks"
                 :key="t.id"
@@ -286,6 +399,27 @@ const volumePct = computed(() => volume.value * 100)
   display: flex;
   flex-direction: column;
   background: var(--color-bg);
+  overflow: hidden;
+}
+
+.full::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(
+    circle at 30% 18%,
+    color-mix(in srgb, var(--vibe, var(--color-accent)) 24%, transparent),
+    transparent 55%
+  );
+  pointer-events: none;
+}
+
+.full__main,
+.controls,
+.no-audio {
+  position: relative;
+  z-index: 1;
 }
 
 .full__close {
@@ -332,11 +466,32 @@ const volumePct = computed(() => volume.value * 100)
   gap: var(--space-6);
 }
 
+.spectrum {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  height: 44px;
+  width: 200px;
+}
+
+.spectrum__bar {
+  width: 4px;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+  transform-origin: bottom center;
+  opacity: 0.85;
+  transition: transform 0.06s linear;
+}
+
 /* vinyl: circular album cover centered on a grooved disc */
 .art {
   position: relative;
   width: 260px;
   height: 260px;
+  border-radius: 50%;
+  box-shadow: 0 0 90px color-mix(in srgb, var(--vibe, var(--color-accent)) 30%, transparent);
 }
 
 .art__vinyl {
@@ -625,6 +780,14 @@ const volumePct = computed(() => volume.value * 100)
 
 .rate:focus {
   border-color: var(--color-accent);
+}
+
+.playlist-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
 }
 
 .playlist {

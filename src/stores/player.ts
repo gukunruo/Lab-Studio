@@ -57,7 +57,9 @@ function load(index: number) {
 
 async function play() {
   if (!audio.src) load(currentIndex.value)
+  ensureAudioGraph()
   try {
+    await audioCtx?.resume()
     await audio.play()
     isPlaying.value = true
   } catch {
@@ -162,6 +164,30 @@ audio.addEventListener('error', () => {
   isPlaying.value = false
 })
 
+// Web Audio graph for spectrum visualization. Created lazily on first
+// play() (user gesture) so AudioContext starts unlocked. source→analyser→
+// destination keeps audio audible while exposing frequency data.
+let audioCtx: AudioContext | null = null
+let analyserNode: AnalyserNode | null = null
+let sourceNode: MediaElementAudioSourceNode | null = null
+const analyserRef = ref<AnalyserNode | null>(null)
+
+function ensureAudioGraph() {
+  if (audioCtx) return
+  try {
+    const AC = window.AudioContext || (window as any).webkitAudioContext
+    if (!AC) return
+    audioCtx = new AC()
+    sourceNode = audioCtx.createMediaElementSource(audio)
+    analyserNode = audioCtx.createAnalyser()
+    analyserNode.fftSize = 64
+    analyserNode.smoothingTimeConstant = 0.8
+    sourceNode.connect(analyserNode)
+    analyserNode.connect(audioCtx.destination)
+    analyserRef.value = analyserNode
+  } catch {}
+}
+
 // load track 0 but do not autoplay — respects browser gesture policy
 load(0)
 
@@ -188,6 +214,7 @@ export const usePlayerStore = defineStore('player', () => {
     playMode,
     showFullPlayer,
     showPlaylist,
+    analyser: analyserRef,
     play,
     pause,
     toggle,
