@@ -430,20 +430,22 @@ onUnmounted(() => {
               >
                 <PhTrash :size="18" />
               </button>
-              <button class="ctrl ctrl--mute" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
-                <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="18" />
-              </button>
-              <input
-                class="volume"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                :value="volume"
-                :style="{ '--progress': volumePct + '%' }"
-                @input="onVolume"
-                aria-label="音量"
-              />
+              <div class="vol">
+                <button class="ctrl ctrl--mute" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
+                  <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="18" />
+                </button>
+                <input
+                  class="volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  :value="volume"
+                  :style="{ '--progress': volumePct + '%' }"
+                  @input="onVolume"
+                  aria-label="音量"
+                />
+              </div>
               <button
                 class="ctrl ctrl--list"
                 :class="{ 'ctrl--active': showPlaylist }"
@@ -998,8 +1000,26 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+.vol {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .volume {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    width 0.2s ease,
+    opacity 0.15s ease;
+}
+
+.vol:hover .volume,
+.vol:focus-within .volume {
   width: 80px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .full input[type='range'] {

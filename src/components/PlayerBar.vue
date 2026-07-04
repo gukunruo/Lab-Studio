@@ -90,16 +90,29 @@ function toggleMute() {
 </script>
 
 <template>
-  <div v-if="current" class="bar">
+  <div
+    v-if="current"
+    class="bar"
+  >
     <transition name="queue">
-      <div v-if="showQueue" class="queue">
+      <div
+        v-if="showQueue"
+        class="queue"
+      >
         <div class="queue__head">
           <span class="queue__title">播放列表 · {{ playlist.length }}</span>
-          <button class="queue__close" @click="showQueue = false" aria-label="关闭列表">
+          <button
+            class="queue__close"
+            @click="showQueue = false"
+            aria-label="关闭列表"
+          >
             <PhX :size="16" />
           </button>
         </div>
-        <ul ref="queueListEl" class="queue__list">
+        <ul
+          ref="queueListEl"
+          class="queue__list"
+        >
           <li
             v-for="(t, i) in playlist"
             :key="t.id"
@@ -115,7 +128,12 @@ function toggleMute() {
       </div>
     </transition>
     <div class="bar__inner">
-      <button class="bar__now" type="button" @click="player.openFull()" aria-label="展开播放器">
+      <button
+        class="bar__now"
+        type="button"
+        @click="player.openFull()"
+        aria-label="展开播放器"
+      >
         <img
           class="bar__cover"
           :class="{ 'bar__cover--playing': isPlaying }"
@@ -138,19 +156,53 @@ function toggleMute() {
             :aria-label="modeLabel"
             :title="modeLabel"
           >
-            <component :is="modeIcon" :size="16" />
+            <component
+              :is="modeIcon"
+              :size="16"
+            />
           </button>
-          <button class="ctrl" @click="player.prev()" aria-label="上一曲">
-            <PhSkipBack :size="18" weight="fill" />
+          <button
+            class="ctrl"
+            @click="player.prev()"
+            aria-label="上一曲"
+          >
+            <PhSkipBack
+              :size="18"
+              weight="fill"
+            />
           </button>
-          <button class="ctrl ctrl--play" @click="player.toggle()" :aria-label="isPlaying ? '暂停' : '播放'">
-            <component :is="isPlaying ? PhPause : PhPlay" :size="20" weight="fill" />
+          <button
+            class="ctrl ctrl--play"
+            @click="player.toggle()"
+            :aria-label="isPlaying ? '暂停' : '播放'"
+          >
+            <component
+              :is="isPlaying ? PhPause : PhPlay"
+              :size="20"
+              weight="fill"
+            />
           </button>
-          <button class="ctrl" @click="player.next()" aria-label="下一曲">
-            <PhSkipForward :size="18" weight="fill" />
+          <button
+            class="ctrl"
+            @click="player.next()"
+            aria-label="下一曲"
+          >
+            <PhSkipForward
+              :size="18"
+              weight="fill"
+            />
           </button>
-          <select class="rate" :value="player.playbackRate" @change="onRate" aria-label="倍速">
-            <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
+          <select
+            class="rate"
+            :value="player.playbackRate"
+            @change="onRate"
+            aria-label="倍速"
+          >
+            <option
+              v-for="r in rates"
+              :key="r"
+              :value="r"
+            >{{ r }}x</option>
           </select>
         </div>
         <div class="bar__progress">
@@ -172,7 +224,11 @@ function toggleMute() {
               @input="onSeek"
               aria-label="播放进度"
             />
-            <span v-if="hoverTime !== null" class="progress__tip" :style="{ left: hoverPct + '%' }">
+            <span
+              v-if="hoverTime !== null"
+              class="progress__tip"
+              :style="{ left: hoverPct + '%' }"
+            >
               {{ formatTime(hoverTime) }}
             </span>
           </div>
@@ -181,20 +237,29 @@ function toggleMute() {
       </div>
 
       <div class="bar__right">
-        <button class="ctrl ctrl--mute" @click="toggleMute" :aria-label="volume > 0 ? '静音' : '取消静音'">
-          <component :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash" :size="16" />
-        </button>
-        <input
-          class="volume"
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          :value="volume"
-          :style="{ '--progress': volumePct + '%' }"
-          @input="onVolume"
-          aria-label="音量"
-        />
+        <div class="vol">
+          <button
+            class="ctrl ctrl--mute"
+            @click="toggleMute"
+            :aria-label="volume > 0 ? '静音' : '取消静音'"
+          >
+            <component
+              :is="volume > 0 ? PhSpeakerHigh : PhSpeakerSlash"
+              :size="16"
+            />
+          </button>
+          <input
+            class="volume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            :value="volume"
+            :style="{ '--progress': volumePct + '%' }"
+            @input="onVolume"
+            aria-label="音量"
+          />
+        </div>
         <button
           class="ctrl"
           :class="{ 'ctrl--active': showQueue }"
@@ -204,7 +269,12 @@ function toggleMute() {
         >
           <PhQueue :size="18" />
         </button>
-        <button class="ctrl" @click="player.openFull()" aria-label="展开" title="展开">
+        <button
+          class="ctrl"
+          @click="player.openFull()"
+          aria-label="展开"
+          title="展开"
+        >
           <PhArrowsOutSimple :size="18" />
         </button>
       </div>
@@ -344,11 +414,9 @@ function toggleMute() {
 }
 
 .progress-wrap--buffering .progress {
-  background: repeating-linear-gradient(
-    45deg,
-    var(--color-accent) 0 4px,
-    var(--color-surface) 4px 8px
-  );
+  background: repeating-linear-gradient(45deg,
+      var(--color-accent) 0 4px,
+      var(--color-surface) 4px 8px);
   background-size: 11.3px 11.3px;
   animation: buffering-stripes 0.6s linear infinite;
 }
@@ -366,8 +434,26 @@ function toggleMute() {
   justify-content: flex-end;
 }
 
+.vol {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .volume {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    width 0.2s ease,
+    opacity 0.15s ease;
+}
+
+.vol:hover .volume,
+.vol:focus-within .volume {
   width: 72px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .bar input[type='range'] {
@@ -375,11 +461,9 @@ function toggleMute() {
   appearance: none;
   height: 4px;
   border-radius: 9999px;
-  background: linear-gradient(
-    to right,
-    var(--color-accent) var(--progress, 0%),
-    var(--color-surface) var(--progress, 0%)
-  );
+  background: linear-gradient(to right,
+      var(--color-accent) var(--progress, 0%),
+      var(--color-surface) var(--progress, 0%));
   cursor: pointer;
   outline: none;
 }
@@ -480,6 +564,7 @@ function toggleMute() {
   margin-bottom: var(--space-2);
   z-index: 21;
 }
+
 .queue__head {
   display: flex;
   align-items: center;
@@ -487,11 +572,13 @@ function toggleMute() {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
+
 .queue__title {
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--color-text);
 }
+
 .queue__close {
   display: inline-flex;
   align-items: center;
@@ -507,10 +594,12 @@ function toggleMute() {
     color 0.2s,
     background 0.2s;
 }
+
 .queue__close:hover {
   color: var(--color-accent);
   background: var(--color-bg);
 }
+
 .queue__list {
   list-style: none;
   margin: 0;
@@ -518,6 +607,7 @@ function toggleMute() {
   overflow-y: auto;
   flex: 1;
 }
+
 .queue__list li {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -530,27 +620,33 @@ function toggleMute() {
   color: var(--color-text);
   transition: background 0.15s;
 }
+
 .queue__list li:hover {
   background: var(--color-bg);
 }
+
 .queue__item--active {
   color: var(--color-accent);
   background: var(--color-accent-soft);
 }
+
 .queue__idx {
   font-family: var(--font-mono);
   font-size: 0.74rem;
   color: var(--color-text-muted);
   min-width: 1.5em;
 }
+
 .queue__item--active .queue__idx {
   color: var(--color-accent);
 }
+
 .queue__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .queue__artist {
   color: var(--color-text-muted);
   font-size: 0.76rem;
@@ -559,12 +655,14 @@ function toggleMute() {
   white-space: nowrap;
   max-width: 90px;
 }
+
 .queue-enter-active,
 .queue-leave-active {
   transition:
     opacity 0.2s,
     transform 0.2s;
 }
+
 .queue-enter-from,
 .queue-leave-to {
   opacity: 0;
