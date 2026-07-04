@@ -17,7 +17,7 @@ function start() {
     <div v-if="!current" class="mp__empty">
       <PhMusicNote :size="44" weight="duotone" class="mp__icon" />
       <p class="mp__count">
-        {{ playlist.length }} 首 · {{ collectionKey === 'roco' ? '洛克王国' : '我喜欢' }}
+        {{ playlist.length }} 首 · {{ collectionKey === 'roco' ? '洛克王国' : '全部' }}
       </p>
       <button class="mp__start" @click="start">
         <PhPlay :size="20" weight="fill" /> 开始播放

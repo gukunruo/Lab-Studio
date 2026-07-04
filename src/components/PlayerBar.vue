@@ -23,6 +23,7 @@ const {
   current,
   currentIndex,
   isPlaying,
+  isBuffering,
   currentTime,
   duration,
   volume,
@@ -58,6 +59,19 @@ function formatTime(s: number): string {
 }
 function onSeek(e: Event) {
   player.seek(Number((e.target as HTMLInputElement).value))
+}
+
+const hoverTime = ref<number | null>(null)
+const hoverPct = ref(0)
+function onProgressHover(e: PointerEvent) {
+  const wrap = e.currentTarget as HTMLElement
+  const rect = wrap.getBoundingClientRect()
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+  hoverPct.value = ratio * 100
+  hoverTime.value = ratio * (duration.value || 0)
+}
+function onProgressLeave() {
+  hoverTime.value = null
 }
 function onVolume(e: Event) {
   player.setVolume(Number((e.target as HTMLInputElement).value))
@@ -141,17 +155,27 @@ function toggleMute() {
         </div>
         <div class="bar__progress">
           <span class="time">{{ formatTime(currentTime) }}</span>
-          <input
-            class="progress"
-            type="range"
-            min="0"
-            :max="duration || 0"
-            step="0.1"
-            :value="currentTime"
-            :style="{ '--progress': progressPct + '%' }"
-            @input="onSeek"
-            aria-label="播放进度"
-          />
+          <div
+            class="progress-wrap"
+            :class="{ 'progress-wrap--buffering': isBuffering }"
+            @pointermove="onProgressHover"
+            @pointerleave="onProgressLeave"
+          >
+            <input
+              class="progress"
+              type="range"
+              min="0"
+              :max="duration || 0"
+              step="0.1"
+              :value="currentTime"
+              :style="{ '--progress': progressPct + '%' }"
+              @input="onSeek"
+              aria-label="播放进度"
+            />
+            <span v-if="hoverTime !== null" class="progress__tip" :style="{ left: hoverPct + '%' }">
+              {{ formatTime(hoverTime) }}
+            </span>
+          </div>
           <span class="time">{{ formatTime(duration) }}</span>
         </div>
       </div>
@@ -292,8 +316,44 @@ function toggleMute() {
   text-align: center;
 }
 
-.progress {
+.progress-wrap {
   flex: 1;
+  position: relative;
+}
+
+.progress {
+  width: 100%;
+}
+
+.progress__tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  padding: 0.15rem 0.4rem;
+  background: var(--color-text);
+  color: var(--color-bg);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.progress-wrap--buffering .progress {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-accent) 0 4px,
+    var(--color-surface) 4px 8px
+  );
+  background-size: 11.3px 11.3px;
+  animation: buffering-stripes 0.6s linear infinite;
+}
+
+@keyframes buffering-stripes {
+  to {
+    background-position: 11.3px 0;
+  }
 }
 
 .bar__right {

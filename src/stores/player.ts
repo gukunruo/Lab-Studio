@@ -17,7 +17,7 @@ const DISLIKED_KEY = 'lab-player-disliked'
 const PROGRESS_KEY = 'lab-player-progress'
 
 type Persisted = { volume?: number; playMode?: PlayMode }
-type Progress = { collectionKey: 'liked' | 'roco'; currentIndex: number; currentTime: number }
+type Progress = { collectionKey: 'all' | 'roco'; currentIndex: number; currentTime: number }
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -37,8 +37,13 @@ let savedProgress = readJSON<Progress | null>(PROGRESS_KEY, null)
 const audio = new Audio()
 audio.preload = 'metadata'
 
+// 全部 = liked + roco 按 id 去重(liked 与 roco 共享 4 个 id → 108 首)
+const allTracks: Track[] = [...tracks, ...rocoTracks].filter(
+  (t, i, arr) => arr.findIndex((x) => x.id === t.id) === i,
+)
+
 const COLLECTIONS = [
-  { key: 'liked', label: '我喜欢', tracks },
+  { key: 'all', label: '全部', tracks: allTracks },
   { key: 'roco', label: '洛克王国', tracks: rocoTracks },
 ] as const
 
@@ -49,16 +54,17 @@ function filterDisliked(arr: Track[]): Track[] {
   return arr.filter((t) => !dislikedIds.value.includes(t.id))
 }
 
-const initKey = savedProgress?.collectionKey ?? 'liked'
+const initKey = savedProgress?.collectionKey === 'roco' ? 'roco' : 'all'
 const initTracks = filterDisliked(
   (COLLECTIONS.find((c) => c.key === initKey) ?? COLLECTIONS[0]).tracks,
 )
 const playlist = ref<Track[]>(initTracks)
-const collectionKey = ref<'liked' | 'roco'>(initKey)
+const collectionKey = ref<'all' | 'roco'>(initKey)
 const currentIndex = ref(
   savedProgress ? Math.min(savedProgress.currentIndex, initTracks.length - 1) : -1,
 )
 const isPlaying = ref(false)
+const isBuffering = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
 const playbackRate = ref(1)
@@ -80,6 +86,7 @@ function load(index: number) {
   audio.volume = volume.value
   currentTime.value = 0
   noAudio.value = false
+  isBuffering.value = true
 }
 
 async function play() {
@@ -162,13 +169,14 @@ function cyclePlayMode() {
   playMode.value = order[(order.indexOf(playMode.value) + 1) % order.length] ?? 'list'
 }
 
-function switchCollection(key: 'liked' | 'roco') {
+function switchCollection(key: 'all' | 'roco') {
   const c = COLLECTIONS.find((c) => c.key === key)
   if (!c) return
   collectionKey.value = key
   playlist.value = filterDisliked(c.tracks)
   currentIndex.value = 0
   load(0)
+  if (isPlaying.value) play()
 }
 
 function toggleLike(id: string) {
@@ -239,6 +247,15 @@ audio.addEventListener('error', () => {
   noAudio.value = true
   isPlaying.value = false
 })
+audio.addEventListener('waiting', () => {
+  isBuffering.value = true
+})
+audio.addEventListener('playing', () => {
+  isBuffering.value = false
+})
+audio.addEventListener('canplay', () => {
+  isBuffering.value = false
+})
 
 // Web Audio graph for spectrum visualization. Created lazily on first
 // play() (user gesture) so AudioContext starts unlocked. source→analyser→
@@ -299,6 +316,7 @@ export const usePlayerStore = defineStore('player', () => {
     current,
     currentIndex,
     isPlaying,
+    isBuffering,
     currentTime,
     duration,
     playbackRate,

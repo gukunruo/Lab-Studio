@@ -26,6 +26,7 @@ const {
   current,
   currentIndex,
   isPlaying,
+  isBuffering,
   currentTime,
   duration,
   playbackRate,
@@ -40,6 +41,7 @@ const {
 
 const lyricsEl = ref<HTMLElement | null>(null)
 const prevVolume = ref(0.8)
+const showShortcuts = ref(false)
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const modeIcon = computed(() =>
@@ -112,6 +114,19 @@ function formatTime(s: number): string {
 function onSeek(e: Event) {
   player.seek(Number((e.target as HTMLInputElement).value))
 }
+
+const hoverTime = ref<number | null>(null)
+const hoverPct = ref(0)
+function onProgressHover(e: PointerEvent) {
+  const wrap = e.currentTarget as HTMLElement
+  const rect = wrap.getBoundingClientRect()
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+  hoverPct.value = ratio * 100
+  hoverTime.value = ratio * (duration.value || 0)
+}
+function onProgressLeave() {
+  hoverTime.value = null
+}
 function onRate(e: Event) {
   player.setRate(Number((e.target as HTMLSelectElement).value))
 }
@@ -181,8 +196,15 @@ function onKey(e: KeyboardEvent) {
       e.preventDefault()
       player.prev()
       break
+    case 'Slash':
+      if (e.shiftKey) {
+        e.preventDefault()
+        showShortcuts.value = !showShortcuts.value
+      }
+      break
     case 'Escape':
-      if (showPlaylist.value) player.togglePlaylist()
+      if (showShortcuts.value) showShortcuts.value = false
+      else if (showPlaylist.value) player.togglePlaylist()
       else player.closeFull()
       break
   }
@@ -238,6 +260,15 @@ onUnmounted(() => {
     <transition name="overlay">
       <div v-if="player.showFullPlayer && current" class="full" :style="{ '--vibe': vibeColor }">
         <button
+          class="full__help"
+          :class="{ 'full__help--hidden': showPlaylist }"
+          @click="showShortcuts = !showShortcuts"
+          aria-label="键盘快捷键"
+          title="键盘快捷键"
+        >
+          ?
+        </button>
+        <button
           class="full__close"
           :class="{ 'full__close--hidden': showPlaylist }"
           @click="player.closeFull()"
@@ -248,7 +279,7 @@ onUnmounted(() => {
 
         <div class="full__main">
           <div class="cover-col">
-            <div class="art" :class="{ 'art--playing': isPlaying }">
+            <div class="art" :class="{ 'art--playing': isPlaying, 'art--buffering': isBuffering }">
               <div class="art__vinyl"></div>
               <img class="art__cover" :src="current.cover" :alt="current.title" loading="lazy" />
             </div>
@@ -286,17 +317,27 @@ onUnmounted(() => {
         <div class="controls">
           <div class="controls__progress">
             <span class="time">{{ formatTime(currentTime) }}</span>
-            <input
-              class="progress"
-              type="range"
-              min="0"
-              :max="duration || 0"
-              step="0.1"
-              :value="currentTime"
-              :style="{ '--progress': progressPct + '%' }"
-              @input="onSeek"
-              aria-label="播放进度"
-            />
+            <div
+              class="progress-wrap"
+              :class="{ 'progress-wrap--buffering': isBuffering }"
+              @pointermove="onProgressHover"
+              @pointerleave="onProgressLeave"
+            >
+              <input
+                class="progress"
+                type="range"
+                min="0"
+                :max="duration || 0"
+                step="0.1"
+                :value="currentTime"
+                :style="{ '--progress': progressPct + '%' }"
+                @input="onSeek"
+                aria-label="播放进度"
+              />
+              <span v-if="hoverTime !== null" class="progress__tip" :style="{ left: hoverPct + '%' }">
+                {{ formatTime(hoverTime) }}
+              </span>
+            </div>
             <span class="time">{{ formatTime(duration) }}</span>
           </div>
 
@@ -438,6 +479,31 @@ onUnmounted(() => {
             </ul>
           </div>
         </transition>
+
+        <transition name="overlay">
+          <div v-if="showShortcuts" class="shortcuts" @click.self="showShortcuts = false">
+            <div class="shortcuts__panel">
+              <div class="shortcuts__head">
+                <span>键盘快捷键</span>
+                <button class="shortcuts__close" @click="showShortcuts = false" aria-label="关闭">
+                  <PhX :size="18" />
+                </button>
+              </div>
+              <ul class="shortcuts__list">
+                <li><kbd>Space</kbd><span>播放 / 暂停</span></li>
+                <li><kbd>←</kbd><span>后退 5 秒</span></li>
+                <li><kbd>→</kbd><span>前进 5 秒</span></li>
+                <li><kbd>↑</kbd><span>音量 +</span></li>
+                <li><kbd>↓</kbd><span>音量 −</span></li>
+                <li><kbd>M</kbd><span>静音切换</span></li>
+                <li><kbd>N</kbd><span>下一曲</span></li>
+                <li><kbd>P</kbd><span>上一曲</span></li>
+                <li><kbd>?</kbd><span>开关此面板</span></li>
+                <li><kbd>Esc</kbd><span>关闭面板 / 播放列表 / 全屏</span></li>
+              </ul>
+            </div>
+          </div>
+        </transition>
       </div>
     </transition>
   </Teleport>
@@ -506,6 +572,42 @@ onUnmounted(() => {
 }
 
 .full__close:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.full__help {
+  position: absolute;
+  top: max(var(--space-4), env(safe-area-inset-top));
+  right: calc(max(var(--space-5), env(safe-area-inset-right)) + 52px);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.full__help--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.9);
+}
+
+.full__help:hover {
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
@@ -595,6 +697,20 @@ onUnmounted(() => {
 
 .art--playing .art__vinyl {
   animation: spin 8s linear infinite;
+}
+
+.art--buffering .art__cover {
+  animation: buffering-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes buffering-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 
 @keyframes spin {
@@ -703,8 +819,44 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.progress {
+.progress-wrap {
   flex: 1;
+  position: relative;
+}
+
+.progress {
+  width: 100%;
+}
+
+.progress__tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--color-text);
+  color: var(--color-bg);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.progress-wrap--buffering .progress {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-accent) 0 4px,
+    var(--color-border) 4px 8px
+  );
+  background-size: 11.3px 11.3px;
+  animation: buffering-stripes 0.6s linear infinite;
+}
+
+@keyframes buffering-stripes {
+  to {
+    background-position: 11.3px 0;
+  }
 }
 
 .controls__row {
@@ -1188,8 +1340,103 @@ onUnmounted(() => {
     animation: none;
   }
 
+  .art--buffering .art__cover,
+  .progress-wrap--buffering .progress {
+    animation: none;
+  }
+
   .lyrics {
     scroll-behavior: auto;
   }
+}
+
+.shortcuts {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: var(--space-4);
+}
+
+.shortcuts__panel {
+  width: 100%;
+  max-width: 420px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.shortcuts__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.shortcuts__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.shortcuts__close:hover {
+  color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+.shortcuts__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+}
+
+.shortcuts__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  color: var(--color-text);
+  transition: background 0.15s;
+}
+
+.shortcuts__list li:hover {
+  background: var(--color-surface);
+}
+
+.shortcuts__list kbd {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  min-width: 28px;
+  text-align: center;
 }
 </style>
