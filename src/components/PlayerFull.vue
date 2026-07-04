@@ -314,8 +314,8 @@ const volumePct = computed(() => volume.value * 100)
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 360px) 1fr;
-  gap: var(--space-10);
-  padding: var(--space-12) var(--space-8) var(--space-8);
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-8) var(--space-6);
   align-items: center;
   max-width: 1100px;
   margin: 0 auto;
@@ -444,7 +444,7 @@ const volumePct = computed(() => volume.value * 100)
 }
 
 .controls {
-  padding-block: var(--space-5) var(--space-6);
+  padding-block: var(--space-4) var(--space-5);
   padding-inline: max(var(--space-6), calc((100% - 1100px) / 2));
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
@@ -471,7 +471,7 @@ const volumePct = computed(() => volume.value * 100)
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .time {

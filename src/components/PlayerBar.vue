@@ -159,7 +159,7 @@ function toggleMute() {
   gap: var(--space-6);
   max-width: 1200px;
   margin: 0 auto;
-  height: 68px;
+  height: 76px;
   padding: 0 var(--space-6);
 }
 
@@ -176,8 +176,8 @@ function toggleMute() {
 }
 
 .bar__cover {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
@@ -228,13 +228,13 @@ function toggleMute() {
 .bar__controls {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .bar__progress {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   width: 100%;
 }
 
@@ -253,7 +253,7 @@ function toggleMute() {
 .bar__right {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   justify-content: flex-end;
 }
 
@@ -326,8 +326,8 @@ function toggleMute() {
 }
 
 .ctrl--play {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   background: var(--color-accent);
   color: var(--color-bg);
 }
