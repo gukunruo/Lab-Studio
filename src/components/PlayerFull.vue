@@ -19,11 +19,9 @@ import {
   PhMagnifyingGlass,
   PhSliders,
   PhMoon,
-  PhPlanet,
 } from '@phosphor-icons/vue'
 import { usePlayerStore, EQ_PRESETS } from '@/stores/player'
 import type { Track } from '@/data/tracks'
-import MusicUniverse from '@/components/MusicUniverse.vue'
 
 const player = usePlayerStore()
 const {
@@ -53,8 +51,6 @@ const prevVolume = ref(0.8)
 const showShortcuts = ref(false)
 const showEq = ref(false)
 const showSleep = ref(false)
-const showUniverse = ref(false)
-const universeRef = ref<InstanceType<typeof MusicUniverse> | null>(null)
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const modeIcon = computed(() =>
@@ -218,10 +214,6 @@ function onKey(e: KeyboardEvent) {
       e.preventDefault()
       player.prev()
       break
-    case 'KeyU':
-      e.preventDefault()
-      showUniverse.value = !showUniverse.value
-      break
     case 'Slash':
       if (e.shiftKey) {
         e.preventDefault()
@@ -267,9 +259,7 @@ function loop() {
     freqBuf = null
   }
 
-  if (showUniverse.value) {
-    universeRef.value?.draw(freqBuf)
-  } else if (freqBuf) {
+  if (freqBuf) {
     const step = Math.max(1, Math.floor(freqBuf.length / BARS))
     const next = Array(BARS).fill(0)
     for (let i = 0; i < BARS; i++) {
@@ -296,12 +286,7 @@ onUnmounted(() => {
 <template>
   <Teleport to="body">
     <transition name="overlay">
-      <div v-if="player.showFullPlayer && current" class="full" :class="{ 'full--universe': showUniverse }" :style="{ '--vibe': vibeColor }">
-        <MusicUniverse
-          ref="universeRef"
-          :vibe-color="vibeColor"
-          :active="showUniverse"
-        />
+      <div v-if="player.showFullPlayer && current" class="full" :style="{ '--vibe': vibeColor }">
         <button
           class="full__help"
           :class="{ 'full__help--hidden': showPlaylist }"
@@ -416,15 +401,6 @@ onUnmounted(() => {
               >
                 <PhMoon :size="18" />
                 <span v-if="sleepTimer !== null" class="ctrl__time">{{ formatSleep(sleepTimer) }}</span>
-              </button>
-              <button
-                class="ctrl"
-                :class="{ 'ctrl--active': showUniverse }"
-                @click="showUniverse = !showUniverse"
-                aria-label="音乐宇宙"
-                title="音乐宇宙"
-              >
-                <PhPlanet :size="18" />
               </button>
             </div>
 
@@ -578,7 +554,6 @@ onUnmounted(() => {
                 <li><kbd>M</kbd><span>静音切换</span></li>
                 <li><kbd>N</kbd><span>下一曲</span></li>
                 <li><kbd>P</kbd><span>上一曲</span></li>
-                <li><kbd>U</kbd><span>音乐宇宙</span></li>
                 <li><kbd>?</kbd><span>开关此面板</span></li>
                 <li><kbd>Esc</kbd><span>关闭面板 / 播放列表 / 全屏</span></li>
               </ul>
@@ -683,54 +658,6 @@ onUnmounted(() => {
   );
   pointer-events: none;
   transition: opacity 0.3s ease;
-}
-
-.full--universe {
-  background: #0a0a0c;
-  box-shadow: inset 0 0 240px rgba(0, 0, 0, 0.7);
-}
-
-.full--universe::before {
-  opacity: 0;
-}
-
-.full--universe .spectrum {
-  display: none;
-}
-
-.full--universe .art {
-  box-shadow:
-    0 0 80px color-mix(in srgb, var(--vibe, var(--color-accent)) 30%, transparent),
-    0 0 160px color-mix(in srgb, var(--vibe, var(--color-accent)) 18%, transparent);
-}
-
-.full--universe .now-playing__title {
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.full--universe .now-playing__artist {
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.full--universe .lyrics__line {
-  color: rgba(255, 255, 255, 0.4);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
-}
-
-.full--universe .lyrics__line:hover {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.full--universe .lyrics__line--active {
-  color: var(--vibe, var(--color-accent));
-  text-shadow: 0 0 12px color-mix(in srgb, var(--vibe, var(--color-accent)) 50%, transparent);
-}
-
-.full--universe .controls {
-  background: rgba(10, 10, 12, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-top-color: rgba(255, 255, 255, 0.06);
 }
 
 .full__main,
