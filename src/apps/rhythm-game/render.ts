@@ -21,12 +21,12 @@ export function render(
 
   drawBackground(ctx, cfg)
   drawLanes(ctx, engine, currentTime, cfg)
-  drawHitLine(ctx, cfg)
+  drawHitLine(ctx, engine, currentTime, cfg)
   drawNotes(ctx, engine, currentTime, cfg)
   drawRings(ctx, engine, currentTime)
   drawParticles(ctx, engine)
   drawJudgmentText(ctx, engine, currentTime, cfg)
-  drawKeyLabels(ctx, cfg)
+  drawKeyLabels(ctx, engine, currentTime, cfg)
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, cfg: RenderConfig) {
@@ -69,9 +69,13 @@ function drawLanes(
   for (let lane = 0; lane < 4; lane++) {
     const x = cfg.laneX[lane]!
     const flashAge = currentTime - engine.laneFlash[lane]!
-    if (flashAge >= 0 && flashAge < 0.25) {
-      const alpha = 0.18 * (1 - flashAge / 0.25)
-      ctx.fillStyle = LANE_COLORS[lane]! + Math.round(alpha * 255).toString(16).padStart(2, '0')
+    if (flashAge >= 0 && flashAge < 0.3) {
+      const alpha = 0.25 * (1 - flashAge / 0.3)
+      const grad = ctx.createLinearGradient(0, 0, 0, cfg.height)
+      grad.addColorStop(0, LANE_COLORS[lane]! + '00')
+      grad.addColorStop(0.7, LANE_COLORS[lane]! + Math.round(alpha * 255).toString(16).padStart(2, '0'))
+      grad.addColorStop(1, LANE_COLORS[lane]! + Math.round(alpha * 0.6 * 255).toString(16).padStart(2, '0'))
+      ctx.fillStyle = grad
       ctx.fillRect(x - cfg.laneWidth / 2, 0, cfg.laneWidth, cfg.height)
     }
   }
@@ -87,7 +91,12 @@ function drawLanes(
   }
 }
 
-function drawHitLine(ctx: CanvasRenderingContext2D, cfg: RenderConfig) {
+function drawHitLine(
+  ctx: CanvasRenderingContext2D,
+  engine: GameEngine,
+  currentTime: number,
+  cfg: RenderConfig,
+) {
   const leftEdge = cfg.laneX[0]! - cfg.laneWidth / 2
   const totalWidth = cfg.laneWidth * 4
 
@@ -100,15 +109,27 @@ function drawHitLine(ctx: CanvasRenderingContext2D, cfg: RenderConfig) {
   ctx.lineTo(leftEdge + totalWidth, cfg.hitY)
   ctx.stroke()
 
-  ctx.shadowColor = cfg.vibe
-  ctx.shadowBlur = 20
   for (let lane = 0; lane < 4; lane++) {
     const x = cfg.laneX[lane]!
-    const r = 7
+    const flashAge = currentTime - engine.laneFlash[lane]!
+    const isPressed = flashAge >= 0 && flashAge < 0.25
+
+    if (isPressed) {
+      const intensity = 1 - flashAge / 0.25
+      ctx.shadowColor = LANE_COLORS[lane]!
+      ctx.shadowBlur = 30 * intensity
+      ctx.fillStyle = LANE_COLORS[lane]! + Math.round(intensity * 180).toString(16).padStart(2, '0')
+      ctx.beginPath()
+      ctx.arc(x, cfg.hitY, 12 + intensity * 6, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    ctx.shadowColor = LANE_COLORS[lane]!
+    ctx.shadowBlur = isPressed ? 25 : 12
     ctx.strokeStyle = LANE_COLORS[lane]!
     ctx.lineWidth = 2.5
     ctx.beginPath()
-    ctx.arc(x, cfg.hitY, r, 0, Math.PI * 2)
+    ctx.arc(x, cfg.hitY, 8, 0, Math.PI * 2)
     ctx.stroke()
   }
   ctx.shadowBlur = 0
@@ -121,8 +142,8 @@ function drawNotes(
   cfg: RenderConfig,
 ) {
   const activeNotes = engine.getActiveNotes(currentTime, cfg.approachTime)
-  const noteHeight = 16
-  const noteWidth = cfg.laneWidth - 14
+  const noteHeight = 18
+  const noteWidth = cfg.laneWidth - 12
 
   for (const note of activeNotes) {
     const progress = 1 - (note.time - currentTime) / cfg.approachTime
@@ -134,17 +155,27 @@ function drawNotes(
     if (progress < 0.05) alpha = progress / 0.05
     else if (progress > 1.05) alpha = Math.max(0, 1 - (progress - 1.05) / 0.1)
 
+    // Approach trail
+    if (progress > 0.1 && progress < 0.95) {
+      const trailLen = 40
+      const trailGrad = ctx.createLinearGradient(0, y - trailLen, 0, y)
+      trailGrad.addColorStop(0, color + '00')
+      trailGrad.addColorStop(1, color + '20')
+      ctx.fillStyle = trailGrad
+      ctx.fillRect(x + 2, y - trailLen, noteWidth - 4, trailLen)
+    }
+
     ctx.globalAlpha = alpha
     ctx.shadowColor = color
-    ctx.shadowBlur = 14
+    ctx.shadowBlur = 16
 
     ctx.fillStyle = color
-    roundRect(ctx, x, y, noteWidth, noteHeight, 8)
+    roundRect(ctx, x, y, noteWidth, noteHeight, 9)
     ctx.fill()
 
     ctx.shadowBlur = 0
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
-    roundRect(ctx, x + 2, y + 2, noteWidth - 4, 4, 3)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+    roundRect(ctx, x + 2, y + 2, noteWidth - 4, 5, 3)
     ctx.fill()
   }
   ctx.globalAlpha = 1
@@ -232,16 +263,33 @@ function drawJudgmentText(
   ctx.globalAlpha = 1
 }
 
-function drawKeyLabels(ctx: CanvasRenderingContext2D, cfg: RenderConfig) {
-  ctx.font = 'bold 13px ' + getComputedStyle(document.documentElement).getPropertyValue('--font-mono')
+function drawKeyLabels(
+  ctx: CanvasRenderingContext2D,
+  engine: GameEngine,
+  currentTime: number,
+  cfg: RenderConfig,
+) {
+  ctx.font = 'bold 15px ' + getComputedStyle(document.documentElement).getPropertyValue('--font-mono')
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   for (let lane = 0; lane < 4; lane++) {
     const x = cfg.laneX[lane]!
-    const y = cfg.hitY + 28
-    ctx.fillStyle = LANE_COLORS[lane]! + 'aa'
+    const y = cfg.hitY + 32
+    const flashAge = currentTime - engine.laneFlash[lane]!
+    const isPressed = flashAge >= 0 && flashAge < 0.25
+
+    if (isPressed) {
+      const intensity = 1 - flashAge / 0.25
+      ctx.shadowColor = LANE_COLORS[lane]!
+      ctx.shadowBlur = 12 * intensity
+      ctx.fillStyle = '#ffffff'
+    } else {
+      ctx.shadowBlur = 0
+      ctx.fillStyle = LANE_COLORS[lane]! + '88'
+    }
     ctx.fillText(LANE_KEYS[lane]!, x, y)
   }
+  ctx.shadowBlur = 0
 }
 
 function roundRect(

@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import { loadAudio, generateChart } from './chart'
 import { GameEngine } from './engine'
 import { render, type RenderConfig } from './render'
 import type { Difficulty, Lane, GameResult, Note } from './types'
 import { LANE_KEY_CODES, DIFFICULTY_LABELS } from './types'
-import { PhPlay, PhPause } from '@phosphor-icons/vue'
+import { PhPlay, PhPause, PhArrowLeft, PhHouse } from '@phosphor-icons/vue'
 
 defineOptions({ name: 'RhythmGameIndex' })
 
+const router = useRouter()
 const player = usePlayerStore()
 
 type GameState = 'select' | 'analyzing' | 'countdown' | 'playing' | 'results'
@@ -24,6 +26,9 @@ const progress = ref(0)
 const result = ref<GameResult | null>(null)
 const currentTimeRef = ref(0)
 const error = ref('')
+const noteCount = ref(0)
+const keyPressed = ref([false, false, false, false])
+const currentTrack = ref<{ title: string; artist: string; cover: string } | null>(null)
 
 const vibePalette = ['#2dd4bf', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#ef4444', '#10b981', '#f97316']
 const vibe = ref('#2dd4bf')
@@ -48,6 +53,14 @@ const countdownDisplay = computed(() => {
 })
 
 const trackList = computed(() => player.playlist)
+
+const timeDisplay = computed(() => {
+  if (!audioBuffer) return '0:00'
+  const t = Math.max(0, Math.min(audioBuffer.duration, currentTimeRef.value))
+  return formatDuration(t) + ' / ' + formatDuration(audioBuffer.duration)
+})
+
+const layout = ref(computeLayout())
 
 function getVibeColor(id: string): string {
   let h = 0
@@ -77,6 +90,7 @@ async function startGame(trackId: string) {
   if (!track) return
   error.value = ''
   vibe.value = getVibeColor(track.id)
+  currentTrack.value = { title: track.title, artist: track.artist, cover: track.cover }
   if (player.isPlaying) player.pause()
   gameState.value = 'analyzing'
 
@@ -89,6 +103,7 @@ async function startGame(trackId: string) {
       gameState.value = 'select'
       return
     }
+    noteCount.value = chart.length
     startCountdown()
   } catch {
     error.value = '音频加载失败,请尝试其他歌曲'
@@ -133,14 +148,14 @@ function setupGameLoop() {
   nextTick(() => {
     const ctx = setupCanvas()
     if (!ctx) return
-    const layout = computeLayout()
-    engine = new GameEngine(chart, { laneX: layout.laneX, hitY: layout.hitY })
+    layout.value = computeLayout()
+    engine = new GameEngine(chart, { laneX: layout.value.laneX, hitY: layout.value.hitY })
     cfg = {
-      width: layout.width,
-      height: layout.height,
-      laneX: layout.laneX,
-      laneWidth: layout.laneWidth,
-      hitY: layout.hitY,
+      width: layout.value.width,
+      height: layout.value.height,
+      laneX: layout.value.laneX,
+      laneWidth: layout.value.laneWidth,
+      hitY: layout.value.hitY,
       approachTime: 2,
       vibe: vibe.value,
     }
@@ -175,26 +190,56 @@ function setupGameLoop() {
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (gameState.value !== 'playing') {
-    if (e.code === 'Escape' && gameState.value === 'results') {
+  if (e.code === 'Escape') {
+    if (gameState.value === 'playing' || gameState.value === 'countdown') {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      quitGame()
+    } else if (gameState.value === 'results') {
+      e.preventDefault()
+      e.stopImmediatePropagation()
       gameState.value = 'select'
     }
     return
   }
-  if (e.code === 'Escape') {
-    quitGame()
+
+  if (e.code === 'Space' && gameState.value === 'playing') {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    togglePause()
     return
   }
+
+  if (gameState.value !== 'playing') return
+
   const lane = LANE_KEY_CODES[e.code]
-  if (lane === undefined || e.repeat || !gameCtx || !engine) return
+  if (lane === undefined) return
+
+  e.preventDefault()
+  e.stopImmediatePropagation()
+
+  if (e.repeat || !gameCtx || !engine) return
   const currentTime = gameCtx.currentTime - startTime
+  keyPressed.value[lane] = true
+  engine.laneFlash[lane] = currentTime
   engine.onHit(lane as Lane, currentTime)
+}
+
+function onKeyUp(e: KeyboardEvent) {
+  const lane = LANE_KEY_CODES[e.code]
+  if (lane === undefined) return
+  keyPressed.value[lane] = false
 }
 
 function onTouchLane(lane: Lane) {
   if (gameState.value !== 'playing' || !gameCtx || !engine) return
   const currentTime = gameCtx.currentTime - startTime
+  keyPressed.value[lane] = true
+  engine.laneFlash[lane] = currentTime
   engine.onHit(lane, currentTime)
+  setTimeout(() => {
+    keyPressed.value[lane] = false
+  }, 80)
 }
 
 function endGame() {
@@ -217,6 +262,7 @@ function playAgain() {
   combo.value = 0
   accuracy.value = 0
   progress.value = 0
+  keyPressed.value = [false, false, false, false]
   try {
     gameCtx?.close()
   } catch {}
@@ -239,6 +285,7 @@ function quitGame() {
   engine = null
   cfg = null
   isPaused = false
+  keyPressed.value = [false, false, false, false]
   gameState.value = 'select'
 }
 
@@ -253,15 +300,20 @@ function togglePause() {
   }
 }
 
+function navigateHome() {
+  quitGame()
+  router.push('/')
+}
+
 function onResize() {
+  layout.value = computeLayout()
   if (!engine || !cfg) return
-  const layout = computeLayout()
-  engine.setConfig({ laneX: layout.laneX, hitY: layout.hitY })
-  cfg.width = layout.width
-  cfg.height = layout.height
-  cfg.laneX = layout.laneX
-  cfg.laneWidth = layout.laneWidth
-  cfg.hitY = layout.hitY
+  engine.setConfig({ laneX: layout.value.laneX, hitY: layout.value.hitY })
+  cfg.width = layout.value.width
+  cfg.height = layout.value.height
+  cfg.laneX = layout.value.laneX
+  cfg.laneWidth = layout.value.laneWidth
+  cfg.hitY = layout.value.hitY
   if (canvasRef.value) {
     const ctx = setupCanvas()
     if (ctx && engine) {
@@ -271,11 +323,13 @@ function onResize() {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('keydown', onKeyDown, { capture: true })
+  window.addEventListener('keyup', onKeyUp, { capture: true })
   window.addEventListener('resize', onResize)
 })
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('keydown', onKeyDown, { capture: true } as EventListenerOptions)
+  window.removeEventListener('keyup', onKeyUp, { capture: true } as EventListenerOptions)
   window.removeEventListener('resize', onResize)
   cancelAnimationFrame(raf)
   if (sourceNode) {
@@ -293,9 +347,16 @@ onUnmounted(() => {
   <div class="rg" :style="{ '--vibe': vibe }">
     <!-- Select Screen -->
     <div v-if="gameState === 'select'" class="rg__select">
+      <div class="rg__select-top">
+        <button class="rg__home-btn" @click="navigateHome">
+          <PhArrowLeft :size="16" weight="bold" />
+          返回
+        </button>
+      </div>
+
       <div class="rg__header">
         <h1 class="rg__title">节奏游戏</h1>
-        <p class="rg__subtitle">选择一首歌曲,跟随节拍敲击 D F J K</p>
+        <p class="rg__subtitle">选择一首歌曲，跟随节拍敲击 D F J K</p>
       </div>
 
       <div class="rg__diff">
@@ -329,14 +390,49 @@ onUnmounted(() => {
     </div>
 
     <!-- Analyzing Screen -->
-    <div v-else-if="gameState === 'analyzing'" class="rg__analyzing">
+    <div v-else-if="gameState === 'analyzing'" class="rg__overlay">
       <div class="rg__spinner" />
-      <p class="rg__analyzing-text">分析音频中...</p>
+      <p class="rg__overlay-text">分析音频中...</p>
+      <button class="rg__overlay-back" @click="quitGame">取消</button>
     </div>
 
     <!-- Game Screen (countdown + playing) -->
     <template v-else>
       <canvas ref="canvasRef" class="rg__canvas" />
+
+      <!-- Touch lanes (always present during countdown + playing) -->
+      <div v-if="gameState === 'playing' && !isPaused" class="rg__touch-lanes">
+        <div
+          v-for="(x, i) in layout.laneX"
+          :key="i"
+          class="rg__touch-lane"
+          :class="{ 'rg__touch-lane--pressed': keyPressed[i] }"
+          :style="{
+            left: (x - layout.laneWidth / 2) + 'px',
+            width: layout.laneWidth + 'px',
+          }"
+          @pointerdown="onTouchLane(i as Lane)"
+        />
+      </div>
+
+      <!-- Song info (top-left, always visible) -->
+      <div v-if="currentTrack && (gameState === 'countdown' || gameState === 'playing')" class="rg__track-info">
+        <img class="rg__track-cover" :src="currentTrack.cover" :alt="currentTrack.title" />
+        <div class="rg__track-text">
+          <div class="rg__track-title">{{ currentTrack.title }}</div>
+          <div class="rg__track-artist">{{ currentTrack.artist }}</div>
+        </div>
+      </div>
+
+      <!-- Exit button (top-right, always visible) -->
+      <button
+        v-if="gameState === 'countdown' || gameState === 'playing'"
+        class="rg__exit-btn"
+        @click="quitGame"
+        title="退出 (ESC)"
+      >
+        <PhHouse :size="18" weight="bold" />
+      </button>
 
       <!-- Countdown Overlay -->
       <div v-if="gameState === 'countdown'" class="rg__countdown">
@@ -356,18 +452,26 @@ onUnmounted(() => {
           </div>
           <div class="rg__acc">{{ (accuracy * 100).toFixed(1) }}%</div>
         </div>
+        <div class="rg__time">{{ timeDisplay }}</div>
         <button class="rg__pause" @click="togglePause">
-          <PhPause v-if="!isPaused" :size="20" weight="fill" />
-          <PhPlay v-else :size="20" weight="fill" />
+          <PhPause v-if="!isPaused" :size="18" weight="fill" />
+          <PhPlay v-else :size="18" weight="fill" />
         </button>
         <div v-if="isPaused" class="rg__paused-overlay" @click="togglePause">
           <div class="rg__paused-text">已暂停</div>
-          <button class="rg__quit-btn" @click.stop="quitGame">退出</button>
+          <div class="rg__paused-hint">点击继续 · 空格暂停/继续</div>
+          <button class="rg__quit-btn" @click.stop="quitGame">退出游戏</button>
         </div>
       </div>
 
       <!-- Results Screen -->
       <div v-if="gameState === 'results' && result" class="rg__results">
+        <div class="rg__results-back">
+          <button class="rg__home-btn" @click="navigateHome">
+            <PhArrowLeft :size="16" weight="bold" />
+            返回
+          </button>
+        </div>
         <div class="rg__grade" :style="{ color: vibe }">{{ result.grade }}</div>
         <div v-if="result.fullCombo" class="rg__fc">FULL COMBO!</div>
         <div class="rg__stats">
@@ -409,15 +513,44 @@ onUnmounted(() => {
   z-index: 100;
 }
 
+/* Shared */
+.rg__home-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    color: var(--color-text);
+    border-color: var(--color-border-strong);
+  }
+}
+
 /* Select Screen */
 .rg__select {
   height: 100%;
   overflow-y: auto;
-  padding: var(--space-8) var(--space-6) var(--space-16);
+  padding: var(--space-4) var(--space-6) var(--space-16);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-6);
+}
+
+.rg__select-top {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .rg__header {
@@ -530,13 +663,13 @@ onUnmounted(() => {
 }
 
 /* Analyzing */
-.rg__analyzing {
+.rg__overlay {
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-6);
+  gap: var(--space-4);
 }
 
 .rg__spinner {
@@ -554,9 +687,25 @@ onUnmounted(() => {
   }
 }
 
-.rg__analyzing-text {
+.rg__overlay-text {
   color: var(--color-text-muted);
   font-size: 0.95rem;
+}
+
+.rg__overlay-back {
+  margin-top: var(--space-2);
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text);
+    border-color: var(--color-border-strong);
+  }
 }
 
 /* Canvas */
@@ -567,6 +716,99 @@ onUnmounted(() => {
   height: 100%;
 }
 
+/* Touch lanes */
+.rg__touch-lanes {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+.rg__touch-lane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.05s;
+
+  &--pressed {
+    background: rgba(255, 255, 255, 0.03);
+  }
+}
+
+/* Track info */
+.rg__track-info {
+  position: absolute;
+  top: var(--space-5);
+  left: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  z-index: 2;
+  pointer-events: none;
+  max-width: 280px;
+}
+
+.rg__track-cover {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.rg__track-text {
+  min-width: 0;
+}
+
+.rg__track-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.rg__track-artist {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Exit button */
+.rg__exit-btn {
+  position: absolute;
+  top: var(--space-5);
+  right: var(--space-6);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 15, 17, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    background: rgba(30, 30, 35, 0.8);
+  }
+}
+
 /* Countdown */
 .rg__countdown {
   position: absolute;
@@ -575,6 +817,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  z-index: 2;
 }
 
 .rg__countdown-num {
@@ -609,6 +852,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 2;
 }
 
 .rg__progress {
@@ -629,13 +873,14 @@ onUnmounted(() => {
 
 .rg__hud-top {
   position: absolute;
-  top: var(--space-6);
+  top: var(--space-5);
   left: 0;
   right: 0;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: flex-start;
   padding: 0 var(--space-6);
+  gap: var(--space-8);
 }
 
 .rg__score {
@@ -644,6 +889,8 @@ onUnmounted(() => {
   font-weight: 700;
   color: #ffffff;
   text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+  min-width: 100px;
+  text-align: right;
 }
 
 .rg__combo {
@@ -691,18 +938,32 @@ onUnmounted(() => {
   font-weight: 600;
   color: #ffffff;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  min-width: 100px;
+  text-align: left;
+}
+
+.rg__time {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .rg__pause {
   position: absolute;
-  top: var(--space-6);
-  right: var(--space-6);
-  width: 36px;
-  height: 36px;
+  top: var(--space-5);
+  right: calc(var(--space-6) + 50px);
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  border: 1px solid var(--color-border);
-  background: rgba(15, 15, 17, 0.8);
-  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 15, 17, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -711,8 +972,8 @@ onUnmounted(() => {
   transition: all 0.2s;
 
   &:hover {
-    border-color: var(--vibe);
-    color: var(--vibe);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff;
   }
 }
 
@@ -721,11 +982,12 @@ onUnmounted(() => {
   inset: 0;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-6);
+  gap: var(--space-4);
   pointer-events: auto;
   cursor: pointer;
 }
@@ -736,7 +998,13 @@ onUnmounted(() => {
   color: #ffffff;
 }
 
+.rg__paused-hint {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
 .rg__quit-btn {
+  margin-top: var(--space-4);
   padding: 0.6rem 1.5rem;
   font-size: 0.9rem;
   font-weight: 600;
@@ -764,7 +1032,14 @@ onUnmounted(() => {
   gap: var(--space-4);
   background: rgba(15, 15, 17, 0.92);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   animation: resultsIn 0.4s ease-out;
+}
+
+.rg__results-back {
+  position: absolute;
+  top: var(--space-5);
+  left: var(--space-6);
 }
 
 @keyframes resultsIn {
@@ -912,6 +1187,24 @@ onUnmounted(() => {
   .rg__judgments {
     flex-wrap: wrap;
     justify-content: center;
+  }
+
+  .rg__track-info {
+    max-width: 180px;
+  }
+
+  .rg__hud-top {
+    gap: var(--space-4);
+  }
+
+  .rg__score,
+  .rg__acc {
+    min-width: 60px;
+    font-size: 1.1rem;
+  }
+
+  .rg__combo-num {
+    font-size: 1.6rem;
   }
 }
 </style>
