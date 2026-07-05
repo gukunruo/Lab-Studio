@@ -413,9 +413,19 @@ function loop() {
       const pv = prev[i] ?? 0
       next[i] = target >= pv ? target : Math.max(target, pv * 0.82)
     }
-    bars.value = next
+    // spatial smoothing — blend each bar with neighbors for smooth wave-like transitions
+    const smoothed = Array(BARS)
+    for (let i = 0; i < BARS; i++) {
+      const a = next[(i - 2 + BARS) % BARS] ?? 0
+      const b = next[(i - 1 + BARS) % BARS] ?? 0
+      const c = next[i] ?? 0
+      const d = next[(i + 1) % BARS] ?? 0
+      const e = next[(i + 2) % BARS] ?? 0
+      smoothed[i] = a * 0.1 + b * 0.2 + c * 0.4 + d * 0.2 + e * 0.1
+    }
+    bars.value = smoothed
     if (spectrumMode.value === 'orbit' && orbitCanvas.value) {
-      drawOrbitWave(orbitCanvas.value, next)
+      drawOrbitWave(orbitCanvas.value, smoothed)
     }
   }
   raf = requestAnimationFrame(loop)
