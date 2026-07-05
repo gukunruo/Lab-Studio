@@ -1111,6 +1111,7 @@ onUnmounted(() => {
 }
 
 .lyrics {
+  position: relative;
   height: 320px;
   overflow-y: auto;
   scroll-behavior: smooth;
