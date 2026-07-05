@@ -292,10 +292,17 @@ function loop() {
     const step = Math.max(1, Math.floor(freqBuf.length / BARS))
     const prev = bars.value
     const next = Array(BARS).fill(0)
-    for (let i = 0; i < BARS; i++) {
+    const half = BARS / 2
+    // mirror: low frequencies (strong) in the center, highs at the edges
+    const bins: number[] = []
+    for (let i = 0; i < half; i++) {
       let sum = 0
       for (let j = 0; j < step; j++) sum += freqBuf[i * step + j] || 0
-      const target = Math.min(1, sum / step / 255)
+      bins.push(Math.min(1, sum / step / 255))
+    }
+    for (let i = 0; i < BARS; i++) {
+      const binIdx = i < half ? half - 1 - i : i - half
+      const target = bins[binIdx] ?? 0
       const pv = prev[i] ?? 0
       next[i] = target >= pv ? target : Math.max(target, pv * 0.88)
     }
@@ -304,8 +311,15 @@ function loop() {
   raf = requestAnimationFrame(loop)
 }
 watch(showFullPlayer, (v) => {
-  if (v) raf = requestAnimationFrame(loop)
-  else cancelAnimationFrame(raf)
+  if (v) {
+    raf = requestAnimationFrame(loop)
+    userScrolled = false
+    if (resumeTimer) {
+      clearTimeout(resumeTimer)
+      resumeTimer = null
+    }
+    nextTick(() => scrollLyric())
+  } else cancelAnimationFrame(raf)
 })
 
 onMounted(() => window.addEventListener('keydown', onKey))
