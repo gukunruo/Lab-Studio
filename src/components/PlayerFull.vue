@@ -369,11 +369,6 @@ watch(showPlaylist, async (v) => {
 
 // spectrum: rAF loop reading analyser frequency data into 32 bars
 const BARS = 32
-// stable shuffle: spreads bass/treble across all positions so peaks appear anywhere, not clustered at one end
-const BIN_PERM = [
-  17, 3, 25, 11, 24, 0, 14, 21, 9, 30, 5, 27, 20, 8, 13, 31,
-  2, 23, 16, 7, 12, 28, 1, 19, 10, 6, 26, 22, 15, 4, 29, 18,
-]
 const bars = ref<number[]>(Array(BARS).fill(0))
 let raf = 0
 let freqBuf: Uint8Array<ArrayBuffer> | null = null
@@ -405,27 +400,18 @@ function loop() {
         const binIdx = i < half ? half - 1 - i : i - half
         target = halfBins[binIdx] ?? 0
       } else {
-        const binIdx = BIN_PERM[i] ?? 0
+        // sequential mapping: bar i → frequency bins [i*step, (i+1)*step)
+        // adjacent bars naturally map to adjacent frequency bins, giving smooth transitions
         let sum = 0
-        for (let j = 0; j < step; j++) sum += freqBuf[binIdx * step + j] || 0
+        for (let j = 0; j < step; j++) sum += freqBuf[i * step + j] || 0
         target = Math.min(1, sum / step / 255)
       }
       const pv = prev[i] ?? 0
       next[i] = target >= pv ? target : Math.max(target, pv * 0.82)
     }
-    // spatial smoothing — 5-tap blend: smooth transitions while preserving peak variation
-    const smoothed = Array(BARS)
-    for (let i = 0; i < BARS; i++) {
-      const a = next[(i - 2 + BARS) % BARS] ?? 0
-      const b = next[(i - 1 + BARS) % BARS] ?? 0
-      const c = next[i] ?? 0
-      const d = next[(i + 1) % BARS] ?? 0
-      const e = next[(i + 2) % BARS] ?? 0
-      smoothed[i] = a * 0.05 + b * 0.15 + c * 0.6 + d * 0.15 + e * 0.05
-    }
-    bars.value = smoothed
+    bars.value = next
     if (spectrumMode.value === 'orbit' && orbitCanvas.value) {
-      drawOrbitWave(orbitCanvas.value, smoothed)
+      drawOrbitWave(orbitCanvas.value, next)
     }
   }
   raf = requestAnimationFrame(loop)
