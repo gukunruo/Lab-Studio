@@ -97,7 +97,8 @@ export function generateChart(buffer: AudioBuffer, difficulty: Difficulty): Note
 
   notes.sort((a, b) => a.time - b.time)
 
-  const minGap = difficulty === 'easy' ? 0.3 : difficulty === 'normal' ? 0.22 : 0.18
+  const minGap = difficulty === 'easy' ? 0.5 : difficulty === 'normal' ? 0.35 : 0.2
+  const maxDensity = difficulty === 'easy' ? 1 : difficulty === 'normal' ? 1 : 2
   const filtered: Note[] = []
   const lastNoteTime: number[] = [-Infinity, -Infinity, -Infinity, -Infinity]
   const recentTimes: number[] = []
@@ -106,10 +107,10 @@ export function generateChart(buffer: AudioBuffer, difficulty: Difficulty): Note
     if (note.time < 1.5 || note.time > duration - 1) continue
     if (note.time - lastNoteTime[note.lane]! < minGap) continue
 
-    while (recentTimes.length > 0 && note.time - recentTimes[0]! > 0.05) {
+    while (recentTimes.length > 0 && note.time - recentTimes[0]! > 0.12) {
       recentTimes.shift()
     }
-    if (recentTimes.length >= 2) continue
+    if (recentTimes.length >= maxDensity) continue
 
     filtered.push(note)
     lastNoteTime[note.lane] = note.time

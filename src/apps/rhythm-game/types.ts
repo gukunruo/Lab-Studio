@@ -76,9 +76,9 @@ export const JUDGMENT_CONFIG: Record<
 }
 
 export const DIFFICULTY_THRESHOLD: Record<Difficulty, number> = {
-  easy: 1.6,
-  normal: 1.4,
-  hard: 1.2,
+  easy: 2.2,
+  normal: 1.7,
+  hard: 1.3,
 }
 
 export const DIFFICULTY_LABELS: Record<Difficulty, { zh: string; en: string }> = {
