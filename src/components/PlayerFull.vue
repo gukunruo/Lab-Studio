@@ -77,7 +77,8 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   const cx = cssSize / 2
   const cy = cssSize / 2
   const innerR = 134
-  const maxLen = 50
+  const baseH = 16
+  const modH = 26
   const N = data.length
   const bars = N * 4
   const vibe = vibeColor.value
@@ -86,30 +87,31 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
 
   ctx.clearRect(0, 0, cssSize, cssSize)
 
-  // interpolate 32 bins → 128 bars, track max for normalization
+  // interpolate 32 bins → 128 bars with circular mirroring
+  // first half (top→bottom): bins 0→N-1, second half (bottom→top): bins N-1→0
+  // ensures bass meets bass at the top wrap — no discontinuity
   const values: number[] = []
-  let vmax = 0
+  const half = bars / 2
   for (let i = 0; i < bars; i++) {
-    const u = (i / bars) * N
-    const idx = Math.floor(u) % N
-    const nxt = (idx + 1) % N
-    const frac = u - Math.floor(u)
+    const u = i < half
+      ? (i / (half - 1)) * (N - 1)
+      : ((bars - 1 - i) / (half - 1)) * (N - 1)
+    const idx = Math.floor(u)
+    const nxt = Math.min(idx + 1, N - 1)
+    const frac = u - idx
     const ft = (1 - Math.cos(frac * Math.PI)) / 2
-    const v = (data[idx] ?? 0) * (1 - ft) + (data[nxt] ?? 0) * ft
-    values.push(v)
-    if (v > vmax) vmax = v
+    values.push((data[idx] ?? 0) * (1 - ft) + (data[nxt] ?? 0) * ft)
   }
-  const norm = vmax > 0.03 ? 1 / vmax : 0
 
-  // precompute bar geometry (shared by fill + strokes)
-  const pts: { x: number; y: number; x2: number; y2: number; vn: number }[] = []
+  // precompute bar geometry: uniform base + gentle frequency modulation
+  const pts: { x: number; y: number; x2: number; y2: number; v: number }[] = []
+  const heights: number[] = []
   for (let i = 0; i < bars; i++) {
     const v = values[i] ?? 0
-    const vn = Math.min(1, v * norm)
-    const vnScaled = Math.pow(vn, 0.4)
     const angle = (i / bars) * Math.PI * 2 - Math.PI / 2
-    const wave = Math.sin(angle * 3 + t * 2.5) * 5 + Math.sin(angle * 7 - t * 4.0) * 3
-    const len = Math.max(2, 8 + wave + vnScaled * maxLen)
+    const wave = Math.sin(angle * 3 + t * 2.0) * 3 + Math.sin(angle * 7 - t * 3.0) * 2
+    const len = Math.max(5, baseH + wave + Math.pow(v, 0.35) * modH)
+    heights.push(len)
     const cos = Math.cos(angle)
     const sin = Math.sin(angle)
     pts.push({
@@ -117,54 +119,64 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
       y: cy + sin * innerR,
       x2: cx + cos * (innerR + len),
       y2: cy + sin * (innerR + len),
-      vn: vnScaled,
+      v,
     })
   }
 
-  // layer 1: base ring — glowing source at art edge
+  // smooth heights for clean fill outline
+  const smoothH: number[] = []
+  for (let i = 0; i < bars; i++) {
+    const a = heights[(i - 2 + bars) % bars] ?? 0
+    const b = heights[(i - 1 + bars) % bars] ?? 0
+    const c = heights[i] ?? 0
+    const d = heights[(i + 1) % bars] ?? 0
+    const e = heights[(i + 2) % bars] ?? 0
+    smoothH.push((a + b + c + d + e) / 5)
+  }
+
+  // layer 1: base ring
   ctx.beginPath()
   ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
   ctx.strokeStyle = vibe
-  ctx.globalAlpha = 0.18
+  ctx.globalAlpha = 0.2
   ctx.lineWidth = 1.5
   ctx.shadowColor = vibe
-  ctx.shadowBlur = 14
+  ctx.shadowBlur = 12
   ctx.stroke()
 
-  // layer 2: filled ring body — glowing annulus between innerR and bar tips
+  // layer 2: filled ring body (smoothed outline for clean shape)
   ctx.beginPath()
   for (let i = 0; i <= bars; i++) {
-    const p = pts[i % bars]!
-    if (i === 0) ctx.moveTo(p.x2, p.y2)
-    else ctx.lineTo(p.x2, p.y2)
+    const idx = i % bars
+    const angle = (idx / bars) * Math.PI * 2 - Math.PI / 2
+    const r = innerR + (smoothH[idx] ?? 0)
+    if (i === 0) ctx.moveTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r)
+    else ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r)
   }
   for (let i = bars; i >= 0; i--) {
-    const p = pts[i % bars]!
-    ctx.lineTo(p.x, p.y)
+    const idx = i % bars
+    const angle = (idx / bars) * Math.PI * 2 - Math.PI / 2
+    ctx.lineTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR)
   }
   ctx.closePath()
-  const fillGrad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, innerR + maxLen + 12)
+  const fillGrad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, innerR + 50)
   fillGrad.addColorStop(0, vibe)
-  fillGrad.addColorStop(0.4, vibe)
   fillGrad.addColorStop(1, vibeFade)
   ctx.fillStyle = fillGrad
-  ctx.globalAlpha = 0.14
+  ctx.globalAlpha = 0.1
   ctx.shadowColor = vibe
-  ctx.shadowBlur = 18
+  ctx.shadowBlur = 15
   ctx.fill()
 
-  // layer 3: individual bars — sharp radiating lines on top of the fill
+  // layer 3: solid-color bars (no per-bar gradient for consistent appearance)
   ctx.lineCap = 'round'
   ctx.shadowColor = vibe
-  ctx.shadowBlur = 8
+  ctx.shadowBlur = 6
+  ctx.strokeStyle = vibe
+  ctx.lineWidth = 2
   for (let i = 0; i < bars; i++) {
     const p = pts[i]!
-    const grad = ctx.createLinearGradient(p.x, p.y, p.x2, p.y2)
-    grad.addColorStop(0, vibe)
-    grad.addColorStop(1, vibeFade)
-    ctx.strokeStyle = grad
-    ctx.globalAlpha = Math.min(1, 0.45 + p.vn * 0.55)
-    ctx.lineWidth = 2.5
+    ctx.globalAlpha = 0.5 + p.v * 0.5
     ctx.beginPath()
     ctx.moveTo(p.x, p.y)
     ctx.lineTo(p.x2, p.y2)
