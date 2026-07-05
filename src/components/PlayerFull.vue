@@ -77,8 +77,8 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   const cx = cssSize / 2
   const cy = cssSize / 2
   const innerR = 134
-  const baseH = 16
-  const modH = 26
+  const baseH = 12
+  const modH = 18
   const N = data.length
   const bars = N * 4
   const vibe = vibeColor.value
