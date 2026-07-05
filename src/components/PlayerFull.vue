@@ -51,6 +51,7 @@ const prevVolume = ref(0.8)
 const showShortcuts = ref(false)
 const showEq = ref(false)
 const showSleep = ref(false)
+const showRate = ref(false)
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const modeIcon = computed(() =>
@@ -101,18 +102,48 @@ const activeLyricIndex = computed(() => {
   return idx
 })
 
-async function scrollLyric(i: number) {
+let userScrolled = false
+let resumeTimer: ReturnType<typeof setTimeout> | null = null
+
+function onLyricsWheel() {
+  userScrolled = true
+  if (resumeTimer) clearTimeout(resumeTimer)
+  resumeTimer = setTimeout(() => {
+    userScrolled = false
+    scrollLyric()
+  }, 3000)
+}
+
+function onLyricClick(time: number) {
+  userScrolled = false
+  if (resumeTimer) {
+    clearTimeout(resumeTimer)
+    resumeTimer = null
+  }
+  player.seek(time)
+}
+
+async function scrollLyric(i?: number) {
+  if (userScrolled) return
+  const idx = i ?? activeLyricIndex.value
   await nextTick()
   const c = lyricsEl.value
   if (!c) return
-  const line = c.children[i] as HTMLElement | undefined
+  const line = c.children[idx] as HTMLElement | undefined
   if (!line) return
   const top = line.offsetTop - c.clientHeight / 2 + line.clientHeight / 2
   c.scrollTo({ top, behavior: 'smooth' })
 }
 
-watch(activeLyricIndex, scrollLyric)
-watch(currentIndex, () => scrollLyric(0))
+watch(activeLyricIndex, () => scrollLyric())
+watch(currentIndex, () => {
+  userScrolled = false
+  if (resumeTimer) {
+    clearTimeout(resumeTimer)
+    resumeTimer = null
+  }
+  scrollLyric()
+})
 
 function formatTime(s: number): string {
   if (!s || !isFinite(s)) return '00:00'
@@ -144,9 +175,6 @@ function onProgressHover(e: PointerEvent) {
 }
 function onProgressLeave() {
   hoverTime.value = null
-}
-function onRate(e: Event) {
-  player.setRate(Number((e.target as HTMLSelectElement).value))
 }
 function onVolume(e: Event) {
   player.setVolume(Number((e.target as HTMLInputElement).value))
@@ -224,6 +252,7 @@ function onKey(e: KeyboardEvent) {
       if (showShortcuts.value) showShortcuts.value = false
       else if (showEq.value) showEq.value = false
       else if (showSleep.value) showSleep.value = false
+      else if (showRate.value) showRate.value = false
       else if (showPlaylist.value) player.togglePlaylist()
       else player.closeFull()
       break
@@ -261,11 +290,14 @@ function loop() {
 
   if (freqBuf) {
     const step = Math.max(1, Math.floor(freqBuf.length / BARS))
+    const prev = bars.value
     const next = Array(BARS).fill(0)
     for (let i = 0; i < BARS; i++) {
       let sum = 0
       for (let j = 0; j < step; j++) sum += freqBuf[i * step + j] || 0
-      next[i] = Math.min(1, sum / step / 255)
+      const target = Math.min(1, sum / step / 255)
+      const pv = prev[i] ?? 0
+      next[i] = target >= pv ? target : Math.max(target, pv * 0.88)
     }
     bars.value = next
   }
@@ -325,12 +357,12 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="lyrics" ref="lyricsEl">
+          <div class="lyrics" ref="lyricsEl" @wheel.passive="onLyricsWheel" @touchmove.passive="onLyricsWheel">
             <p
               v-for="(line, i) in current.lyrics"
               :key="i"
               :class="['lyrics__line', { 'lyrics__line--active': i === activeLyricIndex }]"
-              @click="player.seek(line.time)"
+              @click="onLyricClick(line.time)"
             >
               {{ line.text }}
             </p>
@@ -380,9 +412,29 @@ onUnmounted(() => {
               >
                 <component :is="modeIcon" :size="18" />
               </button>
-              <select class="rate" :value="playbackRate" @change="onRate" aria-label="倍速">
-                <option v-for="r in rates" :key="r" :value="r">{{ r }}x</option>
-              </select>
+              <div class="rate">
+                <button
+                  class="ctrl rate__btn"
+                  :class="{ 'ctrl--active': playbackRate !== 1 }"
+                  @click="showRate = !showRate"
+                  aria-label="倍速"
+                  title="倍速"
+                >
+                  {{ playbackRate }}x
+                </button>
+                <div v-if="showRate" class="rate__backdrop" @click="showRate = false" />
+                <div v-if="showRate" class="rate__menu">
+                  <button
+                    v-for="r in rates"
+                    :key="r"
+                    class="rate__item"
+                    :class="{ 'rate__item--active': r === playbackRate }"
+                    @click="player.setRate(r); showRate = false"
+                  >
+                    {{ r }}x
+                  </button>
+                </div>
+              </div>
               <button
                 class="ctrl"
                 :class="{ 'ctrl--active': eqEnabled }"
@@ -767,11 +819,15 @@ onUnmounted(() => {
 .spectrum__bar {
   width: 4px;
   height: 100%;
-  background: var(--color-accent);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--vibe, var(--color-accent)) 30%, transparent),
+    var(--vibe, var(--color-accent))
+  );
   border-radius: 2px;
   transform-origin: bottom center;
-  opacity: 0.85;
-  transition: transform 0.06s linear;
+  opacity: 0.9;
+  transition: transform 0.08s ease-out;
 }
 
 /* vinyl: circular album cover centered on a grooved disc */
@@ -1157,19 +1213,58 @@ onUnmounted(() => {
 }
 
 .rate {
-  background: var(--color-bg);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  padding: 0.3rem 0.6rem;
-  font: inherit;
-  font-size: 0.76rem;
-  cursor: pointer;
-  outline: none;
+  position: relative;
 }
 
-.rate:focus {
-  border-color: var(--color-accent);
+.rate__btn {
+  min-width: 42px;
+  justify-content: center;
+  font-family: var(--font-mono);
+}
+
+.rate__menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 12;
+  min-width: 64px;
+}
+
+.rate__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+}
+
+.rate__item {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.rate__item:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.rate__item--active {
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 .playlist-backdrop {
