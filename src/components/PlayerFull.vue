@@ -76,83 +76,66 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
 
   const cx = cssSize / 2
   const cy = cssSize / 2
-  const baseR = 142
-  const maxAmp = 32
-  const innerR = 132
+  const innerR = 134
+  const maxLen = 42
   const N = data.length
+  const bars = N * 2
   const vibe = vibeColor.value
+  const vibeFade = vibe + '00'
 
   ctx.clearRect(0, 0, cssSize, cssSize)
 
-  const res = N * 6
-  const pts: { x: number; y: number }[] = []
-  for (let i = 0; i < res; i++) {
-    const t = (i / res) * N
+  // interpolate 32 bins → 64 radiating bars
+  const values: number[] = []
+  for (let i = 0; i < bars; i++) {
+    const t = (i / bars) * N
     const idx = Math.floor(t) % N
     const nxt = (idx + 1) % N
     const frac = t - Math.floor(t)
     const ft = (1 - Math.cos(frac * Math.PI)) / 2
-    const v = (data[idx] ?? 0) * (1 - ft) + (data[nxt] ?? 0) * ft
-    const angle = (i / res) * Math.PI * 2 - Math.PI / 2
-    const r = baseR + v * maxAmp
-    pts.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r })
+    values.push((data[idx] ?? 0) * (1 - ft) + (data[nxt] ?? 0) * ft)
   }
 
-  const drawCurve = () => {
-    ctx.beginPath()
-    for (let i = 0; i < res; i++) {
-      const cur = pts[i]!
-      const nxt = pts[(i + 1) % res]!
-      const mx = (cur.x + nxt.x) / 2
-      const my = (cur.y + nxt.y) / 2
-      if (i === 0) ctx.moveTo(mx, my)
-      ctx.quadraticCurveTo(cur.x, cur.y, mx, my)
-    }
-    ctx.closePath()
-  }
-
-  // filled aura between art edge and wave
+  // faint base ring — bars emanate from this glow
   ctx.beginPath()
-  for (let i = 0; i <= res; i++) {
-    const idx = i % res
-    const angle = (idx / res) * Math.PI * 2 - Math.PI / 2
-    const ir = innerR
-    const x = cx + Math.cos(angle) * ir
-    const y = cy + Math.sin(angle) * ir
-    if (i === 0) ctx.moveTo(x, y)
-    else ctx.lineTo(x, y)
-  }
-  for (let i = res; i >= 0; i--) {
-    const idx = i % res
-    ctx.lineTo(pts[idx]!.x, pts[idx]!.y)
-  }
-  ctx.closePath()
-  const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, baseR + maxAmp)
-  grad.addColorStop(0, vibe)
-  grad.addColorStop(1, 'transparent')
-  ctx.globalAlpha = 0.12
-  ctx.fillStyle = grad
-  ctx.fill()
-  ctx.globalAlpha = 1
-
-  // wide soft glow
-  drawCurve()
-  ctx.shadowColor = vibe
-  ctx.shadowBlur = 16
+  ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
   ctx.strokeStyle = vibe
-  ctx.lineWidth = 4
-  ctx.globalAlpha = 0.25
+  ctx.globalAlpha = 0.12
+  ctx.lineWidth = 1
+  ctx.shadowColor = vibe
+  ctx.shadowBlur = 10
   ctx.stroke()
 
-  // crisp main line
-  drawCurve()
-  ctx.shadowBlur = 8
-  ctx.lineWidth = 2
+  // radiating bars: each is a gradient line from base (full) to tip (fading)
+  ctx.lineCap = 'round'
+  ctx.shadowBlur = 6
+  for (let i = 0; i < bars; i++) {
+    const v = values[i] ?? 0
+    if (v < 0.015) continue
+    const angle = (i / bars) * Math.PI * 2 - Math.PI / 2
+    const len = Math.max(2, v * maxLen)
+    const cos = Math.cos(angle)
+    const sin = Math.sin(angle)
+    const x1 = cx + cos * innerR
+    const y1 = cy + sin * innerR
+    const x2 = cx + cos * (innerR + len)
+    const y2 = cy + sin * (innerR + len)
+
+    const grad = ctx.createLinearGradient(x1, y1, x2, y2)
+    grad.addColorStop(0, vibe)
+    grad.addColorStop(1, vibeFade)
+
+    ctx.strokeStyle = grad
+    ctx.globalAlpha = 0.35 + v * 0.65
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x2, y2)
+    ctx.stroke()
+  }
+
   ctx.globalAlpha = 1
-  ctx.stroke()
-
   ctx.shadowBlur = 0
-  ctx.globalAlpha = 1
 }
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
