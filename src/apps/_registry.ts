@@ -54,4 +54,8 @@ export const apps: AppMeta[] = Object.entries(metaModules)
     }
   })
   .filter((e): e is AppMeta => e !== null)
-  .sort((a, b) => b.date.localeCompare(a.date))
+  .sort((a, b) => {
+    if (a.slug === 'hello-lab') return -1
+    if (b.slug === 'hello-lab') return 1
+    return b.date.localeCompare(a.date)
+  })
