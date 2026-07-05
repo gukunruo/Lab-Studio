@@ -63,7 +63,7 @@ function cycleSpectrumMode() {
 
 function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   const dpr = window.devicePixelRatio || 1
-  const cssSize = 380
+  const cssSize = 420
   if (canvas.width !== cssSize * dpr) {
     canvas.width = cssSize * dpr
     canvas.height = cssSize * dpr
@@ -77,7 +77,7 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   const cx = cssSize / 2
   const cy = cssSize / 2
   const innerR = 134
-  const maxLen = 48
+  const maxLen = 50
   const N = data.length
   const bars = N * 4
   const vibe = vibeColor.value
@@ -86,16 +86,21 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
 
   ctx.clearRect(0, 0, cssSize, cssSize)
 
-  // interpolate 32 bins → 128 bars with cosine smoothing
+  // interpolate 32 bins → 128 bars, track max for normalization
   const values: number[] = []
+  let vmax = 0
   for (let i = 0; i < bars; i++) {
     const u = (i / bars) * N
     const idx = Math.floor(u) % N
     const nxt = (idx + 1) % N
     const frac = u - Math.floor(u)
     const ft = (1 - Math.cos(frac * Math.PI)) / 2
-    values.push((data[idx] ?? 0) * (1 - ft) + (data[nxt] ?? 0) * ft)
+    const v = (data[idx] ?? 0) * (1 - ft) + (data[nxt] ?? 0) * ft
+    values.push(v)
+    if (v > vmax) vmax = v
   }
+  // normalize: peaks always reach maxLen regardless of overall volume
+  const norm = vmax > 0.03 ? 1 / vmax : 0
 
   // base ring — glowing source the bars emanate from
   ctx.beginPath()
@@ -107,16 +112,18 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   ctx.shadowBlur = 14
   ctx.stroke()
 
-  // radiating bars: baseline breathing + frequency-driven peaks
+  // radiating bars: baseline breathing + normalized frequency peaks
   ctx.lineCap = 'round'
   ctx.shadowColor = vibe
-  ctx.shadowBlur = 8
+  ctx.shadowBlur = 10
   for (let i = 0; i < bars; i++) {
     const v = values[i] ?? 0
+    const vn = Math.min(1, v * norm)
+    const vnScaled = Math.pow(vn, 0.4)
     const angle = (i / bars) * Math.PI * 2 - Math.PI / 2
-    // organic baseline: two counter-rotating sine waves
-    const wave = Math.sin(angle * 3 + t * 0.7) * 2.5 + Math.sin(angle * 7 - t * 1.1) * 1.2
-    const len = Math.max(2, 3 + wave + Math.sqrt(v) * maxLen)
+    // organic baseline: two counter-rotating sine waves, faster rotation
+    const wave = Math.sin(angle * 3 + t * 2.5) * 5 + Math.sin(angle * 7 - t * 4.0) * 3
+    const len = Math.max(2, 8 + wave + vnScaled * maxLen)
     const cos = Math.cos(angle)
     const sin = Math.sin(angle)
     const x1 = cx + cos * innerR
@@ -129,8 +136,8 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
     grad.addColorStop(1, vibeFade)
 
     ctx.strokeStyle = grad
-    ctx.globalAlpha = Math.min(1, 0.4 + v * 0.6)
-    ctx.lineWidth = 2.5
+    ctx.globalAlpha = Math.min(1, 0.35 + vnScaled * 0.65)
+    ctx.lineWidth = 3
     ctx.beginPath()
     ctx.moveTo(x1, y1)
     ctx.lineTo(x2, y2)
@@ -404,7 +411,7 @@ function loop() {
         target = Math.min(1, sum / step / 255)
       }
       const pv = prev[i] ?? 0
-      next[i] = target >= pv ? target : Math.max(target, pv * 0.88)
+      next[i] = target >= pv ? target : Math.max(target, pv * 0.82)
     }
     bars.value = next
     if (spectrumMode.value === 'orbit' && orbitCanvas.value) {
@@ -969,8 +976,8 @@ onUnmounted(() => {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 380px;
-  height: 380px;
+  width: 420px;
+  height: 420px;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }

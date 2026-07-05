@@ -315,8 +315,8 @@ function ensureAudioGraph() {
       filterNodes.push(f)
     }
     analyserNode = audioCtx.createAnalyser()
-    analyserNode.fftSize = 64
-    analyserNode.smoothingTimeConstant = 0.8
+    analyserNode.fftSize = 128
+    analyserNode.smoothingTimeConstant = 0.7
     let prev: AudioNode = sourceNode
     for (const f of filterNodes) {
       prev.connect(f)
