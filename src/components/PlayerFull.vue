@@ -99,48 +99,75 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
     values.push(v)
     if (v > vmax) vmax = v
   }
-  // normalize: peaks always reach maxLen regardless of overall volume
   const norm = vmax > 0.03 ? 1 / vmax : 0
 
-  // base ring — glowing source the bars emanate from
-  ctx.beginPath()
-  ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
-  ctx.strokeStyle = vibe
-  ctx.globalAlpha = 0.16
-  ctx.lineWidth = 1.5
-  ctx.shadowColor = vibe
-  ctx.shadowBlur = 14
-  ctx.stroke()
-
-  // radiating bars: baseline breathing + normalized frequency peaks
-  ctx.lineCap = 'round'
-  ctx.shadowColor = vibe
-  ctx.shadowBlur = 10
+  // precompute bar geometry (shared by fill + strokes)
+  const pts: { x: number; y: number; x2: number; y2: number; vn: number }[] = []
   for (let i = 0; i < bars; i++) {
     const v = values[i] ?? 0
     const vn = Math.min(1, v * norm)
     const vnScaled = Math.pow(vn, 0.4)
     const angle = (i / bars) * Math.PI * 2 - Math.PI / 2
-    // organic baseline: two counter-rotating sine waves, faster rotation
     const wave = Math.sin(angle * 3 + t * 2.5) * 5 + Math.sin(angle * 7 - t * 4.0) * 3
     const len = Math.max(2, 8 + wave + vnScaled * maxLen)
     const cos = Math.cos(angle)
     const sin = Math.sin(angle)
-    const x1 = cx + cos * innerR
-    const y1 = cy + sin * innerR
-    const x2 = cx + cos * (innerR + len)
-    const y2 = cy + sin * (innerR + len)
+    pts.push({
+      x: cx + cos * innerR,
+      y: cy + sin * innerR,
+      x2: cx + cos * (innerR + len),
+      y2: cy + sin * (innerR + len),
+      vn: vnScaled,
+    })
+  }
 
-    const grad = ctx.createLinearGradient(x1, y1, x2, y2)
+  // layer 1: base ring — glowing source at art edge
+  ctx.beginPath()
+  ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
+  ctx.strokeStyle = vibe
+  ctx.globalAlpha = 0.18
+  ctx.lineWidth = 1.5
+  ctx.shadowColor = vibe
+  ctx.shadowBlur = 14
+  ctx.stroke()
+
+  // layer 2: filled ring body — glowing annulus between innerR and bar tips
+  ctx.beginPath()
+  for (let i = 0; i <= bars; i++) {
+    const p = pts[i % bars]!
+    if (i === 0) ctx.moveTo(p.x2, p.y2)
+    else ctx.lineTo(p.x2, p.y2)
+  }
+  for (let i = bars; i >= 0; i--) {
+    const p = pts[i % bars]!
+    ctx.lineTo(p.x, p.y)
+  }
+  ctx.closePath()
+  const fillGrad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, innerR + maxLen + 12)
+  fillGrad.addColorStop(0, vibe)
+  fillGrad.addColorStop(0.4, vibe)
+  fillGrad.addColorStop(1, vibeFade)
+  ctx.fillStyle = fillGrad
+  ctx.globalAlpha = 0.14
+  ctx.shadowColor = vibe
+  ctx.shadowBlur = 18
+  ctx.fill()
+
+  // layer 3: individual bars — sharp radiating lines on top of the fill
+  ctx.lineCap = 'round'
+  ctx.shadowColor = vibe
+  ctx.shadowBlur = 8
+  for (let i = 0; i < bars; i++) {
+    const p = pts[i]!
+    const grad = ctx.createLinearGradient(p.x, p.y, p.x2, p.y2)
     grad.addColorStop(0, vibe)
     grad.addColorStop(1, vibeFade)
-
     ctx.strokeStyle = grad
-    ctx.globalAlpha = Math.min(1, 0.35 + vnScaled * 0.65)
-    ctx.lineWidth = 3
+    ctx.globalAlpha = Math.min(1, 0.45 + p.vn * 0.55)
+    ctx.lineWidth = 2.5
     ctx.beginPath()
-    ctx.moveTo(x1, y1)
-    ctx.lineTo(x2, y2)
+    ctx.moveTo(p.x, p.y)
+    ctx.lineTo(p.x2, p.y2)
     ctx.stroke()
   }
 
