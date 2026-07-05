@@ -63,7 +63,7 @@ function cycleSpectrumMode() {
 
 function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   const dpr = window.devicePixelRatio || 1
-  const cssSize = 360
+  const cssSize = 380
   if (canvas.width !== cssSize * dpr) {
     canvas.width = cssSize * dpr
     canvas.height = cssSize * dpr
@@ -77,43 +77,46 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   const cx = cssSize / 2
   const cy = cssSize / 2
   const innerR = 134
-  const maxLen = 42
+  const maxLen = 48
   const N = data.length
-  const bars = N * 2
+  const bars = N * 4
   const vibe = vibeColor.value
   const vibeFade = vibe + '00'
+  const t = performance.now() * 0.001
 
   ctx.clearRect(0, 0, cssSize, cssSize)
 
-  // interpolate 32 bins → 64 radiating bars
+  // interpolate 32 bins → 128 bars with cosine smoothing
   const values: number[] = []
   for (let i = 0; i < bars; i++) {
-    const t = (i / bars) * N
-    const idx = Math.floor(t) % N
+    const u = (i / bars) * N
+    const idx = Math.floor(u) % N
     const nxt = (idx + 1) % N
-    const frac = t - Math.floor(t)
+    const frac = u - Math.floor(u)
     const ft = (1 - Math.cos(frac * Math.PI)) / 2
     values.push((data[idx] ?? 0) * (1 - ft) + (data[nxt] ?? 0) * ft)
   }
 
-  // faint base ring — bars emanate from this glow
+  // base ring — glowing source the bars emanate from
   ctx.beginPath()
   ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
   ctx.strokeStyle = vibe
-  ctx.globalAlpha = 0.12
-  ctx.lineWidth = 1
+  ctx.globalAlpha = 0.16
+  ctx.lineWidth = 1.5
   ctx.shadowColor = vibe
-  ctx.shadowBlur = 10
+  ctx.shadowBlur = 14
   ctx.stroke()
 
-  // radiating bars: each is a gradient line from base (full) to tip (fading)
+  // radiating bars: baseline breathing + frequency-driven peaks
   ctx.lineCap = 'round'
-  ctx.shadowBlur = 6
+  ctx.shadowColor = vibe
+  ctx.shadowBlur = 8
   for (let i = 0; i < bars; i++) {
     const v = values[i] ?? 0
-    if (v < 0.015) continue
     const angle = (i / bars) * Math.PI * 2 - Math.PI / 2
-    const len = Math.max(2, v * maxLen)
+    // organic baseline: two counter-rotating sine waves
+    const wave = Math.sin(angle * 3 + t * 0.7) * 2.5 + Math.sin(angle * 7 - t * 1.1) * 1.2
+    const len = Math.max(2, 3 + wave + Math.sqrt(v) * maxLen)
     const cos = Math.cos(angle)
     const sin = Math.sin(angle)
     const x1 = cx + cos * innerR
@@ -126,8 +129,8 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
     grad.addColorStop(1, vibeFade)
 
     ctx.strokeStyle = grad
-    ctx.globalAlpha = 0.35 + v * 0.65
-    ctx.lineWidth = 2
+    ctx.globalAlpha = Math.min(1, 0.4 + v * 0.6)
+    ctx.lineWidth = 2.5
     ctx.beginPath()
     ctx.moveTo(x1, y1)
     ctx.lineTo(x2, y2)
@@ -966,8 +969,8 @@ onUnmounted(() => {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 360px;
-  height: 360px;
+  width: 380px;
+  height: 380px;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
