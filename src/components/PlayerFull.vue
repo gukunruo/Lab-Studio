@@ -376,6 +376,11 @@ watch(showPlaylist, async (v) => {
 
 // spectrum: rAF loop reading analyser frequency data into 32 bars
 const BARS = 32
+// stable shuffle: spreads bass/treble across all positions so peaks appear anywhere, not clustered at one end
+const BIN_PERM = [
+  3, 19, 11, 27, 7, 23, 15, 31, 0, 16, 8, 24, 4, 20, 12, 28,
+  1, 17, 9, 25, 5, 21, 13, 29, 2, 18, 10, 26, 6, 22, 14, 30,
+]
 const bars = ref<number[]>(Array(BARS).fill(0))
 let raf = 0
 let freqBuf: Uint8Array<ArrayBuffer> | null = null
@@ -403,14 +408,14 @@ function loop() {
     }
     for (let i = 0; i < BARS; i++) {
       let target: number
-      if (spectrumMode.value === 'bars') {
-        const binIdx = Math.min(i, freqBuf.length - 1)
+      if (spectrumMode.value === 'mirror') {
+        const binIdx = i < half ? half - 1 - i : i - half
+        target = halfBins[binIdx] ?? 0
+      } else {
+        const binIdx = BIN_PERM[i] ?? 0
         let sum = 0
         for (let j = 0; j < step; j++) sum += freqBuf[binIdx * step + j] || 0
         target = Math.min(1, sum / step / 255)
-      } else {
-        const binIdx = i < half ? half - 1 - i : i - half
-        target = halfBins[binIdx] ?? 0
       }
       const pv = prev[i] ?? 0
       next[i] = target >= pv ? target : Math.max(target, pv * 0.88)
