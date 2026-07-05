@@ -9,6 +9,7 @@ import {
   createMoonTexture,
   createToonGradient,
 } from './textures'
+import { LANDMARKS, latLonToVector3, type Landmark } from './landmarks'
 
 interface SceneConfig {
   starCount: number
@@ -29,6 +30,20 @@ const EARTH_SPEED = 0.08
 const CLOUD_SPEED = 0.12
 const MOON_SPEED = 0.15
 const STAR_SPEED = 0.003
+
+const PIN_COLOR = 0x2dd4bf
+const FOCUS_DISTANCE = 1.8
+const ANIM_DURATION = 1.2
+
+interface CameraAnim {
+  fromPos: THREE.Vector3
+  toPos: THREE.Vector3
+  fromTarget: THREE.Vector3
+  toTarget: THREE.Vector3
+  elapsed: number
+  duration: number
+  onComplete?: () => void
+}
 
 const ATMOSPHERE_VERTEX = `
   varying vec3 vNormal;
@@ -84,6 +99,20 @@ export class GlobeScene {
 
   private darkPalette = DARK_PALETTE
   private lightPalette = LIGHT_PALETTE
+
+  private landmarkGroups: THREE.Group[] = []
+  private landmarkTips: THREE.Mesh[] = []
+  private tipMaterials: THREE.MeshStandardMaterial[] = []
+  private raycaster = new THREE.Raycaster()
+  private pointer = new THREE.Vector2()
+  private hoveredGroup: THREE.Group | null = null
+  private pointerDownPos: { x: number; y: number } | null = null
+  private cameraAnim: CameraAnim | null = null
+  private frozen = false
+  private elapsed = 0
+
+  onHoverLandmark: ((landmark: Landmark | null, screenX: number, screenY: number) => void) | null = null
+  onSelectLandmark: ((landmark: Landmark | null) => void) | null = null
 
   constructor(container: HTMLElement, isDark: boolean) {
     const cfg = detectConfig()
@@ -215,6 +244,68 @@ export class GlobeScene {
     this.controls.enablePan = false
     this.controls.autoRotate = true
     this.controls.autoRotateSpeed = 0.5
+
+    // Landmark markers (children of earth so they rotate with it)
+    this.createLandmarkMarkers()
+
+    // Pointer interaction
+    this.renderer.domElement.addEventListener('pointermove', this.onPointerMove)
+    this.renderer.domElement.addEventListener('pointerdown', this.onPointerDown)
+    this.renderer.domElement.addEventListener('pointerup', this.onPointerUp)
+  }
+
+  private createLandmarkMarkers(): void {
+    const up = new THREE.Vector3(0, 1, 0)
+    for (const lm of LANDMARKS) {
+      const group = new THREE.Group()
+
+      // Pin (cylinder pointing outward from surface)
+      const pinGeo = new THREE.CylinderGeometry(0.0035, 0.0035, 0.06, 8)
+      const pinMat = new THREE.MeshBasicMaterial({ color: PIN_COLOR })
+      const pin = new THREE.Mesh(pinGeo, pinMat)
+      pin.position.y = 0.03
+      group.add(pin)
+
+      // Glowing tip (emissive sphere)
+      const tipGeo = new THREE.SphereGeometry(0.018, 16, 16)
+      const tipMat = new THREE.MeshStandardMaterial({
+        color: PIN_COLOR,
+        emissive: PIN_COLOR,
+        emissiveIntensity: 0.8,
+        roughness: 0.4,
+      })
+      const tip = new THREE.Mesh(tipGeo, tipMat)
+      tip.position.y = 0.06
+      group.add(tip)
+
+      // Surface ring (flat on surface)
+      const ringGeo = new THREE.RingGeometry(0.024, 0.032, 32)
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: PIN_COLOR,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+      })
+      const ring = new THREE.Mesh(ringGeo, ringMat)
+      ring.rotation.x = -Math.PI / 2
+      group.add(ring)
+
+      // Position and orient: Y axis points outward from earth center
+      const pos = latLonToVector3(lm.lat, lm.lon, 1.0)
+      group.position.copy(pos)
+      const dir = pos.clone().normalize()
+      group.quaternion.setFromUnitVectors(up, dir)
+
+      group.userData.landmark = lm
+
+      this.geometries.push(pinGeo, tipGeo, ringGeo)
+      this.materials.push(pinMat, tipMat, ringMat)
+
+      this.earthMesh.add(group)
+      this.landmarkGroups.push(group)
+      this.landmarkTips.push(tip)
+      this.tipMaterials.push(tipMat)
+    }
   }
 
   private createStarfield(count: number, radius: number): THREE.Points {
@@ -267,12 +358,36 @@ export class GlobeScene {
     this.rafId = requestAnimationFrame(this.animate)
     this.timer.update()
     const delta = this.timer.getDelta()
+    this.elapsed += delta
 
-    this.earthMesh.rotation.y += EARTH_SPEED * delta
-    this.cloudsMesh.rotation.y += CLOUD_SPEED * delta
-    this.cloudsMesh.rotation.x = 0.02
+    if (!this.frozen) {
+      this.earthMesh.rotation.y += EARTH_SPEED * delta
+      this.cloudsMesh.rotation.y += CLOUD_SPEED * delta
+      this.cloudsMesh.rotation.x = 0.02
+    }
     this.moonOrbit.rotation.y += MOON_SPEED * delta
     this.starfield.rotation.y += STAR_SPEED * delta
+
+    // Pulse tip glow
+    const pulse = 0.6 + Math.sin(this.elapsed * 2.5) * 0.25
+    for (let i = 0; i < this.tipMaterials.length; i++) {
+      const mat = this.tipMaterials[i]!
+      mat.emissiveIntensity = (this.landmarkGroups[i] === this.hoveredGroup ? 1.2 : pulse)
+    }
+
+    // Camera animation
+    if (this.cameraAnim) {
+      this.cameraAnim.elapsed += delta
+      const t = Math.min(1, this.cameraAnim.elapsed / this.cameraAnim.duration)
+      const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+      this.camera.position.lerpVectors(this.cameraAnim.fromPos, this.cameraAnim.toPos, eased)
+      this.controls.target.lerpVectors(this.cameraAnim.fromTarget, this.cameraAnim.toTarget, eased)
+      if (t >= 1) {
+        const cb = this.cameraAnim.onComplete
+        this.cameraAnim = null
+        if (cb) cb()
+      }
+    }
 
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
@@ -303,9 +418,122 @@ export class GlobeScene {
     this.starfieldMaterial.opacity = isDark ? 0.9 : 0.6
   }
 
+  focusLandmark(landmark: Landmark): void {
+    const index = LANDMARKS.findIndex((l) => l.id === landmark.id)
+    if (index < 0) return
+    const group = this.landmarkGroups[index]!
+
+    this.frozen = true
+    this.controls.autoRotate = false
+    this.controls.minDistance = 1.2
+
+    const targetWorldPos = new THREE.Vector3()
+    group.getWorldPosition(targetWorldPos)
+
+    const dir = targetWorldPos.clone().normalize()
+    const toPos = dir.multiplyScalar(FOCUS_DISTANCE)
+
+    this.cameraAnim = {
+      fromPos: this.camera.position.clone(),
+      toPos,
+      fromTarget: this.controls.target.clone(),
+      toTarget: targetWorldPos,
+      elapsed: 0,
+      duration: ANIM_DURATION,
+    }
+  }
+
+  resetView(): void {
+    this.cameraAnim = {
+      fromPos: this.camera.position.clone(),
+      toPos: new THREE.Vector3(0, 0.4, 3.2),
+      fromTarget: this.controls.target.clone(),
+      toTarget: new THREE.Vector3(0, 0, 0),
+      elapsed: 0,
+      duration: ANIM_DURATION,
+      onComplete: () => {
+        this.frozen = false
+        this.controls.autoRotate = true
+        this.controls.minDistance = 1.6
+      },
+    }
+  }
+
+  private updatePointer(e: PointerEvent): void {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+    this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+  }
+
+  private pickLandmark(): THREE.Group | null {
+    this.camera.updateMatrixWorld(true)
+    this.scene.updateMatrixWorld(true)
+    this.raycaster.setFromCamera(this.pointer, this.camera)
+    const earthHits = this.raycaster.intersectObject(this.earthMesh, false)
+    const earthDist = earthHits.length > 0 ? earthHits[0]!.distance : Infinity
+    const tipHits = this.raycaster.intersectObjects(this.landmarkTips, false)
+    for (const hit of tipHits) {
+      if (hit.distance < earthDist) {
+        return hit.object.parent as THREE.Group
+      }
+    }
+    return null
+  }
+
+  private onPointerMove = (e: PointerEvent): void => {
+    if (this.cameraAnim) return
+    this.updatePointer(e)
+    const group = this.pickLandmark()
+
+    if (group !== this.hoveredGroup) {
+      if (this.hoveredGroup) {
+        this.hoveredGroup.scale.setScalar(1)
+      }
+      this.hoveredGroup = group
+      if (group) {
+        group.scale.setScalar(1.6)
+        this.renderer.domElement.style.cursor = 'pointer'
+        this.onHoverLandmark?.(group.userData.landmark as Landmark, e.clientX, e.clientY)
+      } else {
+        this.renderer.domElement.style.cursor = 'default'
+        this.onHoverLandmark?.(null, 0, 0)
+      }
+    } else if (group) {
+      this.onHoverLandmark?.(group.userData.landmark as Landmark, e.clientX, e.clientY)
+    }
+  }
+
+  private onPointerDown = (e: PointerEvent): void => {
+    this.pointerDownPos = { x: e.clientX, y: e.clientY }
+  }
+
+  private onPointerUp = (e: PointerEvent): void => {
+    if (!this.pointerDownPos) return
+    const dx = e.clientX - this.pointerDownPos.x
+    const dy = e.clientY - this.pointerDownPos.y
+    this.pointerDownPos = null
+    if (Math.sqrt(dx * dx + dy * dy) > 5) return
+    if (this.cameraAnim) return
+
+    this.updatePointer(e)
+    let group = this.pickLandmark()
+    if (!group && this.hoveredGroup) {
+      group = this.hoveredGroup
+    }
+    if (group) {
+      const lm = group.userData.landmark as Landmark
+      this.focusLandmark(lm)
+      this.onSelectLandmark?.(lm)
+    }
+  }
+
   dispose(): void {
     this.disposed = true
     cancelAnimationFrame(this.rafId)
+
+    this.renderer.domElement.removeEventListener('pointermove', this.onPointerMove)
+    this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown)
+    this.renderer.domElement.removeEventListener('pointerup', this.onPointerUp)
 
     this.controls.dispose()
 
