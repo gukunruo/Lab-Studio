@@ -19,6 +19,7 @@ import {
   PhMagnifyingGlass,
   PhSliders,
   PhMoon,
+  PhWaveform,
 } from '@phosphor-icons/vue'
 import { usePlayerStore, EQ_PRESETS } from '@/stores/player'
 import type { Track } from '@/data/tracks'
@@ -52,6 +53,12 @@ const showShortcuts = ref(false)
 const showEq = ref(false)
 const showSleep = ref(false)
 const showRate = ref(false)
+type SpectrumMode = 'bars' | 'mirror' | 'orbit'
+const spectrumMode = ref<SpectrumMode>('bars')
+function cycleSpectrumMode() {
+  const order: SpectrumMode[] = ['bars', 'mirror', 'orbit']
+  spectrumMode.value = order[(order.indexOf(spectrumMode.value) + 1) % 3]!
+}
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const modeIcon = computed(() =>
@@ -293,16 +300,23 @@ function loop() {
     const prev = bars.value
     const next = Array(BARS).fill(0)
     const half = BARS / 2
-    // mirror: low frequencies (strong) in the center, highs at the edges
-    const bins: number[] = []
+    const halfBins: number[] = []
     for (let i = 0; i < half; i++) {
       let sum = 0
       for (let j = 0; j < step; j++) sum += freqBuf[i * step + j] || 0
-      bins.push(Math.min(1, sum / step / 255))
+      halfBins.push(Math.min(1, sum / step / 255))
     }
     for (let i = 0; i < BARS; i++) {
-      const binIdx = i < half ? half - 1 - i : i - half
-      const target = bins[binIdx] ?? 0
+      let target: number
+      if (spectrumMode.value === 'bars') {
+        const binIdx = Math.min(i, freqBuf.length - 1)
+        let sum = 0
+        for (let j = 0; j < step; j++) sum += freqBuf[binIdx * step + j] || 0
+        target = Math.min(1, sum / step / 255)
+      } else {
+        const binIdx = i < half ? half - 1 - i : i - half
+        target = halfBins[binIdx] ?? 0
+      }
       const pv = prev[i] ?? 0
       next[i] = target >= pv ? target : Math.max(target, pv * 0.88)
     }
@@ -356,8 +370,16 @@ onUnmounted(() => {
             <div class="art" :class="{ 'art--playing': isPlaying, 'art--buffering': isBuffering }">
               <div class="art__vinyl"></div>
               <img class="art__cover" :src="current.cover" :alt="current.title" loading="lazy" />
+              <div v-if="spectrumMode === 'orbit'" class="spectrum spectrum--orbit">
+                <span
+                  v-for="(b, i) in bars"
+                  :key="i"
+                  class="spectrum__bar spectrum__bar--orbit"
+                  :style="{ transform: `rotate(${i * 11.25}deg) translateY(-150px) scaleY(${b})` }"
+                />
+              </div>
             </div>
-            <div class="spectrum">
+            <div v-if="spectrumMode !== 'orbit'" class="spectrum">
               <span
                 v-for="(b, i) in bars"
                 :key="i"
@@ -457,6 +479,15 @@ onUnmounted(() => {
                 title="均衡器"
               >
                 <PhSliders :size="18" />
+              </button>
+              <button
+                class="ctrl"
+                :class="{ 'ctrl--active': spectrumMode !== 'bars' }"
+                @click="cycleSpectrumMode"
+                aria-label="频谱样式"
+                :title="spectrumMode === 'bars' ? '频谱:经典' : spectrumMode === 'mirror' ? '频谱:对称' : '频谱:环绕'"
+              >
+                <PhWaveform :size="18" />
               </button>
               <button
                 class="ctrl"
@@ -841,6 +872,30 @@ onUnmounted(() => {
   border-radius: 2px;
   transform-origin: bottom center;
   opacity: 0.9;
+  transition: transform 0.08s ease-out;
+}
+
+.spectrum--orbit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  gap: 0;
+  pointer-events: none;
+}
+
+.spectrum__bar--orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 40px;
+  margin-left: -1.5px;
+  margin-top: -20px;
+  transform-origin: center;
+  background: linear-gradient(to top, transparent, var(--vibe, var(--color-accent)));
+  border-radius: 2px;
   transition: transform 0.08s ease-out;
 }
 
