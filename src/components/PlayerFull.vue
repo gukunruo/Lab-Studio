@@ -63,7 +63,7 @@ function cycleSpectrumMode() {
 
 function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
   const dpr = window.devicePixelRatio || 1
-  const cssSize = 320
+  const cssSize = 360
   if (canvas.width !== cssSize * dpr) {
     canvas.width = cssSize * dpr
     canvas.height = cssSize * dpr
@@ -76,8 +76,9 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
 
   const cx = cssSize / 2
   const cy = cssSize / 2
-  const baseR = 136
-  const maxAmp = 12
+  const baseR = 142
+  const maxAmp = 32
+  const innerR = 132
   const N = data.length
   const vibe = vibeColor.value
 
@@ -110,19 +111,43 @@ function drawOrbitWave(canvas: HTMLCanvasElement, data: number[]) {
     ctx.closePath()
   }
 
-  // soft outer glow
+  // filled aura between art edge and wave
+  ctx.beginPath()
+  for (let i = 0; i <= res; i++) {
+    const idx = i % res
+    const angle = (idx / res) * Math.PI * 2 - Math.PI / 2
+    const ir = innerR
+    const x = cx + Math.cos(angle) * ir
+    const y = cy + Math.sin(angle) * ir
+    if (i === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
+  }
+  for (let i = res; i >= 0; i--) {
+    const idx = i % res
+    ctx.lineTo(pts[idx]!.x, pts[idx]!.y)
+  }
+  ctx.closePath()
+  const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, baseR + maxAmp)
+  grad.addColorStop(0, vibe)
+  grad.addColorStop(1, 'transparent')
+  ctx.globalAlpha = 0.12
+  ctx.fillStyle = grad
+  ctx.fill()
+  ctx.globalAlpha = 1
+
+  // wide soft glow
   drawCurve()
   ctx.shadowColor = vibe
-  ctx.shadowBlur = 10
+  ctx.shadowBlur = 16
   ctx.strokeStyle = vibe
-  ctx.lineWidth = 3
-  ctx.globalAlpha = 0.2
+  ctx.lineWidth = 4
+  ctx.globalAlpha = 0.25
   ctx.stroke()
 
   // crisp main line
   drawCurve()
-  ctx.shadowBlur = 6
-  ctx.lineWidth = 1.5
+  ctx.shadowBlur = 8
+  ctx.lineWidth = 2
   ctx.globalAlpha = 1
   ctx.stroke()
 
@@ -439,7 +464,7 @@ onUnmounted(() => {
         </button>
 
         <div class="full__main">
-          <div class="cover-col">
+          <div class="cover-col" :class="{ 'cover-col--orbit': spectrumMode === 'orbit' }">
             <div class="art" :class="{ 'art--playing': isPlaying, 'art--buffering': isBuffering }">
               <div class="art__vinyl"></div>
               <img class="art__cover" :src="current.cover" :alt="current.title" loading="lazy" />
@@ -922,6 +947,10 @@ onUnmounted(() => {
   gap: var(--space-6);
 }
 
+.cover-col--orbit .art {
+  margin-bottom: calc(var(--space-6) + 44px);
+}
+
 .spectrum {
   display: flex;
   align-items: flex-end;
@@ -949,8 +978,8 @@ onUnmounted(() => {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 320px;
-  height: 320px;
+  width: 360px;
+  height: 360px;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
