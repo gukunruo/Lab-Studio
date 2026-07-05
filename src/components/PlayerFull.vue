@@ -413,7 +413,7 @@ function loop() {
       const pv = prev[i] ?? 0
       next[i] = target >= pv ? target : Math.max(target, pv * 0.82)
     }
-    // spatial smoothing — blend each bar with neighbors for smooth wave-like transitions
+    // spatial smoothing — 5-tap blend: smooth transitions while preserving peak variation
     const smoothed = Array(BARS)
     for (let i = 0; i < BARS; i++) {
       const a = next[(i - 2 + BARS) % BARS] ?? 0
@@ -421,7 +421,7 @@ function loop() {
       const c = next[i] ?? 0
       const d = next[(i + 1) % BARS] ?? 0
       const e = next[(i + 2) % BARS] ?? 0
-      smoothed[i] = a * 0.1 + b * 0.2 + c * 0.4 + d * 0.2 + e * 0.1
+      smoothed[i] = a * 0.05 + b * 0.15 + c * 0.6 + d * 0.15 + e * 0.05
     }
     bars.value = smoothed
     if (spectrumMode.value === 'orbit' && orbitCanvas.value) {
