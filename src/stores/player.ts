@@ -136,7 +136,7 @@ function prevIndex(from = currentIndex.value) {
 
 function next() {
   load(nextIndex())
-  if (isPlaying.value) play()
+  play()
 }
 
 function prev() {
@@ -145,7 +145,7 @@ function prev() {
     return
   }
   load(prevIndex())
-  if (isPlaying.value) play()
+  play()
 }
 
 function seek(time: number) {
