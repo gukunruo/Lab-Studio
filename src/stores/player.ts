@@ -16,7 +16,7 @@ const LIKED_KEY = 'lab-player-liked'
 const DISLIKED_KEY = 'lab-player-disliked'
 const PROGRESS_KEY = 'lab-player-progress'
 
-type Persisted = { volume?: number; playMode?: PlayMode; eqGains?: number[]; eqEnabled?: boolean }
+type Persisted = { volume?: number; playMode?: PlayMode; eqGains?: number[]; eqEnabled?: boolean; showFullPlayer?: boolean }
 type Progress = { collectionKey: 'all' | 'roco'; currentIndex: number; currentTime: number }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -74,7 +74,7 @@ const playMode = ref<PlayMode>(persisted.playMode ?? 'list')
 const eqGains = ref<number[]>(persisted.eqGains ?? [0, 0, 0, 0, 0])
 const eqEnabled = ref(persisted.eqEnabled ?? false)
 
-const showFullPlayer = ref(false)
+const showFullPlayer = ref(persisted.showFullPlayer ?? false)
 const showPlaylist = ref(false)
 const sleepTimer = ref<number | null>(null) // 剩余秒数,null=未启用
 let sleepTimerId: ReturnType<typeof setInterval> | null = null
@@ -351,7 +351,7 @@ function toggleEq() {
 load(currentIndex.value)
 
 export const usePlayerStore = defineStore('player', () => {
-  watch([volume, playMode, eqGains, eqEnabled], () => {
+  watch([volume, playMode, eqGains, eqEnabled, showFullPlayer], () => {
     try {
       localStorage.setItem(
         PERSIST_KEY,
@@ -360,6 +360,7 @@ export const usePlayerStore = defineStore('player', () => {
           playMode: playMode.value,
           eqGains: eqGains.value,
           eqEnabled: eqEnabled.value,
+          showFullPlayer: showFullPlayer.value,
         }),
       )
     } catch {}
