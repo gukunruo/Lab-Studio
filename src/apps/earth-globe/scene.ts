@@ -10,6 +10,7 @@ import {
   createToonGradient,
 } from './textures'
 import { LANDMARKS, latLonToVector3, type Landmark } from './landmarks'
+import { createLandmarkModel } from './models'
 
 interface SceneConfig {
   starCount: number
@@ -102,7 +103,7 @@ export class GlobeScene {
 
   private landmarkGroups: THREE.Group[] = []
   private landmarkTips: THREE.Mesh[] = []
-  private tipMaterials: THREE.MeshStandardMaterial[] = []
+  private ringMaterials: THREE.MeshBasicMaterial[] = []
   private raycaster = new THREE.Raycaster()
   private pointer = new THREE.Vector2()
   private hoveredGroup: THREE.Group | null = null
@@ -257,29 +258,10 @@ export class GlobeScene {
   private createLandmarkMarkers(): void {
     const up = new THREE.Vector3(0, 1, 0)
     for (const lm of LANDMARKS) {
-      const group = new THREE.Group()
+      const { group, tipMesh, geometries, materials } = createLandmarkModel(lm, this.toonGradient)
 
-      // Pin (cylinder pointing outward from surface)
-      const pinGeo = new THREE.CylinderGeometry(0.0035, 0.0035, 0.06, 8)
-      const pinMat = new THREE.MeshBasicMaterial({ color: PIN_COLOR })
-      const pin = new THREE.Mesh(pinGeo, pinMat)
-      pin.position.y = 0.03
-      group.add(pin)
-
-      // Glowing tip (emissive sphere)
-      const tipGeo = new THREE.SphereGeometry(0.018, 16, 16)
-      const tipMat = new THREE.MeshStandardMaterial({
-        color: PIN_COLOR,
-        emissive: PIN_COLOR,
-        emissiveIntensity: 0.8,
-        roughness: 0.4,
-      })
-      const tip = new THREE.Mesh(tipGeo, tipMat)
-      tip.position.y = 0.06
-      group.add(tip)
-
-      // Surface ring (flat on surface)
-      const ringGeo = new THREE.RingGeometry(0.024, 0.032, 32)
+      // Surface ring (visual indicator on globe surface)
+      const ringGeo = new THREE.RingGeometry(0.024, 0.034, 32)
       const ringMat = new THREE.MeshBasicMaterial({
         color: PIN_COLOR,
         transparent: true,
@@ -290,6 +272,9 @@ export class GlobeScene {
       ring.rotation.x = -Math.PI / 2
       group.add(ring)
 
+      // Invisible tip mesh for raycast
+      group.add(tipMesh)
+
       // Position and orient: Y axis points outward from earth center
       const pos = latLonToVector3(lm.lat, lm.lon, 1.0)
       group.position.copy(pos)
@@ -298,13 +283,13 @@ export class GlobeScene {
 
       group.userData.landmark = lm
 
-      this.geometries.push(pinGeo, tipGeo, ringGeo)
-      this.materials.push(pinMat, tipMat, ringMat)
+      this.geometries.push(...geometries, ringGeo)
+      this.materials.push(...materials, ringMat)
 
       this.earthMesh.add(group)
       this.landmarkGroups.push(group)
-      this.landmarkTips.push(tip)
-      this.tipMaterials.push(tipMat)
+      this.landmarkTips.push(tipMesh)
+      this.ringMaterials.push(ringMat)
     }
   }
 
@@ -368,11 +353,11 @@ export class GlobeScene {
     this.moonOrbit.rotation.y += MOON_SPEED * delta
     this.starfield.rotation.y += STAR_SPEED * delta
 
-    // Pulse tip glow
-    const pulse = 0.6 + Math.sin(this.elapsed * 2.5) * 0.25
-    for (let i = 0; i < this.tipMaterials.length; i++) {
-      const mat = this.tipMaterials[i]!
-      mat.emissiveIntensity = (this.landmarkGroups[i] === this.hoveredGroup ? 1.2 : pulse)
+    // Pulse ring glow
+    const pulse = 0.35 + Math.sin(this.elapsed * 2.5) * 0.2
+    for (let i = 0; i < this.ringMaterials.length; i++) {
+      const mat = this.ringMaterials[i]!
+      mat.opacity = (this.landmarkGroups[i] === this.hoveredGroup ? 0.85 : pulse)
     }
 
     // Camera animation
