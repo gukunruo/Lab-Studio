@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { and, eq } from 'drizzle-orm'
 import { db } from './db/client'
-import { chatSessions, learningProgress } from './db/schema'
+import { adminProfile, chatSessions, learningProgress } from './db/schema'
 import { authenticate, login, logout, requireAuth } from './auth'
 
 const USER_KEY = 'admin'
@@ -68,7 +68,33 @@ export function createApp() {
 
   app.get('/api/auth/me', async (c) => {
     if (!(await authenticate(c))) return c.json({ authenticated: false }, 401)
-    return c.json({ authenticated: true, username: process.env.ADMIN_USERNAME })
+    const profile = await db.select().from(adminProfile).where(eq(adminProfile.id, 1)).get()
+    return c.json({
+      authenticated: true,
+      username: profile?.displayName ?? process.env.ADMIN_USERNAME,
+      avatarUrl: profile?.avatarUrl ?? '',
+    })
+  })
+
+  app.get('/api/profile', requireAuth, async (c) => {
+    const profile = await db.select().from(adminProfile).where(eq(adminProfile.id, 1)).get()
+    return c.json({
+      displayName: profile?.displayName ?? process.env.ADMIN_USERNAME ?? '',
+      avatarUrl: profile?.avatarUrl ?? '',
+    })
+  })
+
+  app.put('/api/profile', requireAuth, async (c) => {
+    const body = await c.req.json().catch(() => null) as { displayName?: unknown; avatarUrl?: unknown } | null
+    if (!body || typeof body.displayName !== 'string' || body.displayName.length < 1 || body.displayName.length > 40 || typeof body.avatarUrl !== 'string' || body.avatarUrl.length > 500) {
+      return c.json({ error: 'invalid profile payload' }, 400)
+    }
+    const updatedAt = new Date()
+    await db.insert(adminProfile).values({ id: 1, displayName: body.displayName, avatarUrl: body.avatarUrl, updatedAt }).onConflictDoUpdate({
+      target: adminProfile.id,
+      set: { displayName: body.displayName, avatarUrl: body.avatarUrl, updatedAt },
+    })
+    return c.json({ displayName: body.displayName, avatarUrl: body.avatarUrl })
   })
 
   app.post('/api/auth/logout', async (c) => {

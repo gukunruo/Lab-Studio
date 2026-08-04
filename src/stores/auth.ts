@@ -4,11 +4,13 @@ import { ref } from 'vue'
 interface AuthResponse {
   authenticated: boolean
   username?: string
+  avatarUrl?: string
 }
 
 export const useAuthStore = defineStore('auth', () => {
   const authenticated = ref(false)
   const username = ref('')
+  const avatarUrl = ref('')
   const checking = ref(true)
   const error = ref('')
 
@@ -19,10 +21,12 @@ export const useAuthStore = defineStore('auth', () => {
       const data = await res.json() as AuthResponse
       authenticated.value = data.authenticated
       username.value = data.username ?? ''
+      avatarUrl.value = data.avatarUrl ?? ''
       return authenticated.value
     } catch {
       authenticated.value = false
       username.value = ''
+      avatarUrl.value = ''
       return false
     } finally {
       checking.value = false
@@ -45,14 +49,30 @@ export const useAuthStore = defineStore('auth', () => {
     const data = await res.json() as AuthResponse
     authenticated.value = data.authenticated
     username.value = data.username ?? user
+    avatarUrl.value = data.avatarUrl ?? ''
     return authenticated.value
+  }
+
+  async function updateProfile(displayName: string, nextAvatarUrl: string): Promise<boolean> {
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ displayName, avatarUrl: nextAvatarUrl }),
+    })
+    if (!res.ok) return false
+    const data = await res.json() as { displayName: string; avatarUrl: string }
+    username.value = data.displayName
+    avatarUrl.value = data.avatarUrl
+    return true
   }
 
   async function logout(): Promise<void> {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined)
     authenticated.value = false
     username.value = ''
+    avatarUrl.value = ''
   }
 
-  return { authenticated, username, checking, error, restore, login, logout }
+  return { authenticated, username, avatarUrl, checking, error, restore, login, updateProfile, logout }
 })
