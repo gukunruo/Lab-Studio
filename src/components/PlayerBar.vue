@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, onUnmounted, ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   PhPlay,
@@ -16,8 +16,12 @@ import {
   PhX,
 } from '@phosphor-icons/vue'
 import { usePlayerStore } from '@/stores/player'
+import { useUiStore } from '@/stores/ui'
+
+defineProps<{ compact?: boolean }>()
 
 const player = usePlayerStore()
+const ui = useUiStore()
 const {
   playlist,
   current,
@@ -87,13 +91,153 @@ function toggleMute() {
     player.setVolume(prevVolume.value)
   }
 }
+
+/* ---------- Draggable vinyl (learn mode) ---------- */
+const DISC_SIZE = 64
+const dragMoved = ref(false)
+let dragStartX = 0
+let dragStartY = 0
+let discRect: DOMRect | null = null
+
+const vinylStyle = computed(() => {
+  const pos = ui.playerPos
+  if (pos) {
+    return { left: `${pos.x}px`, top: `${pos.y}px`, right: 'auto', bottom: 'auto' }
+  }
+  return {}
+})
+
+function onVinylDown(e: PointerEvent) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  dragMoved.value = false
+  dragStartX = e.clientX
+  dragStartY = e.clientY
+  const wrap = (e.currentTarget as HTMLElement).closest('.vinyl-wrap') as HTMLElement | null
+  discRect = (wrap ?? (e.currentTarget as HTMLElement)).getBoundingClientRect()
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  window.addEventListener('pointermove', onWinMove)
+  window.addEventListener('pointerup', onWinUp, { once: true })
+}
+
+function onWinMove(e: PointerEvent) {
+  if (!discRect) return
+  const dx = e.clientX - dragStartX
+  const dy = e.clientY - dragStartY
+  if (!dragMoved.value && Math.hypot(dx, dy) > 4) {
+    dragMoved.value = true
+  }
+  if (!dragMoved.value) return
+  const w = discRect.width || DISC_SIZE
+  const h = discRect.height || DISC_SIZE
+  const margin = 8
+  let nx = discRect.left + dx
+  let ny = discRect.top + dy
+  nx = Math.max(margin, Math.min(nx, window.innerWidth - w - margin))
+  ny = Math.max(margin, Math.min(ny, window.innerHeight - h - margin))
+  if (ui.tutorOpen) {
+    const maxX = window.innerWidth - ui.tutorW - 12 - w
+    nx = Math.min(nx, Math.max(margin, maxX))
+  }
+  ui.setPlayerPos({ x: Math.round(nx), y: Math.round(ny) })
+}
+
+function onWinUp() {
+  window.removeEventListener('pointermove', onWinMove)
+  discRect = null
+}
+
+function onVinylClick(e: MouseEvent) {
+  const moved = dragMoved.value
+  dragMoved.value = false
+  if (moved) {
+    e.preventDefault()
+    e.stopPropagation()
+    return
+  }
+  player.toggle()
+}
+
+watch(
+  () => ui.tutorOpen,
+  async (open) => {
+    if (open) {
+      await nextTick()
+      const current = document.querySelector<HTMLElement>('.vinyl-wrap')?.getBoundingClientRect()
+      if (!current) return
+      if (!ui.playerRestPos) {
+        ui.setPlayerRestPos({ x: Math.round(current.left), y: Math.round(current.top) })
+      }
+      const margin = 12
+      const tutorLeft = window.innerWidth - ui.tutorW - margin
+      const safeX = Math.max(8, tutorLeft - DISC_SIZE - margin)
+      if (current.left + DISC_SIZE > tutorLeft) {
+        ui.setPlayerPos({ x: Math.round(safeX), y: Math.round(current.top) })
+      }
+      return
+    }
+
+    if (ui.playerRestPos) {
+      ui.setPlayerPos(ui.playerRestPos)
+      ui.setPlayerRestPos(null)
+    }
+  },
+)
+
+watch(
+  () => ui.tutorW,
+  () => {
+    if (!ui.tutorOpen || !ui.playerPos) return
+    const tutorLeft = window.innerWidth - ui.tutorW - 12
+    const maxX = tutorLeft - DISC_SIZE - 12
+    if (ui.playerPos.x > maxX) {
+      ui.setPlayerPos({ x: Math.max(8, Math.round(maxX)), y: ui.playerPos.y })
+    }
+  },
+)
+
+onUnmounted(() => {
+  window.removeEventListener('pointermove', onWinMove)
+  window.removeEventListener('pointerup', onWinUp)
+})
 </script>
 
 <template>
+  <!-- Learn mode: floating vinyl disc → drag to move, click to play/pause, hover expand -->
   <div
-    v-if="current"
-    class="bar"
+    v-if="compact && current"
+    class="vinyl-wrap"
+    :class="{ 'vinyl-wrap--dragging': dragMoved }"
+    :style="vinylStyle"
   >
+    <button
+      type="button"
+      class="vinyl"
+      :aria-label="`${current.title} · ${isPlaying ? '暂停' : '播放'}`"
+      :title="isPlaying ? '暂停' : '播放'"
+      @pointerdown="onVinylDown"
+      @click="onVinylClick"
+    >
+      <span class="vinyl__disc" :class="{ 'vinyl__disc--playing': isPlaying }">
+        <span class="vinyl__ring" aria-hidden="true" />
+        <img class="vinyl__cover" :src="current.cover" alt="" loading="lazy" draggable="false" />
+        <span class="vinyl__hole" aria-hidden="true" />
+      </span>
+      <span class="vinyl__play-hint" aria-hidden="true">
+        <component :is="isPlaying ? PhPause : PhPlay" :size="18" weight="fill" />
+      </span>
+    </button>
+    <button
+      type="button"
+      class="vinyl__expand"
+      aria-label="展开播放器"
+      title="展开播放器"
+      @click="player.openFull()"
+    >
+      <PhArrowsOutSimple :size="13" />
+    </button>
+  </div>
+
+  <div v-else-if="current" class="bar">
     <transition name="queue">
       <div
         v-if="showQueue"
@@ -285,6 +429,184 @@ function toggleMute() {
 </template>
 
 <style scoped lang="scss">
+.vinyl-wrap {
+  position: fixed;
+  right: var(--space-5);
+  bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
+  z-index: 30;
+  width: 64px;
+  height: 64px;
+  transition:
+    left 0.28s ease,
+    top 0.28s ease,
+    right 0.28s ease,
+    bottom 0.28s ease;
+}
+
+.vinyl-wrap--dragging {
+  transition: none;
+}
+
+.vinyl {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: grab;
+  background: transparent;
+  user-select: none;
+  -webkit-user-drag: none;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.18),
+    0 0 0 1px var(--color-border);
+  transition: transform 0.2s ease;
+}
+
+.vinyl:hover {
+  transform: scale(1.06);
+}
+
+.vinyl:active {
+  transform: scale(0.96);
+}
+
+.vinyl-wrap--dragging .vinyl {
+  transition: none;
+  cursor: grabbing;
+  transform: none;
+}
+
+.vinyl__play-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.18s;
+  pointer-events: none;
+}
+
+.vinyl:hover .vinyl__play-hint {
+  opacity: 1;
+}
+
+.vinyl__expand {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 0.18s, transform 0.18s, color 0.15s;
+  pointer-events: none;
+}
+
+.vinyl-wrap:hover .vinyl__expand {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.vinyl__expand:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.vinyl__disc {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.vinyl__cover {
+  position: absolute;
+  inset: 7px;
+  width: calc(100% - 14px);
+  height: calc(100% - 14px);
+  border-radius: 50%;
+  object-fit: cover;
+  z-index: 1;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.vinyl__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      transparent 38%,
+      rgba(24, 24, 27, 0.55) 39%,
+      rgba(24, 24, 27, 0.75) 52%,
+      rgba(39, 39, 42, 0.9) 70%,
+      #18181b 100%
+    );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.vinyl__hole {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--color-bg);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.vinyl__disc--playing {
+  animation: vinyl-spin 8s linear infinite;
+}
+
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vinyl__disc--playing {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .vinyl-wrap {
+    right: var(--space-3);
+    bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+    width: 56px;
+    height: 56px;
+  }
+
+  .vinyl {
+    width: 56px;
+    height: 56px;
+  }
+}
+
 .bar {
   position: sticky;
   bottom: 0;
@@ -636,6 +958,11 @@ function toggleMute() {
   padding: var(--space-2);
   overflow-y: auto;
   flex: 1;
+  scrollbar-width: none;
+}
+
+.queue__list::-webkit-scrollbar {
+  display: none;
 }
 
 .queue__list li {
