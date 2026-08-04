@@ -3,6 +3,7 @@ import { RouterLink } from 'vue-router'
 import { computed } from 'vue'
 import type { AppMeta } from '@/apps/_registry'
 import { useLocaleStore } from '@/stores/locale'
+import { usePlayerStore } from '@/stores/player'
 
 const props = defineProps<{ exp: AppMeta; routeName?: string }>()
 const i18n = useLocaleStore()
@@ -12,9 +13,17 @@ const reduce =
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const linkTarget = computed(() => ({
-  name: props.routeName ?? (props.exp.entry === 'direct' ? 'app-direct' : 'app'),
+  name: props.routeName ?? 'app',
   params: { slug: props.exp.slug },
 }))
+
+function openApp(event: MouseEvent) {
+  if (props.routeName || props.exp.slug !== 'music-player') return
+  event.preventDefault()
+  const player = usePlayerStore()
+  if (!player.current && player.playlist.length) player.playTrack(0)
+  player.openFull()
+}
 
 const kind = computed(() => {
   switch (props.exp.slug) {
@@ -54,6 +63,7 @@ function onLeave(e: MouseEvent) {
     :data-app="kind"
     @mousemove="onMove"
     @mouseleave="onLeave"
+    @click="openApp"
   >
     <div class="card__visual" :data-kind="kind">
       <template v-if="kind === 'music'">

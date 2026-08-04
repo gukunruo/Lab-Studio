@@ -8,7 +8,6 @@ const meta: AppMetaInput = {
   },
   tags: ['music', 'player'],
   date: '2026-07-04',
-  entry: 'direct',
 }
 
 export default meta

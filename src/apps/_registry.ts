@@ -14,7 +14,6 @@ export interface AppMetaInput {
 export interface AppMeta extends Required<Omit<AppMetaInput, 'icon' | 'entry'>> {
   slug: string
   icon?: string
-  entry?: 'frame' | 'direct'
   component: () => Promise<Component>
   doc?: string
 }
