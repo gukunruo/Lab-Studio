@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { PhMagnifyingGlass, PhSparkle } from '@phosphor-icons/vue'
+import { PhMagnifyingGlass } from '@phosphor-icons/vue'
 import { useAppStore } from '@/stores/apps'
 import { useLocaleStore } from '@/stores/locale'
 import AppCard from '@/components/AppCard.vue'
@@ -17,18 +17,6 @@ const i18n = useLocaleStore()
   </div>
 
   <section id="lab-grid" class="lab">
-    <div class="lab__intro">
-      <div>
-        <p class="lab__eyebrow"><PhSparkle :size="14" weight="fill" /> {{ i18n.t('nav.tab.lab') }}</p>
-        <h1 class="lab__title">{{ i18n.t('home.title') }}</h1>
-        <p class="lab__lede">{{ i18n.t('home.lede') }}</p>
-      </div>
-      <div class="lab__count" aria-live="polite">
-        <strong>{{ filtered.length }}</strong>
-        <span>{{ i18n.t('nav.appCount') }}</span>
-      </div>
-    </div>
-
     <div class="lab__toolbar">
       <div class="lab__search">
         <PhMagnifyingGlass :size="16" class="lab__search-icon" />
@@ -90,62 +78,7 @@ const i18n = useLocaleStore()
   z-index: 1;
   max-width: 1200px;
   margin: 0 auto;
-  padding: clamp(var(--space-8), 8vw, var(--space-16)) var(--space-6) var(--space-16);
-}
-
-.lab__intro {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-8);
-  margin-bottom: var(--space-10);
-}
-
-.lab__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0 0 var(--space-3);
-  color: var(--color-accent);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.lab__title {
-  margin: 0;
-  color: var(--color-text);
-  font-size: clamp(2.4rem, 5vw, 4rem);
-  letter-spacing: -0.06em;
-  line-height: 0.95;
-}
-
-.lab__lede {
-  max-width: 42rem;
-  margin: var(--space-4) 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.98rem;
-  line-height: 1.7;
-}
-
-.lab__count {
-  display: grid;
-  justify-items: end;
-  gap: 0.15rem;
-  flex-shrink: 0;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.lab__count strong {
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: 2rem;
-  letter-spacing: -0.05em;
+  padding: var(--space-8) var(--space-6) var(--space-16);
 }
 
 .lab__toolbar {
@@ -276,16 +209,6 @@ const i18n = useLocaleStore()
 }
 
 @media (max-width: 600px) {
-  .lab__intro {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--space-5);
-  }
-
-  .lab__count {
-    justify-items: start;
-  }
-
   .lab__toolbar {
     align-items: stretch;
     flex-direction: column;
