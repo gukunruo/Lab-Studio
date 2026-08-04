@@ -76,8 +76,11 @@ export function createApp() {
     return c.json({ authenticated: false })
   })
 
+  // 下面挂载到 /api 的业务接口都必须携带管理员 Session Cookie。
   const protectedApi = new Hono()
   protectedApi.use('*', requireAuth)
+
+  // 数据归属键由服务端决定，客户端不能自行选择其他数据。
 
   protectedApi.get('/progress', async (c) => {
     const row = await db.select().from(learningProgress).where(eq(learningProgress.userKey, USER_KEY)).get()
@@ -140,6 +143,7 @@ export function createApp() {
     })
   })
 
+  // 上游服务的凭证和流式响应都留在 Node 服务端，不暴露给浏览器。
   protectedApi.post('/ai/chat', async (c) => {
     const apiKey = process.env.ANTHROPIC_API_KEY
     const baseUrl = process.env.ANTHROPIC_BASE_URL

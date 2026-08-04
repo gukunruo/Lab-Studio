@@ -6,6 +6,7 @@ import { db } from './db/client'
 import { adminSessions } from './db/schema'
 
 export const SESSION_COOKIE = 'lab_session'
+// Session 采用有限有效期；退出登录或更换密钥后即可使会话失效。
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 function sessionHash(token: string): string {
