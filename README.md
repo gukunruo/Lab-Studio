@@ -17,8 +17,10 @@ npm install
 ### Compile and Hot-Reload for Development
 
 ```sh
-npm run dev
+pnpm dev:all
 ```
+
+`dev:all` 会同时启动 Vite 前端和 Hono 服务端。生产环境使用 `pnpm build && pnpm server`。
 
 ### Type-Check, Compile and Minify for Production
 
