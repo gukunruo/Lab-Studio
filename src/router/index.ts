@@ -3,10 +3,13 @@ import LabShell from '@/layouts/LabShell.vue'
 import LabHome from '@/views/LabHome.vue'
 import { apps } from '@/apps/_registry'
 import { worlds } from '@/worlds/_registry'
+import { useAuthStore } from '@/stores/auth'
+import LoginView from '@/views/LoginView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     {
       path: '/',
       component: LabShell,
@@ -47,6 +50,17 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  if (auth.checking) await auth.restore()
+  if (to.meta.public) {
+    if (to.name === 'login' && auth.authenticated) return { name: 'home' }
+    return true
+  }
+  if (!auth.authenticated) return { name: 'login', query: { redirect: to.fullPath } }
+  return true
 })
 
 export default router
