@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
+import { PhStudent } from '@phosphor-icons/vue'
 import { apps } from '@/apps/_registry'
+import { worlds } from '@/worlds/_registry'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { usePlayerStore } from '@/stores/player'
@@ -11,13 +14,22 @@ import PlayerFull from '@/components/PlayerFull.vue'
 const theme = useThemeStore()
 const i18n = useLocaleStore()
 const player = usePlayerStore()
+const route = useRoute()
 const { isPlaying } = storeToRefs(player)
+
+const isLearn = computed(() => route.name === 'learn')
+const itemCount = computed(() => (route.path.startsWith('/3d') ? worlds.length : apps.length))
 </script>
 
 <template>
-  <div class="shell">
+  <div class="shell" :class="{ 'shell--learn': isLearn }">
     <header class="shell__bar">
-      <RouterLink to="/" class="shell__brand">
+      <RouterLink
+        to="/"
+        class="shell__brand"
+        :aria-label="isLearn ? 'Lab Studio' : undefined"
+        :title="isLearn ? '返回 Lab' : undefined"
+      >
         <svg class="shell__logo" viewBox="0 0 100 100" aria-hidden="true">
           <defs>
             <mask id="lab-mask">
@@ -32,19 +44,55 @@ const { isPlaying } = storeToRefs(player)
               </g>
             </mask>
           </defs>
-          <polygon points="50,8 87,29.5 87,70.5 50,92 13,70.5 13,29.5"
-                   fill="currentColor" mask="url(#lab-mask)" />
+          <polygon
+            points="50,8 87,29.5 87,70.5 50,92 13,70.5 13,29.5"
+            fill="currentColor"
+            mask="url(#lab-mask)"
+          />
           <circle
-            cx="50" cy="50" r="8" fill="var(--color-accent)"
-            class="shell__logo-core" :class="{ 'shell__logo-core--playing': isPlaying }"
+            cx="50"
+            cy="50"
+            r="8"
+            fill="var(--color-accent)"
+            class="shell__logo-core"
+            :class="{ 'shell__logo-core--playing': isPlaying }"
           />
         </svg>
-        <span class="shell__brand-text">
-          <span class="shell__brand-main">Lab</span> <span class="shell__brand-sub">Studio</span>
+        <span v-if="!isLearn" class="shell__brand-text">
+          <span class="shell__brand-main">Lab</span>
+          <span class="shell__brand-sub">Studio</span>
         </span>
       </RouterLink>
-      <div class="shell__right">
-        <span class="shell__count">{{ apps.length }} {{ i18n.t('nav.appCount') }}</span>
+
+      <nav v-if="!isLearn" class="shell__tabs">
+        <RouterLink
+          to="/"
+          class="shell__tab"
+          :class="{
+            'shell__tab--active': route.name === 'home' || route.name === 'app',
+          }"
+        >
+          {{ i18n.t('nav.tab.lab') }}
+        </RouterLink>
+        <RouterLink
+          to="/3d"
+          class="shell__tab"
+          :class="{ 'shell__tab--active': route.path.startsWith('/3d') }"
+        >
+          {{ i18n.t('nav.tab.world') }}
+        </RouterLink>
+      </nav>
+
+      <div v-if="!isLearn" class="shell__right">
+        <span class="shell__count">{{ itemCount }} {{ i18n.t('nav.appCount') }}</span>
+        <RouterLink
+          to="/learn"
+          class="shell__learn"
+          :aria-label="i18n.t('nav.learnAria')"
+        >
+          <PhStudent :size="15" weight="bold" />
+          {{ i18n.t('nav.tab.learn') }}
+        </RouterLink>
         <button
           class="shell__pill"
           type="button"
@@ -63,10 +111,12 @@ const { isPlaying } = storeToRefs(player)
         </button>
       </div>
     </header>
+
     <main class="shell__main">
       <RouterView />
     </main>
-    <PlayerBar />
+
+    <PlayerBar :compact="isLearn" />
     <PlayerFull />
   </div>
 </template>
@@ -76,6 +126,31 @@ const { isPlaying } = storeToRefs(player)
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+.shell--learn {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.shell--learn .shell__bar {
+  display: none;
+}
+
+.shell--learn .shell__main {
+  position: relative;
+}
+
+.shell--learn .shell__logo {
+  width: 22px;
+  height: 22px;
+}
+
+.shell--learn .shell__main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .shell__bar {
@@ -104,6 +179,35 @@ const { isPlaying } = storeToRefs(player)
   width: 24px;
   height: 24px;
   flex-shrink: 0;
+}
+
+.shell__tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: var(--space-4);
+}
+
+.shell__tab {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.3rem 0.75rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  border-radius: var(--radius-full);
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.shell__tab:hover {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.shell__tab--active {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .shell__logo-core {
@@ -138,6 +242,7 @@ const { isPlaying } = storeToRefs(player)
 
 .shell__brand-sub {
   color: var(--color-text-muted);
+  margin-left: 0.25em;
 }
 
 .shell__right {
@@ -151,6 +256,33 @@ const { isPlaying } = storeToRefs(player)
   font-size: 0.78rem;
   color: var(--color-text-muted);
   margin-right: var(--space-2);
+}
+
+.shell__learn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  padding: 0.3rem 0.75rem;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  transition:
+    border-color 0.2s,
+    filter 0.2s,
+    transform 0.1s;
+}
+
+.shell__learn:hover {
+  border-color: var(--color-accent);
+  filter: brightness(1.03);
+}
+
+.shell__learn:active {
+  transform: scale(0.96);
 }
 
 .shell__pill {
@@ -187,6 +319,11 @@ const { isPlaying } = storeToRefs(player)
 
   .shell__count {
     display: none;
+  }
+
+  .shell--learn .shell__bar {
+    top: var(--space-3);
+    left: var(--space-3);
   }
 }
 </style>
