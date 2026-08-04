@@ -57,6 +57,8 @@ $radius-full: 9999px;
   --color-accent: #{$color-accent};
   --color-accent-strong: #{$color-accent-strong};
   --color-accent-soft: #{$color-accent-soft};
+  --color-accent-rgb: 13, 148, 136;
+  --color-on-accent: #04150e;
   --color-danger: #{$color-danger};
 
   --space-1: #{$space-1};
@@ -93,5 +95,6 @@ $radius-full: 9999px;
   --color-accent: #2dd4bf;
   --color-accent-strong: #5eead4;
   --color-accent-soft: rgba(45, 212, 191, 0.16);
+  --color-accent-rgb: 45, 212, 191;
   --color-danger: #f87171;
 }
