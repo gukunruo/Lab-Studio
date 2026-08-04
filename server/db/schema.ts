@@ -13,6 +13,13 @@ export const learningProgress = sqliteTable('learning_progress', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
+export const adminProfile = sqliteTable('admin_profile', {
+  id: integer('id').primaryKey(),
+  displayName: text('display_name').notNull(),
+  avatarUrl: text('avatar_url').notNull().default(''),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 export const adminSessions = sqliteTable('admin_sessions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   tokenHash: text('token_hash').notNull().unique(),
