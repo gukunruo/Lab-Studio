@@ -44,6 +44,17 @@
 
 按用户和课程保存 AI 助教消息。当前通过 `/api/chat-sessions/:lessonId` 提供读写，前端写入服务端失败时仍保留本地状态。
 
+### `admin_profile`
+
+保存单管理员的显示名称和头像 URL。表中固定使用 `id = 1`，不保存密码；没有资料记录时使用 `.env` 中的管理员账号作为默认显示名称。
+
+资料接口：
+
+- `GET /api/profile`：读取当前管理员资料，需要登录。
+- `PUT /api/profile`：更新 `displayName` 和 `avatarUrl`，需要登录；显示名称限制为 1–40 个字符，头像 URL 限制为最多 500 个字符。
+
+登录态接口 `/api/auth/me` 同时返回 `username` 和 `avatarUrl`，因此刷新页面后 Header 可以恢复资料显示。
+
 ## 当前 API 契约
 
 - `GET /api/health`：服务存活检查。
