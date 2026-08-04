@@ -25,10 +25,25 @@ async function submit() {
 <template>
   <main class="login">
     <section class="login__card">
-      <div class="login__mark" aria-hidden="true">L</div>
+      <svg class="login__logo" viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <mask id="login-lab-mask">
+            <rect width="100" height="100" fill="white" />
+            <g stroke="black" stroke-width="5" stroke-linecap="round">
+              <line x1="50" y1="50" x2="65.7" y2="23.4" />
+              <line x1="50" y1="50" x2="81.45" y2="50" />
+              <line x1="50" y1="50" x2="65.7" y2="76.6" />
+              <line x1="50" y1="50" x2="34.3" y2="76.6" />
+              <line x1="50" y1="50" x2="18.55" y2="50" />
+              <line x1="50" y1="50" x2="34.3" y2="23.4" />
+            </g>
+          </mask>
+        </defs>
+        <polygon points="50,8 87,29.5 87,70.5 50,92 13,70.5 13,29.5" fill="currentColor" mask="url(#login-lab-mask)" />
+        <circle cx="50" cy="50" r="8" fill="var(--color-accent)" />
+      </svg>
       <p class="login__eyebrow">LAB STUDIO</p>
       <h1>欢迎回来</h1>
-      <p class="login__intro">登录后继续你的实验与学习记录。</p>
       <form class="login__form" @submit.prevent="submit">
         <label>
           <span>账号</span>
@@ -67,17 +82,11 @@ async function submit() {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.08);
 }
 
-.login__mark {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
+.login__logo {
+  width: 48px;
+  height: 48px;
   margin-bottom: var(--space-5);
-  border-radius: 12px;
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-  font-weight: 800;
-  font-size: 1.25rem;
+  color: var(--color-text);
 }
 
 .login__eyebrow {

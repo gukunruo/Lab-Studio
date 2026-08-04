@@ -59,6 +59,13 @@ export async function streamChat(opts: {
   const decoder = new TextDecoder()
   let buffer = ''
   let full = ''
+  let finished = false
+
+  const finish = () => {
+    if (finished) return
+    finished = true
+    onDone(full)
+  }
 
   const flushBlock = (block: string): boolean => {
     const dataLines = block
@@ -68,7 +75,7 @@ export async function streamChat(opts: {
     if (!dataLines.length) return false
     const dataStr = dataLines.join('')
     if (dataStr === '[DONE]') {
-      onDone(full)
+      finish()
       return true
     }
     try {
@@ -77,7 +84,7 @@ export async function streamChat(opts: {
         full += evt.delta.text
         onToken(evt.delta.text)
       } else if (evt.type === 'message_stop') {
-        onDone(full)
+        finish()
         return true
       }
     } catch {
@@ -98,7 +105,7 @@ export async function streamChat(opts: {
     }
   }
   if (buffer.trim()) flushBlock(buffer)
-  onDone(full)
+  finish()
 }
 
 export function buildSystemPrompt(lesson: LessonMeta, step: Step | null): string {

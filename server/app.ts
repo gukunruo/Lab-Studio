@@ -63,7 +63,12 @@ export function createApp() {
       return c.json({ error: 'username and password required' }, 400)
     }
     if (!(await login(c, body.username, body.password))) return c.json({ error: 'invalid credentials' }, 401)
-    return c.json({ authenticated: true, username: process.env.ADMIN_USERNAME })
+    const profile = await db.select().from(adminProfile).where(eq(adminProfile.id, 1)).get()
+    return c.json({
+      authenticated: true,
+      username: profile?.displayName ?? process.env.ADMIN_USERNAME,
+      avatarUrl: profile?.avatarUrl ?? '',
+    })
   })
 
   app.get('/api/auth/me', async (c) => {
