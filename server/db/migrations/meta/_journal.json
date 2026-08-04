@@ -8,6 +8,13 @@
       "when": 1785831584153,
       "tag": "0000_serious_bloodaxe",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785836085235,
+      "tag": "0001_cheerful_slayback",
+      "breakpoints": true
     }
   ]
 }

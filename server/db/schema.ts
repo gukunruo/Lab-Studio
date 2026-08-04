@@ -13,6 +13,14 @@ export const learningProgress = sqliteTable('learning_progress', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
+export const adminSessions = sqliteTable('admin_sessions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 export const chatSessions = sqliteTable('chat_sessions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userKey: text('user_key').notNull(),

@@ -15,7 +15,7 @@ export interface ChatMessage {
 
 export async function getAiConfig(): Promise<AiConfig> {
   try {
-    const res = await fetch('/api/ai/config')
+    const res = await fetch('/api/ai/config', { credentials: 'include' })
     if (!res.ok) return { available: false, model: '', baseUrlMasked: '' }
     return (await res.json()) as AiConfig
   } catch {
@@ -39,6 +39,7 @@ export async function streamChat(opts: {
   const { messages, system, maxTokens = 2048, onToken, onDone, signal } = opts
 
   const res = await fetch('/api/ai/chat', {
+    credentials: 'include',
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

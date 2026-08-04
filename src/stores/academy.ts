@@ -5,21 +5,21 @@ import type { ChatMessage } from '@/learn/ai'
 
 const STORAGE_KEY = 'lab-ai-academy-progress'
 const CHAT_CAP = 50
-const USER_KEY = 'local-user'
-
 function syncProgress(payload: ProgressPayload): void {
   void fetch('/api/progress', {
     method: 'PUT',
+    credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ userKey: USER_KEY, ...payload }),
+    body: JSON.stringify(payload),
   }).catch(() => undefined)
 }
 
 function syncChat(lessonId: string, messages: ChatMessage[]): void {
   void fetch(`/api/chat-sessions/${encodeURIComponent(lessonId)}`, {
     method: 'PUT',
+    credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ userKey: USER_KEY, messages }),
+    body: JSON.stringify({ messages }),
   }).catch(() => undefined)
 }
 
@@ -29,8 +29,8 @@ async function hydrateRemote(
 ): Promise<void> {
   try {
     const [progressRes, chatsRes] = await Promise.all([
-      fetch(`/api/progress?userKey=${encodeURIComponent(USER_KEY)}`),
-      fetch(`/api/chat-sessions?userKey=${encodeURIComponent(USER_KEY)}`),
+      fetch('/api/progress', { credentials: 'include' }),
+      fetch('/api/chat-sessions', { credentials: 'include' }),
     ])
     if (progressRes.ok) {
       const remote = await progressRes.json() as ProgressPayload | null
