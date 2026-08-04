@@ -4,6 +4,8 @@
   "include": [
     "vite.config.*",
     "vite-ai-proxy.*",
+    "server/**/*.ts",
+    "drizzle.config.ts",
     "vitest.config.*",
     "cypress.config.*",
     "playwright.config.*",

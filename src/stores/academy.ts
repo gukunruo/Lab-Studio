@@ -5,6 +5,55 @@ import type { ChatMessage } from '@/learn/ai'
 
 const STORAGE_KEY = 'lab-ai-academy-progress'
 const CHAT_CAP = 50
+const USER_KEY = 'local-user'
+
+function syncProgress(payload: ProgressPayload): void {
+  void fetch('/api/progress', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ userKey: USER_KEY, ...payload }),
+  }).catch(() => undefined)
+}
+
+function syncChat(lessonId: string, messages: ChatMessage[]): void {
+  void fetch(`/api/chat-sessions/${encodeURIComponent(lessonId)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ userKey: USER_KEY, messages }),
+  }).catch(() => undefined)
+}
+
+async function hydrateRemote(
+  apply: (payload: ProgressPayload) => void,
+): Promise<void> {
+  try {
+    const res = await fetch(`/api/progress?userKey=${encodeURIComponent(USER_KEY)}`)
+    if (!res.ok) return
+    const remote = await res.json() as ProgressPayload | null
+    if (remote?.updatedAt) apply(remote)
+  } catch {
+    // localStorage remains the offline fallback
+  }
+}
+
+function payloadOf(
+  completed: string[],
+  lastOpened: string | null,
+  notes: string,
+  stepIndex: Record<string, number>,
+  chatHistory: Record<string, ChatMessage[]>,
+): ProgressPayload {
+  return {
+    completed: [...completed],
+    lastOpened,
+    notes,
+    stepIndex: { ...stepIndex },
+    chatHistory: { ...chatHistory },
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+
 
 type ProgressPayload = {
   completed: string[]
@@ -61,18 +110,25 @@ export const useAcademyStore = defineStore('ai-academy', () => {
   const todayLesson = computed(() => nextIncomplete(completedSet.value))
 
   function persist() {
-    const payload: ProgressPayload = {
-      completed: [...completed.value],
-      lastOpened: lastOpened.value,
-      notes: notes.value,
-      stepIndex: { ...stepIndex.value },
-      chatHistory: { ...chatHistory.value },
-      updatedAt: new Date().toISOString(),
-    }
+    const payload = payloadOf(
+      completed.value,
+      lastOpened.value,
+      notes.value,
+      stepIndex.value,
+      chatHistory.value,
+    )
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    syncProgress(payload)
   }
 
   watch([completed, lastOpened, notes, stepIndex, chatHistory], persist, { deep: true })
+
+  void hydrateRemote((remote) => {
+    completed.value = remote.completed
+    lastOpened.value = remote.lastOpened
+    notes.value = remote.notes
+    stepIndex.value = remote.stepIndex
+  })
 
   function isDone(id: string) {
     return completedSet.value.has(id)
@@ -109,12 +165,14 @@ export const useAcademyStore = defineStore('ai-academy', () => {
     list.push(msg)
     if (list.length > CHAT_CAP) list.splice(0, list.length - CHAT_CAP)
     chatHistory.value = { ...chatHistory.value, [id]: list }
+    syncChat(id, list)
   }
 
   function clearChat(id: string) {
     const next = { ...chatHistory.value }
     delete next[id]
     chatHistory.value = next
+    syncChat(id, [])
   }
 
   function resetProgress() {
