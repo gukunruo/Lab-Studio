@@ -9,14 +9,7 @@ import { useLocaleStore } from '@/stores/locale'
 import { usePlayerStore } from '@/stores/player'
 import PlayerBar from '@/components/PlayerBar.vue'
 import PlayerFull from '@/components/PlayerFull.vue'
-import { useAuthStore } from '@/stores/auth'
-
-const auth = useAuthStore()
-
-async function signOut() {
-  await auth.logout()
-  window.location.assign('/login')
-}
+import UserMenu from '@/layouts/UserMenu.vue'
 
 const theme = useThemeStore()
 const i18n = useLocaleStore()
@@ -97,7 +90,7 @@ const itemCount = computed(() => apps.length)
         >
           {{ theme.theme === 'dark' ? i18n.t('nav.theme.toLight') : i18n.t('nav.theme.toDark') }}
         </button>
-        <button class="shell__pill" type="button" @click="signOut">退出</button>
+        <UserMenu />
       </div>
     </header>
 
