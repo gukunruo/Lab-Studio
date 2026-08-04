@@ -4,7 +4,6 @@ import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { PhStudent } from '@phosphor-icons/vue'
 import { apps } from '@/apps/_registry'
-import { worlds } from '@/worlds/_registry'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { usePlayerStore } from '@/stores/player'
@@ -26,7 +25,7 @@ const route = useRoute()
 const { isPlaying } = storeToRefs(player)
 
 const isLearn = computed(() => route.name === 'learn')
-const itemCount = computed(() => (route.path.startsWith('/3d') ? worlds.length : apps.length))
+const itemCount = computed(() => apps.length)
 </script>
 
 <template>
@@ -71,25 +70,6 @@ const itemCount = computed(() => (route.path.startsWith('/3d') ? worlds.length :
           <span class="shell__brand-sub">Studio</span>
         </span>
       </RouterLink>
-
-      <nav v-if="!isLearn" class="shell__tabs">
-        <RouterLink
-          to="/"
-          class="shell__tab"
-          :class="{
-            'shell__tab--active': route.name === 'home' || route.name === 'app',
-          }"
-        >
-          {{ i18n.t('nav.tab.lab') }}
-        </RouterLink>
-        <RouterLink
-          to="/3d"
-          class="shell__tab"
-          :class="{ 'shell__tab--active': route.path.startsWith('/3d') }"
-        >
-          {{ i18n.t('nav.tab.world') }}
-        </RouterLink>
-      </nav>
 
       <div v-if="!isLearn" class="shell__right">
         <span class="shell__count">{{ itemCount }} {{ i18n.t('nav.appCount') }}</span>
@@ -188,35 +168,6 @@ const itemCount = computed(() => (route.path.startsWith('/3d') ? worlds.length :
   width: 24px;
   height: 24px;
   flex-shrink: 0;
-}
-
-.shell__tabs {
-  display: flex;
-  gap: var(--space-1);
-  margin-left: var(--space-4);
-}
-
-.shell__tab {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 500;
-  padding: 0.3rem 0.75rem;
-  color: var(--color-text-muted);
-  text-decoration: none;
-  border-radius: var(--radius-full);
-  transition:
-    color 0.2s,
-    background 0.2s;
-}
-
-.shell__tab:hover {
-  color: var(--color-text);
-  background: var(--color-surface-2);
-}
-
-.shell__tab--active {
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
 }
 
 .shell__logo-core {
