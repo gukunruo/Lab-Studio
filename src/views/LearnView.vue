@@ -19,7 +19,7 @@ import {
   PhPencilSimple,
   PhFloppyDisk,
   PhArrowCounterClockwise,
-  PhHighlighter,
+  PhWarningCircle,
   PhCopy,
   PhChatText,
 } from '@phosphor-icons/vue'
@@ -166,10 +166,26 @@ async function saveAnnotations(next: Annotation[]) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ annotations: next }),
     })
-    if (res.ok) annotations.value = next
+    if (!res.ok) throw new Error('annotation save failed')
+    annotations.value = next
+    await nextTick()
+    applyAnnotations()
+  } catch {
+    // 标注保存失败时保留选中文本，用户可以重新选择颜色重试。
   } finally {
     annotationSaving.value = false
   }
+}
+
+function keepSelection(event: MouseEvent) {
+  event.stopPropagation()
+}
+
+function resetSelectionToolbar() {
+  window.setTimeout(() => {
+    const selection = window.getSelection()
+    if (!selection?.toString().trim()) closeSelectionToolbar()
+  }, 0)
 }
 
 function annotate(color: AnnotationColor) {
@@ -866,6 +882,7 @@ onUnmounted(() => {
           :class="{ 'learn__reader--walk': effectiveMode === 'walk' }"
           @scroll="onReaderScroll"
           @mouseup="onReaderSelection"
+          @mousedown="resetSelectionToolbar"
           v-html="readerHtml"
         />
         <div
@@ -874,10 +891,16 @@ onUnmounted(() => {
           :style="{ left: `${selectionToolbar.x}px`, top: `${selectionToolbar.y}px` }"
           role="toolbar"
           aria-label="选中文本工具"
-          @mousedown.prevent
+          @mousedown="keepSelection"
         >
-          <button v-for="color in annotationColors" :key="color.value" type="button" :title="color.label" @click="annotate(color.value)">
-            <PhHighlighter :size="15" />
+          <button type="button" title="待理解" @click.stop="annotate('understand')">
+            <PhCircle :size="15" weight="fill" />
+          </button>
+          <button type="button" title="已掌握" @click.stop="annotate('mastered')">
+            <PhCheckCircle :size="15" weight="fill" />
+          </button>
+          <button type="button" title="易错" @click.stop="annotate('mistake')">
+            <PhWarningCircle :size="15" weight="fill" />
           </button>
           <button type="button" title="复制" @click="copySelection"><PhCopy :size="15" /></button>
           <button type="button" title="AI 分析" @click="explainSelection"><PhChatText :size="15" /></button>
@@ -1676,6 +1699,13 @@ onUnmounted(() => {
   background: var(--color-accent-soft);
   color: var(--color-accent);
 }
+
+.learn__selection-toolbar button:nth-child(1) { color: #ca8a04; }
+.learn__selection-toolbar button:nth-child(2) { color: #0f766e; }
+.learn__selection-toolbar button:nth-child(3) { color: #dc2626; }
+.learn__selection-toolbar button:nth-child(1):hover { background: rgba(250, 204, 21, 0.2); }
+.learn__selection-toolbar button:nth-child(2):hover { background: rgba(45, 212, 191, 0.2); }
+.learn__selection-toolbar button:nth-child(3):hover { background: rgba(248, 113, 113, 0.2); }
 
 .learn__reader--walk {
   max-width: 42rem;
