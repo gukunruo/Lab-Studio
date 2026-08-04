@@ -90,6 +90,16 @@ export function createApp() {
     return c.json({ ok: true, updatedAt: updatedAt.toISOString() })
   })
 
+  app.get('/api/chat-sessions', async (c) => {
+    const userKey = queryUserKey(c.req.query('userKey'))
+    if (!userKey) return c.json({ error: 'valid userKey required' }, 400)
+    const rows = await db
+      .select({ lessonId: chatSessions.lessonId, messages: chatSessions.messages, updatedAt: chatSessions.updatedAt })
+      .from(chatSessions)
+      .where(eq(chatSessions.userKey, userKey))
+    return c.json(rows)
+  })
+
   app.get('/api/chat-sessions/:lessonId', async (c) => {
     const userKey = queryUserKey(c.req.query('userKey'))
     const lessonId = c.req.param('lessonId')

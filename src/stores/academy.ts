@@ -25,12 +25,21 @@ function syncChat(lessonId: string, messages: ChatMessage[]): void {
 
 async function hydrateRemote(
   apply: (payload: ProgressPayload) => void,
+  applyChats: (chats: Record<string, ChatMessage[]>) => void,
 ): Promise<void> {
   try {
-    const res = await fetch(`/api/progress?userKey=${encodeURIComponent(USER_KEY)}`)
-    if (!res.ok) return
-    const remote = await res.json() as ProgressPayload | null
-    if (remote?.updatedAt) apply(remote)
+    const [progressRes, chatsRes] = await Promise.all([
+      fetch(`/api/progress?userKey=${encodeURIComponent(USER_KEY)}`),
+      fetch(`/api/chat-sessions?userKey=${encodeURIComponent(USER_KEY)}`),
+    ])
+    if (progressRes.ok) {
+      const remote = await progressRes.json() as ProgressPayload | null
+      if (remote?.updatedAt) apply(remote)
+    }
+    if (chatsRes.ok) {
+      const rows = await chatsRes.json() as Array<{ lessonId: string; messages: ChatMessage[] }>
+      applyChats(Object.fromEntries(rows.map((row) => [row.lessonId, row.messages])))
+    }
   } catch {
     // localStorage remains the offline fallback
   }
@@ -123,12 +132,17 @@ export const useAcademyStore = defineStore('ai-academy', () => {
 
   watch([completed, lastOpened, notes, stepIndex, chatHistory], persist, { deep: true })
 
-  void hydrateRemote((remote) => {
-    completed.value = remote.completed
-    lastOpened.value = remote.lastOpened
-    notes.value = remote.notes
-    stepIndex.value = remote.stepIndex
-  })
+  void hydrateRemote(
+    (remote) => {
+      completed.value = remote.completed
+      lastOpened.value = remote.lastOpened
+      notes.value = remote.notes
+      stepIndex.value = remote.stepIndex
+    },
+    (chats) => {
+      chatHistory.value = { ...chatHistory.value, ...chats }
+    },
+  )
 
   function isDone(id: string) {
     return completedSet.value.has(id)
