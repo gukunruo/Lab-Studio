@@ -6,7 +6,9 @@ import { db } from './db/client'
 import { adminProfile, chatSessions, learningProgress } from './db/schema'
 import { authenticate, login, logout, requireAuth } from './auth'
 
+// 单管理员模式下，所有学习数据都归属于这个固定的数据键；客户端不能提交自己的归属键。
 const USER_KEY = 'admin'
+// 限制笔记和聊天请求体的规模，避免浏览器误操作或异常请求持续膨胀 SQLite 文件。
 const NOTE_MAX = 20_000
 const MESSAGE_MAX = 50
 
@@ -52,11 +54,17 @@ function maskUrl(value: string): string {
 export function createApp() {
   const app = new Hono()
 
+  // 开发环境由 Vite 代理 /api；生产环境由这里统一处理跨域和静态资源。
+  // credentials 必须开启，否则浏览器不会携带 HttpOnly Session Cookie。
   app.use('/api/*', cors({ origin: (origin) => origin ?? '', credentials: true }))
+  // API 之外的请求交给构建产物，Node 服务因此可以独立托管整个 Vue 应用。
   app.use('/*', serveStatic({ root: './dist' }))
 
+  // 健康检查不要求登录，供本地启动检查和部署探针使用。
   app.get('/api/health', (c) => c.json({ ok: true, service: 'lab-studio' }))
 
+  // 登录成功只创建服务端 Session；密码和 Session 原文永远不返回浏览器。
+  // 返回资料是为了让登录后的 Header 无需再发起一次恢复请求。
   app.post('/api/auth/login', async (c) => {
     const body = await c.req.json().catch(() => null) as { username?: unknown; password?: unknown } | null
     if (!body || typeof body.username !== 'string' || typeof body.password !== 'string') {
@@ -81,6 +89,7 @@ export function createApp() {
     })
   })
 
+  // 资料属于管理员账号本身，不和课程进度混在一起；没有记录时返回环境变量中的默认名称。
   app.get('/api/profile', requireAuth, async (c) => {
     const profile = await db.select().from(adminProfile).where(eq(adminProfile.id, 1)).get()
     return c.json({
@@ -89,6 +98,7 @@ export function createApp() {
     })
   })
 
+  // 只允许更新显示资料，不允许客户端通过资料接口改变认证账号或 Session。
   app.put('/api/profile', requireAuth, async (c) => {
     const body = await c.req.json().catch(() => null) as { displayName?: unknown; avatarUrl?: unknown } | null
     if (!body || typeof body.displayName !== 'string' || body.displayName.length < 1 || body.displayName.length > 40 || typeof body.avatarUrl !== 'string' || body.avatarUrl.length > 500) {
