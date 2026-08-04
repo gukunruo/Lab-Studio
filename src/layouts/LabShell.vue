@@ -2,8 +2,7 @@
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
-import { PhStudent } from '@phosphor-icons/vue'
-import { apps } from '@/apps/_registry'
+import { PhMoon, PhStudent, PhSun, PhTranslate } from '@phosphor-icons/vue'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { usePlayerStore } from '@/stores/player'
@@ -18,7 +17,6 @@ const route = useRoute()
 const { isPlaying } = storeToRefs(player)
 
 const isLearn = computed(() => route.name === 'learn')
-const itemCount = computed(() => apps.length)
 </script>
 
 <template>
@@ -65,30 +63,34 @@ const itemCount = computed(() => apps.length)
       </RouterLink>
 
       <div v-if="!isLearn" class="shell__right">
-        <span class="shell__count">{{ itemCount }} {{ i18n.t('nav.appCount') }}</span>
         <RouterLink
           to="/learn"
           class="shell__learn"
           :aria-label="i18n.t('nav.learnAria')"
         >
-          <PhStudent :size="15" weight="bold" />
-          {{ i18n.t('nav.tab.learn') }}
+          <PhStudent :size="16" weight="bold" />
+          <span>{{ i18n.t('nav.tab.learn') }}</span>
         </RouterLink>
+        <div class="shell__divider" aria-hidden="true" />
         <button
-          class="shell__pill"
+          class="shell__icon-button"
           type="button"
           @click="i18n.toggle()"
           :aria-label="i18n.locale === 'zh' ? i18n.t('nav.locale.toEnAria') : i18n.t('nav.locale.toZhAria')"
+          :title="i18n.locale === 'zh' ? i18n.t('nav.locale.toEnAria') : i18n.t('nav.locale.toZhAria')"
         >
-          {{ i18n.locale === 'zh' ? i18n.t('nav.locale.toEn') : i18n.t('nav.locale.toZh') }}
+          <PhTranslate :size="18" weight="regular" />
+          <span class="shell__icon-label">{{ i18n.locale === 'zh' ? 'EN' : '中' }}</span>
         </button>
         <button
-          class="shell__pill"
+          class="shell__icon-button"
           type="button"
           @click="theme.toggle()"
           :aria-label="theme.theme === 'dark' ? i18n.t('nav.theme.toLightAria') : i18n.t('nav.theme.toDarkAria')"
+          :title="theme.theme === 'dark' ? i18n.t('nav.theme.toLightAria') : i18n.t('nav.theme.toDarkAria')"
         >
-          {{ theme.theme === 'dark' ? i18n.t('nav.theme.toLight') : i18n.t('nav.theme.toDark') }}
+          <PhSun v-if="theme.theme === 'dark'" :size="18" weight="regular" />
+          <PhMoon v-else :size="18" weight="regular" />
         </button>
         <UserMenu />
       </div>
@@ -142,19 +144,31 @@ const itemCount = computed(() => apps.length)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
-  padding: 0 var(--space-6);
-  background: var(--color-bg);
+  min-height: 68px;
+  padding: 0 clamp(var(--space-4), 4vw, var(--space-8));
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
   border-bottom: 1px solid var(--color-border);
+  backdrop-filter: blur(16px);
+}
+
+.shell__bar::after {
+  content: '';
+  position: absolute;
+  inset: auto clamp(var(--space-4), 4vw, var(--space-8)) 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--color-accent-rgb), 0.35), transparent);
+  pointer-events: none;
 }
 
 .shell__brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 0.65rem;
+  min-width: 0;
   font-size: 0.95rem;
   letter-spacing: -0.01em;
   color: var(--color-text);
+  text-decoration: none;
 }
 
 .shell__logo {
@@ -201,14 +215,51 @@ const itemCount = computed(() => apps.length)
 .shell__right {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.shell__divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 0.35rem;
+  background: var(--color-border);
+}
+
+.shell__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s, transform 0.15s;
+}
+
+.shell__icon-button:hover {
+  color: var(--color-accent);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.shell__icon-button:active {
+  transform: scale(0.94);
+}
+
+.shell__icon-label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  line-height: 1;
 }
 
 .shell__count {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--color-text-muted);
-  margin-right: var(--space-2);
+  display: none;
 }
 
 .shell__learn {
@@ -270,7 +321,7 @@ const itemCount = computed(() => apps.length)
     padding: 0 var(--space-4);
   }
 
-  .shell__count {
+  .shell__icon-label {
     display: none;
   }
 
