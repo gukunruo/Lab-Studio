@@ -35,3 +35,19 @@ export const chatSessions = sqliteTable('chat_sessions', {
   messages: text('messages', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
+
+// 保存管理员对课程 Markdown 的个人覆盖版本；没有记录时前端继续使用仓库基线。
+export const lessonDocuments = sqliteTable('lesson_documents', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  lessonId: text('lesson_id').notNull().unique(),
+  content: text('content').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
+// 标注暂以整课 JSON 保存，便于支持同一段文字多种颜色、笔记和失效状态。
+export const lessonAnnotations = sqliteTable('lesson_annotations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  lessonId: text('lesson_id').notNull().unique(),
+  annotations: text('annotations', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})

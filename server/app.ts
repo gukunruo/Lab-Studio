@@ -3,7 +3,13 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { and, eq } from 'drizzle-orm'
 import { db } from './db/client'
-import { adminProfile, chatSessions, learningProgress } from './db/schema'
+import {
+  adminProfile,
+  chatSessions,
+  learningProgress,
+  lessonAnnotations,
+  lessonDocuments,
+} from './db/schema'
 import { authenticate, login, logout, requireAuth } from './auth'
 
 // 单管理员模式下，所有学习数据都归属于这个固定的数据键；客户端不能提交自己的归属键。
@@ -172,6 +178,62 @@ export function createApp() {
     } else {
       await db.insert(chatSessions).values({ userKey: USER_KEY, lessonId, messages: body.messages, updatedAt })
     }
+    return c.json({ ok: true, updatedAt: updatedAt.toISOString() })
+  })
+
+  // 文档覆盖和标注都按课程隔离，并由服务端固定管理员身份归属。
+  protectedApi.get('/lesson-documents/:lessonId', async (c) => {
+    const lessonId = c.req.param('lessonId')
+    if (!lessonId || lessonId.length > 128) return c.json({ error: 'invalid lesson id' }, 400)
+    const row = await db.select({ content: lessonDocuments.content, updatedAt: lessonDocuments.updatedAt })
+      .from(lessonDocuments)
+      .where(eq(lessonDocuments.lessonId, lessonId))
+      .get()
+    return c.json(row ?? null)
+  })
+
+  protectedApi.put('/lesson-documents/:lessonId', async (c) => {
+    const lessonId = c.req.param('lessonId')
+    const body = await c.req.json<{ content?: unknown }>().catch(() => null)
+    if (!lessonId || lessonId.length > 128 || !body || typeof body.content !== 'string' || body.content.length > 200_000) {
+      return c.json({ error: 'invalid lesson document' }, 400)
+    }
+    const updatedAt = new Date()
+    await db.insert(lessonDocuments).values({ lessonId, content: body.content, updatedAt }).onConflictDoUpdate({
+      target: lessonDocuments.lessonId,
+      set: { content: body.content, updatedAt },
+    })
+    return c.json({ ok: true, updatedAt: updatedAt.toISOString() })
+  })
+
+  protectedApi.delete('/lesson-documents/:lessonId', async (c) => {
+    const lessonId = c.req.param('lessonId')
+    if (!lessonId || lessonId.length > 128) return c.json({ error: 'invalid lesson id' }, 400)
+    await db.delete(lessonDocuments).where(eq(lessonDocuments.lessonId, lessonId))
+    return c.json({ ok: true })
+  })
+
+  protectedApi.get('/lesson-annotations/:lessonId', async (c) => {
+    const lessonId = c.req.param('lessonId')
+    if (!lessonId || lessonId.length > 128) return c.json({ error: 'invalid lesson id' }, 400)
+    const row = await db.select({ annotations: lessonAnnotations.annotations, updatedAt: lessonAnnotations.updatedAt })
+      .from(lessonAnnotations)
+      .where(eq(lessonAnnotations.lessonId, lessonId))
+      .get()
+    return c.json(row ?? { annotations: [] })
+  })
+
+  protectedApi.put('/lesson-annotations/:lessonId', async (c) => {
+    const lessonId = c.req.param('lessonId')
+    const body = await c.req.json<{ annotations?: unknown }>().catch(() => null)
+    if (!lessonId || lessonId.length > 128 || !body || !Array.isArray(body.annotations) || body.annotations.length > 300) {
+      return c.json({ error: 'invalid lesson annotations' }, 400)
+    }
+    const updatedAt = new Date()
+    await db.insert(lessonAnnotations).values({ lessonId, annotations: body.annotations, updatedAt }).onConflictDoUpdate({
+      target: lessonAnnotations.lessonId,
+      set: { annotations: body.annotations, updatedAt },
+    })
     return c.json({ ok: true, updatedAt: updatedAt.toISOString() })
   })
 
