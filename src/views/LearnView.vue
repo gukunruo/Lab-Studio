@@ -16,6 +16,12 @@ import {
   PhSparkle,
   PhBookOpen,
   PhFlowArrow,
+  PhPencilSimple,
+  PhFloppyDisk,
+  PhArrowCounterClockwise,
+  PhHighlighter,
+  PhCopy,
+  PhChatText,
 } from '@phosphor-icons/vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useAcademyStore } from '@/stores/academy'
@@ -49,6 +55,28 @@ const listEl = ref<HTMLElement | null>(null)
 const tutorRef = ref<{ sendPrompt: (t: string) => void } | null>(null)
 const copied = ref(false)
 const menuOpen = ref(false)
+const editing = ref(false)
+const draft = ref('')
+const savedContent = ref<string | null>(null)
+const savingDocument = ref(false)
+const documentStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+type AnnotationColor = 'understand' | 'mastered' | 'mistake'
+type Annotation = {
+  id: string
+  quote: string
+  color: AnnotationColor
+  createdAt: string
+  stale?: boolean
+}
+const annotations = ref<Annotation[]>([])
+const selectionToolbar = ref<{ text: string; x: number; y: number } | null>(null)
+const annotationSaving = ref(false)
+const selectedText = ref('')
+const annotationColors: Array<{ value: AnnotationColor; label: string }> = [
+  { value: 'understand', label: '待理解' },
+  { value: 'mastered', label: '已掌握' },
+  { value: 'mistake', label: '易错' },
+]
 const sideOpen = ref(false)
 const readProgress = ref(0)
 const dragging = ref(false)
@@ -72,11 +100,160 @@ const grouped = computed(() =>
   })),
 )
 
-const markdownSource = computed(() => {
+const baseMarkdownSource = computed(() => {
   if (pane.value === 'readme') return guideSources.readme
   if (pane.value === 'profile') return guideSources.profile
   if (pane.value === 'resume') return guideSources.resume
   return lessonSource(activeLesson.value)
+})
+
+const markdownSource = computed(() => editing.value ? draft.value : (savedContent.value ?? baseMarkdownSource.value))
+
+const editableDocument = computed(() => pane.value === 'lesson')
+
+function loadDocumentOverride() {
+  if (!editableDocument.value) return
+  const lessonId = encodeURIComponent(activeLesson.value.id)
+  void Promise.all([
+    fetch(`/api/lesson-documents/${lessonId}`, { credentials: 'include' }),
+    fetch(`/api/lesson-annotations/${lessonId}`, { credentials: 'include' }),
+  ])
+    .then(async ([documentRes, annotationRes]) => {
+      const documentData = documentRes.ok ? await documentRes.json() as { content?: string } : null
+      const annotationData = annotationRes.ok ? await annotationRes.json() as { annotations?: unknown[] } : null
+      savedContent.value = typeof documentData?.content === 'string' ? documentData.content : null
+      annotations.value = Array.isArray(annotationData?.annotations)
+        ? annotationData.annotations.filter((item): item is Annotation => {
+          if (!item || typeof item !== 'object') return false
+          const value = item as Record<string, unknown>
+          return typeof value.id === 'string' && typeof value.quote === 'string'
+            && (value.color === 'understand' || value.color === 'mastered' || value.color === 'mistake')
+        })
+        : []
+      if (!editing.value) draft.value = savedContent.value ?? baseMarkdownSource.value
+    })
+    .catch(() => undefined)
+}
+
+function closeSelectionToolbar() {
+  selectionToolbar.value = null
+  selectedText.value = ''
+}
+
+function onReaderSelection() {
+  if (editing.value || !editableDocument.value) return
+  const selection = window.getSelection()
+  const text = selection?.toString().trim() ?? ''
+  if (!selection || text.length < 2 || !readerEl.value?.contains(selection.anchorNode)) {
+    closeSelectionToolbar()
+    return
+  }
+  const rect = selection.getRangeAt(0).getBoundingClientRect()
+  selectedText.value = text
+  selectionToolbar.value = {
+    text,
+    x: Math.min(Math.max(12, rect.left + rect.width / 2 - 150), window.innerWidth - 312),
+    y: Math.max(12, rect.top - 48),
+  }
+}
+
+async function saveAnnotations(next: Annotation[]) {
+  annotationSaving.value = true
+  try {
+    const res = await fetch(`/api/lesson-annotations/${encodeURIComponent(activeLesson.value.id)}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ annotations: next }),
+    })
+    if (res.ok) annotations.value = next
+  } finally {
+    annotationSaving.value = false
+  }
+}
+
+function annotate(color: AnnotationColor) {
+  if (!selectedText.value || annotationSaving.value) return
+  const existing = annotations.value.find((item) => item.quote === selectedText.value)
+  const next = existing
+    ? annotations.value.map((item) => item.id === existing.id ? { ...item, color, stale: false } : item)
+    : [...annotations.value, {
+      id: crypto.randomUUID(), quote: selectedText.value, color, createdAt: new Date().toISOString(),
+    }]
+  void saveAnnotations(next)
+  closeSelectionToolbar()
+}
+
+function copySelection() {
+  if (!selectedText.value) return
+  void navigator.clipboard.writeText(selectedText.value)
+  closeSelectionToolbar()
+}
+
+function explainSelection() {
+  if (!selectedText.value) return
+  const quote = selectedText.value
+  closeSelectionToolbar()
+  ui.toggleTutor(true)
+  nextTick(() => tutorRef.value?.sendPrompt(
+    `请结合当前课程「${readerTitle.value}」和当前步骤，用前端工程师能懂的类比解释下面这段原文：\n\n「${quote}」`,
+  ))
+}
+
+function startEditing() {
+  if (!editableDocument.value) return
+  draft.value = savedContent.value ?? baseMarkdownSource.value
+  editing.value = true
+  menuOpen.value = false
+}
+
+function cancelEditing() {
+  editing.value = false
+  draft.value = ''
+  documentStatus.value = 'idle'
+}
+
+async function saveDocument() {
+  if (!editableDocument.value || savingDocument.value) return
+  savingDocument.value = true
+  documentStatus.value = 'saving'
+  try {
+    const res = await fetch(`/api/lesson-documents/${encodeURIComponent(activeLesson.value.id)}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: draft.value }),
+    })
+    if (!res.ok) throw new Error('save failed')
+    savedContent.value = draft.value
+    documentStatus.value = 'saved'
+    editing.value = false
+  } catch {
+    documentStatus.value = 'error'
+  } finally {
+    savingDocument.value = false
+  }
+}
+
+async function restoreDocument() {
+  if (!editableDocument.value || !window.confirm('恢复仓库中的原始文档？当前个人修改将被删除。')) return
+  const res = await fetch(`/api/lesson-documents/${encodeURIComponent(activeLesson.value.id)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  }).catch(() => null)
+  if (!res?.ok) {
+    documentStatus.value = 'error'
+    return
+  }
+  savedContent.value = null
+  draft.value = baseMarkdownSource.value
+  editing.value = false
+  documentStatus.value = 'saved'
+}
+
+watch([() => activeLesson.value.id, editableDocument], loadDocumentOverride, { immediate: true })
+watch(baseMarkdownSource, () => {
+  if (editing.value && !savedContent.value) draft.value = baseMarkdownSource.value
 })
 
 const steps = computed<Step[]>(() => {
@@ -98,7 +275,11 @@ const stepHtml = computed(() => {
   return s ? (marked.parse(s.body, { async: false }) as string) : ''
 })
 const readerHtml = computed(() =>
-  effectiveMode.value === 'walk' ? stepHtml.value : scrollHtml.value,
+  editing.value
+    ? marked.parse(draft.value, { async: false }) as string
+    : effectiveMode.value === 'walk'
+      ? stepHtml.value
+      : scrollHtml.value,
 )
 
 const topProgress = computed(() => {
@@ -185,6 +366,9 @@ function resetReadProgress() {
 }
 
 function openLesson(lesson: LessonMeta) {
+  editing.value = false
+  documentStatus.value = 'idle'
+  closeSelectionToolbar()
   pane.value = 'lesson'
   activeId.value = lesson.id
   academy.openLesson(lesson.id)
@@ -195,6 +379,10 @@ function openLesson(lesson: LessonMeta) {
 }
 
 function openGuide(next: Exclude<Pane, 'lesson'>) {
+  editing.value = false
+  savedContent.value = null
+  annotations.value = []
+  closeSelectionToolbar()
   pane.value = next
   menuOpen.value = false
   sideOpen.value = false
@@ -317,6 +505,40 @@ const COPY_ICON =
 const CHECK_ICON =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
 
+function applyAnnotations() {
+  const el = readerEl.value
+  if (!el || editing.value) return
+  el.querySelectorAll('.learn__annotation').forEach((mark) => {
+    mark.replaceWith(document.createTextNode(mark.textContent ?? ''))
+  })
+  for (const annotation of annotations.value) {
+    if (annotation.stale || !annotation.quote) continue
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    let node: Text | null
+    let found = false
+    while ((node = walker.nextNode() as Text | null)) {
+      const parent = node.parentElement
+      if (!parent || parent.closest('pre, code, .learn__annotation')) continue
+      const index = node.data.indexOf(annotation.quote)
+      if (index < 0) continue
+      const mark = document.createElement('mark')
+      mark.className = `learn__annotation learn__annotation--${annotation.color}`
+      mark.title = annotation.color === 'understand' ? '待理解' : annotation.color === 'mastered' ? '已掌握' : '易错'
+      const before = node.data.slice(0, index)
+      const after = node.data.slice(index + annotation.quote.length)
+      const fragment = document.createDocumentFragment()
+      if (before) fragment.append(document.createTextNode(before))
+      mark.textContent = annotation.quote
+      fragment.append(mark)
+      if (after) fragment.append(document.createTextNode(after))
+      node.replaceWith(fragment)
+      found = true
+      break
+    }
+    if (!found) annotation.stale = true
+  }
+}
+
 function enhanceDoc() {
   const el = readerEl.value
   if (!el) return
@@ -368,6 +590,7 @@ watch(readerHtml, () => {
   nextTick(() => {
     readerEl.value?.scrollTo({ top: 0 })
     enhanceDoc()
+    applyAnnotations()
   })
 })
 
@@ -381,7 +604,10 @@ watch(
 onMounted(() => {
   scrollActiveIntoView()
   document.addEventListener('click', onDocClick)
-  nextTick(enhanceDoc)
+  nextTick(() => {
+    enhanceDoc()
+    applyAnnotations()
+  })
 })
 
 onUnmounted(() => {
@@ -578,6 +804,14 @@ onUnmounted(() => {
                 <PhDotsThree :size="18" weight="bold" />
               </button>
               <div v-if="menuOpen" class="learn__menu" role="menu">
+                <button v-if="editableDocument && !editing" type="button" role="menuitem" @click="startEditing">
+                  <PhPencilSimple :size="15" />
+                  编辑文档
+                </button>
+                <button v-if="editing" type="button" role="menuitem" @click="cancelEditing">
+                  <PhX :size="15" />
+                  退出编辑
+                </button>
                 <button type="button" role="menuitem" @click="copyResume">
                   <PhClipboardText :size="15" />
                   {{ copied ? i18n.t('academy.copied') : i18n.t('academy.copyResume') }}
@@ -603,16 +837,60 @@ onUnmounted(() => {
       </div>
 
       <div class="learn__reader-wrap">
+        <div v-if="editing" class="learn__editor">
+          <div class="learn__editor-head">
+            <span>Markdown 编辑</span>
+            <span class="learn__editor-status" :class="`learn__editor-status--${documentStatus}`">
+              {{ documentStatus === 'saving' ? '保存中…' : documentStatus === 'saved' ? '已保存' : documentStatus === 'error' ? '保存失败，草稿仍保留' : '未保存' }}
+            </span>
+          </div>
+          <div class="learn__editor-grid">
+            <textarea v-model="draft" class="learn__textarea" spellcheck="false" aria-label="Markdown 编辑器" />
+            <article class="learn__reader learn__editor-preview" v-html="readerHtml" />
+          </div>
+          <div class="learn__editor-actions">
+            <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="restoreDocument">
+              <PhArrowCounterClockwise :size="15" />
+              恢复仓库版本
+            </button>
+            <button type="button" class="learn__bar-btn learn__bar-btn--primary" :disabled="savingDocument" @click="saveDocument">
+              <PhFloppyDisk :size="15" />
+              {{ savingDocument ? '保存中…' : '保存文档' }}
+            </button>
+          </div>
+        </div>
         <article
+          v-else
           ref="readerEl"
           class="learn__reader"
           :class="{ 'learn__reader--walk': effectiveMode === 'walk' }"
           @scroll="onReaderScroll"
+          @mouseup="onReaderSelection"
           v-html="readerHtml"
         />
+        <div
+          v-if="selectionToolbar && !editing"
+          class="learn__selection-toolbar"
+          :style="{ left: `${selectionToolbar.x}px`, top: `${selectionToolbar.y}px` }"
+          role="toolbar"
+          aria-label="选中文本工具"
+          @mousedown.prevent
+        >
+          <button v-for="color in annotationColors" :key="color.value" type="button" :title="color.label" @click="annotate(color.value)">
+            <PhHighlighter :size="15" />
+          </button>
+          <button type="button" title="复制" @click="copySelection"><PhCopy :size="15" /></button>
+          <button type="button" title="AI 分析" @click="explainSelection"><PhChatText :size="15" /></button>
+        </div>
       </div>
 
-      <footer v-if="pane === 'lesson' && effectiveMode === 'walk'" class="learn__bar">
+      <footer v-if="editing" class="learn__bar learn__bar--editing">
+        <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="cancelEditing">
+          <PhX :size="15" />
+          取消编辑
+        </button>
+      </footer>
+      <footer v-else-if="pane === 'lesson' && effectiveMode === 'walk'" class="learn__bar">
         <button
           type="button"
           class="learn__bar-btn learn__bar-btn--ghost"
@@ -1286,9 +1564,9 @@ onUnmounted(() => {
 
 /* ---------- Reader ---------- */
 .learn__reader-wrap {
+  position: relative;
   flex: 1;
   min-height: 0;
-  position: relative;
   display: flex;
   justify-content: center;
 }
@@ -1305,6 +1583,98 @@ onUnmounted(() => {
 
 .learn__reader::-webkit-scrollbar {
   display: none;
+}
+
+.learn__editor {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 76rem);
+  min-height: 0;
+  flex: 1;
+  padding: var(--space-4) clamp(var(--space-4), 4vw, var(--space-8));
+  gap: var(--space-3);
+}
+
+.learn__editor-head,
+.learn__editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.learn__editor-head {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.learn__editor-status--saved { color: var(--color-accent); }
+.learn__editor-status--error { color: #dc2626; }
+
+.learn__editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  min-height: 0;
+  flex: 1;
+}
+
+.learn__textarea {
+  min-width: 0;
+  min-height: 18rem;
+  resize: none;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: 0.84rem/1.7 var(--font-mono);
+  outline: none;
+}
+
+.learn__textarea:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.learn__editor-preview {
+  min-width: 0;
+  max-width: none;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.learn__selection-toolbar {
+  position: fixed;
+  z-index: 80;
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+}
+
+.learn__selection-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.learn__selection-toolbar button:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
 }
 
 .learn__reader--walk {
@@ -1514,6 +1884,16 @@ onUnmounted(() => {
   margin: 2rem 0;
 }
 
+.learn__reader :deep(.learn__annotation) {
+  padding: 0.05em 0.12em;
+  border-radius: 0.2em;
+  color: inherit;
+}
+
+.learn__reader :deep(.learn__annotation--understand) { background: rgba(250, 204, 21, 0.38); }
+.learn__reader :deep(.learn__annotation--mastered) { background: rgba(45, 212, 191, 0.3); }
+.learn__reader :deep(.learn__annotation--mistake) { background: rgba(248, 113, 113, 0.3); }
+
 /* ---------- Footer ---------- */
 .learn__bar {
   display: flex;
@@ -1665,6 +2045,28 @@ onUnmounted(() => {
   .learn__reader {
     padding: var(--space-4) var(--space-4) var(--space-8);
     max-width: none;
+  }
+
+  .learn__editor {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .learn__editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .learn__editor-preview {
+    min-height: 16rem;
+  }
+
+  .learn__selection-toolbar {
+    position: fixed;
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    bottom: calc(60px + env(safe-area-inset-bottom));
+    justify-content: center;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
   }
 
   .learn__bar {

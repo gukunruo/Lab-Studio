@@ -51,7 +51,6 @@ export const apps: AppMeta[] = Object.entries(metaModules)
       tags: meta.tags ?? [],
       date: meta.date ?? '',
       icon: meta.icon,
-      entry: meta.entry ?? 'frame',
       doc: docModules[docPath],
     }
   })
