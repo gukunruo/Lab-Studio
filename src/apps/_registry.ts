@@ -8,11 +8,13 @@ export interface AppMetaInput {
   tags?: string[]
   date?: string
   icon?: string
+  entry?: 'frame' | 'direct'
 }
 
-export interface AppMeta extends Required<Omit<AppMetaInput, 'icon'>> {
+export interface AppMeta extends Required<Omit<AppMetaInput, 'icon' | 'entry'>> {
   slug: string
   icon?: string
+  entry?: 'frame' | 'direct'
   component: () => Promise<Component>
   doc?: string
 }
@@ -50,6 +52,7 @@ export const apps: AppMeta[] = Object.entries(metaModules)
       tags: meta.tags ?? [],
       date: meta.date ?? '',
       icon: meta.icon,
+      entry: meta.entry ?? 'frame',
       doc: docModules[docPath],
     }
   })

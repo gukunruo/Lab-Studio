@@ -42,9 +42,20 @@ const router = createRouter({
           component: () => import('@/views/AppView.vue'),
           props: true,
           beforeEnter: (to) => {
-            if (!apps.some((e) => e.slug === to.params.slug)) {
-              return { name: 'home' }
-            }
+            const app = apps.find((e) => e.slug === to.params.slug)
+            if (!app) return { name: 'home' }
+            if (app.entry === 'direct') return { name: 'app-direct', params: { slug: app.slug } }
+          },
+        },
+        {
+          path: ':slug/direct',
+          name: 'app-direct',
+          component: () => import('@/views/AppDirectView.vue'),
+          props: true,
+          beforeEnter: (to) => {
+            const app = apps.find((e) => e.slug === to.params.slug)
+            if (!app) return { name: 'home' }
+            if (app.entry !== 'direct') return { name: 'app', params: { slug: app.slug } }
           },
         },
       ],

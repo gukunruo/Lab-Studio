@@ -12,7 +12,7 @@ const reduce =
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const linkTarget = computed(() => ({
-  name: props.routeName ?? 'app',
+  name: props.routeName ?? (props.exp.entry === 'direct' ? 'app-direct' : 'app'),
   params: { slug: props.exp.slug },
 }))
 
