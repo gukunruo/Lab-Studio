@@ -92,6 +92,9 @@ const aiEditSelection = ref('')
 const editorEl = ref<HTMLTextAreaElement | null>(null)
 const previewEl = ref<HTMLElement | null>(null)
 const editorScrollLock = ref(false)
+const aiEditPosition = ref({ x: 0, y: 0 })
+const aiEditDragging = ref(false)
+const aiEditDragOffset = ref({ x: 0, y: 0 })
 const sideOpen = ref(false)
 const readProgress = ref(0)
 const dragging = ref(false)
@@ -355,6 +358,49 @@ function syncPreviewScroll() {
 function closeAiEditor() {
   aiEditOpen.value = false
   aiEditError.value = ''
+  aiEditDragging.value = false
+}
+
+function startAiEditDrag(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement
+  aiEditDragging.value = true
+  aiEditDragOffset.value = {
+    x: event.clientX - target.parentElement!.getBoundingClientRect().left,
+    y: event.clientY - target.parentElement!.getBoundingClientRect().top,
+  }
+  window.addEventListener('pointermove', moveAiEdit)
+  window.addEventListener('pointerup', stopAiEditDrag, { once: true })
+}
+
+function moveAiEdit(event: PointerEvent) {
+  if (!aiEditDragging.value) return
+  const width = 360
+  const height = 420
+  aiEditPosition.value = {
+    x: Math.min(Math.max(12, event.clientX - aiEditDragOffset.value.x), window.innerWidth - width - 12),
+    y: Math.min(Math.max(12, event.clientY - aiEditDragOffset.value.y), window.innerHeight - height - 12),
+  }
+}
+
+function stopAiEditDrag() {
+  aiEditDragging.value = false
+  window.removeEventListener('pointermove', moveAiEdit)
+}
+
+function closeSelectionAndOpenAiEditor() {
+  const text = selectedText.value
+  if (!text) return
+  const toolbar = selectionToolbar.value
+  aiEditSelection.value = text
+  closeSelectionToolbar()
+  aiEditInstruction.value = ''
+  aiEditResult.value = ''
+  aiEditError.value = ''
+  aiEditOpen.value = true
+  aiEditPosition.value = {
+    x: Math.min(window.innerWidth - 380, Math.max(12, toolbar?.x ?? 12)),
+    y: Math.min(window.innerHeight - 440, Math.max(12, (toolbar?.y ?? 12) + 56)),
+  }
 }
 
 function captureMarkdownSelection() {
@@ -1022,14 +1068,15 @@ onUnmounted(() => {
                 @mouseup="captureMarkdownSelection"
                 @keyup="captureMarkdownSelection"
               />
-              <button type="button" class="learn__editor-ai-btn" title="对选中的 Markdown 使用 AI 编辑" @click="requestAiEditFromSelection">
-                <PhSparkle :size="14" weight="fill" /> AI 编辑选中内容
-              </button>
             </div>
             <article ref="previewEl" class="learn__reader learn__editor-preview" @scroll="syncPreviewScroll" v-html="readerHtml" />
           </div>
-          <div v-if="aiEditOpen" class="learn__ai-edit-panel">
-            <div class="learn__ai-edit-head">
+          <div
+            v-if="aiEditOpen"
+            class="learn__ai-edit-panel"
+            :style="{ left: `${aiEditPosition.x}px`, top: `${aiEditPosition.y}px` }"
+          >
+            <div class="learn__ai-edit-head" @pointerdown="startAiEditDrag">
               <strong>AI 编辑 Markdown</strong>
               <button type="button" class="learn__ai-edit-close" aria-label="关闭" @click="closeAiEditor"><PhX :size="16" /></button>
             </div>
@@ -1092,7 +1139,7 @@ onUnmounted(() => {
             </div>
           </div>
           <button type="button" title="复制" @click.stop="copySelection"><PhCopy :size="15" /></button>
-          <button type="button" title="AI 分析" @click.stop="explainSelection"><PhChatText :size="15" /></button>
+          <button type="button" title="AI 编辑" @click.stop="closeSelectionAndOpenAiEditor"><PhSparkle :size="15" weight="fill" /></button>
         </div>
       </div>
 
@@ -1898,32 +1945,32 @@ onUnmounted(() => {
 .learn__color-swatch--pink { background: #f9a8d4 !important; }
 .learn__color-swatch--purple { background: #c4b5fd !important; }
 
-.learn__textarea-wrap { position: relative; min-height: 0; display: flex; flex-direction: column; }
-.learn__editor-ai-btn {
-  align-self: flex-end;
-  margin-top: 6px;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  background: var(--color-bg);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-.learn__editor-ai-btn:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.learn__textarea-wrap { position: relative; min-height: 0; display: flex; flex: 1; flex-direction: column; }
 .learn__ai-edit-panel {
+  position: fixed;
+  z-index: 90;
   display: flex;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 24px));
   flex-direction: column;
   gap: var(--space-2);
+  overflow: auto;
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-bg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.2);
 }
 .learn__ai-edit-head, .learn__ai-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.learn__ai-edit-head { cursor: move; user-select: none; }
 .learn__ai-edit-close { border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
-.learn__ai-edit-quote, .learn__ai-edit-result { max-height: 8rem; overflow: auto; margin: 0; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg); white-space: pre-wrap; font: 0.78rem/1.5 var(--font-mono); }
-.learn__ai-edit-input { min-height: 3rem; resize: vertical; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text); }
+.learn__ai-edit-quote, .learn__ai-edit-result { max-height: 8rem; overflow: auto; margin: 0; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-surface); white-space: pre-wrap; font: 0.78rem/1.5 var(--font-mono); }
+.learn__ai-edit-input { min-height: 4.5rem; resize: vertical; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); }
 .learn__ai-edit-error { margin: 0; color: #dc2626; font-size: 0.78rem; }
+
+.learn__editor-grid > * { min-height: 0; }
+.learn__textarea { height: 100%; min-height: 0; flex: 1; }
+.learn__editor-preview { height: 100%; box-sizing: border-box; }
 
 .learn__selection-toolbar button {
   display: inline-flex;
