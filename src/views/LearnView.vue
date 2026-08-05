@@ -1071,28 +1071,6 @@ onUnmounted(() => {
             </div>
             <article ref="previewEl" class="learn__reader learn__editor-preview" @scroll="syncPreviewScroll" v-html="readerHtml" />
           </div>
-          <div
-            v-if="aiEditOpen"
-            class="learn__ai-edit-panel"
-            :style="{ left: `${aiEditPosition.x}px`, top: `${aiEditPosition.y}px` }"
-          >
-            <div class="learn__ai-edit-head" @pointerdown="startAiEditDrag">
-              <strong>AI 编辑 Markdown</strong>
-              <button type="button" class="learn__ai-edit-close" aria-label="关闭" @click="closeAiEditor"><PhX :size="16" /></button>
-            </div>
-            <p class="learn__ai-edit-quote">{{ aiEditSelection }}</p>
-            <textarea v-model="aiEditInstruction" class="learn__ai-edit-input" placeholder="例如：改写得更适合初学者，保留 Markdown 结构" />
-            <button type="button" class="learn__bar-btn learn__bar-btn--primary" :disabled="aiEditLoading" @click="requestAiEdit">
-              <PhSparkle :size="15" weight="fill" />
-              {{ aiEditLoading ? '生成中…' : '生成修改建议' }}
-            </button>
-            <p v-if="aiEditError" class="learn__ai-edit-error">{{ aiEditError }}</p>
-            <div v-if="aiEditResult" class="learn__ai-edit-result">{{ aiEditResult }}</div>
-            <div v-if="aiEditResult" class="learn__ai-edit-actions">
-              <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="insertAiResult">插入结果</button>
-              <button type="button" class="learn__bar-btn learn__bar-btn--primary" @click="replaceAiSelection">替换原文</button>
-            </div>
-          </div>
           <div class="learn__editor-actions">
             <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="restoreDocument">
               <PhArrowCounterClockwise :size="15" />
@@ -1140,6 +1118,28 @@ onUnmounted(() => {
           </div>
           <button type="button" title="复制" @click.stop="copySelection"><PhCopy :size="15" /></button>
           <button type="button" title="AI 编辑" @click.stop="closeSelectionAndOpenAiEditor"><PhSparkle :size="15" weight="fill" /></button>
+        </div>
+        <div
+          v-if="aiEditOpen"
+          class="learn__ai-edit-panel"
+          :style="{ left: `${aiEditPosition.x}px`, top: `${aiEditPosition.y}px` }"
+        >
+          <div class="learn__ai-edit-head" @pointerdown="startAiEditDrag">
+            <strong>AI 编辑 Markdown</strong>
+            <button type="button" class="learn__ai-edit-close" aria-label="关闭" @click="closeAiEditor"><PhX :size="16" /></button>
+          </div>
+          <p class="learn__ai-edit-quote">{{ aiEditSelection }}</p>
+          <textarea v-model="aiEditInstruction" class="learn__ai-edit-input" placeholder="例如：改写得更适合初学者，保留 Markdown 结构" />
+          <button type="button" class="learn__bar-btn learn__bar-btn--primary" :disabled="aiEditLoading" @click="requestAiEdit">
+            <PhSparkle :size="15" weight="fill" />
+            {{ aiEditLoading ? '生成中…' : '生成修改建议' }}
+          </button>
+          <p v-if="aiEditError" class="learn__ai-edit-error">{{ aiEditError }}</p>
+          <div v-if="aiEditResult" class="learn__ai-edit-result">{{ aiEditResult }}</div>
+          <div v-if="aiEditResult" class="learn__ai-edit-actions">
+            <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="insertAiResult">插入结果</button>
+            <button type="button" class="learn__bar-btn learn__bar-btn--primary" @click="replaceAiSelection">替换原文</button>
+          </div>
         </div>
       </div>
 
