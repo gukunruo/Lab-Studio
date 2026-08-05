@@ -48,6 +48,31 @@ function chatInput(body: ChatInput) {
     : null
 }
 
+function validAnnotation(value: unknown): value is {
+  id: string
+  quote: string
+  prefix?: string
+  suffix?: string
+  color: 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
+  createdAt: string
+  updatedAt?: string
+  stale?: boolean
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const item = value as Record<string, unknown>
+  return typeof item.id === 'string'
+    && item.id.length <= 100
+    && typeof item.quote === 'string'
+    && item.quote.length >= 2
+    && item.quote.length <= 2000
+    && ['yellow', 'green', 'blue', 'pink', 'purple'].includes(item.color as string)
+    && typeof item.createdAt === 'string'
+    && (item.prefix === undefined || typeof item.prefix === 'string')
+    && (item.suffix === undefined || typeof item.suffix === 'string')
+    && (item.updatedAt === undefined || typeof item.updatedAt === 'string')
+    && (item.stale === undefined || typeof item.stale === 'boolean')
+}
+
 function maskUrl(value: string): string {
   try {
     const url = new URL(value)
@@ -226,7 +251,8 @@ export function createApp() {
   protectedApi.put('/lesson-annotations/:lessonId', async (c) => {
     const lessonId = c.req.param('lessonId')
     const body = await c.req.json<{ annotations?: unknown }>().catch(() => null)
-    if (!lessonId || lessonId.length > 128 || !body || !Array.isArray(body.annotations) || body.annotations.length > 300) {
+    if (!lessonId || lessonId.length > 128 || !body || !Array.isArray(body.annotations)
+      || body.annotations.length > 300 || !body.annotations.every(validAnnotation)) {
       return c.json({ error: 'invalid lesson annotations' }, 400)
     }
     const updatedAt = new Date()

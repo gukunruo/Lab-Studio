@@ -5,7 +5,7 @@ import { marked } from 'marked'
 import {
   PhCheck,
   PhCheckCircle,
-  PhCircle,
+  PhHighlighter,
   PhClipboardText,
   PhArrowLeft,
   PhArrowRight,
@@ -19,7 +19,6 @@ import {
   PhPencilSimple,
   PhFloppyDisk,
   PhArrowCounterClockwise,
-  PhWarningCircle,
   PhCopy,
   PhChatText,
 } from '@phosphor-icons/vue'
@@ -35,6 +34,7 @@ import {
   type LessonMeta,
 } from '@/learn/curriculum'
 import { parseWalkthrough, type Step, type StepKind } from '@/learn/walkthrough'
+import { buildSystemPrompt, streamChat } from '@/learn/ai'
 import AiTutor from '@/components/AiTutor.vue'
 import ResizeGutter from '@/components/ResizeGutter.vue'
 
@@ -60,23 +60,38 @@ const draft = ref('')
 const savedContent = ref<string | null>(null)
 const savingDocument = ref(false)
 const documentStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
-type AnnotationColor = 'understand' | 'mastered' | 'mistake'
+type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
 type Annotation = {
   id: string
   quote: string
+  prefix?: string
+  suffix?: string
   color: AnnotationColor
   createdAt: string
+  updatedAt?: string
   stale?: boolean
 }
 const annotations = ref<Annotation[]>([])
 const selectionToolbar = ref<{ text: string; x: number; y: number } | null>(null)
+const colorMenuOpen = ref(false)
 const annotationSaving = ref(false)
 const selectedText = ref('')
 const annotationColors: Array<{ value: AnnotationColor; label: string }> = [
-  { value: 'understand', label: '待理解' },
-  { value: 'mastered', label: '已掌握' },
-  { value: 'mistake', label: '易错' },
+  { value: 'yellow', label: '黄色' },
+  { value: 'green', label: '绿色' },
+  { value: 'blue', label: '蓝色' },
+  { value: 'pink', label: '粉色' },
+  { value: 'purple', label: '紫色' },
 ]
+const aiEditOpen = ref(false)
+const aiEditInstruction = ref('')
+const aiEditLoading = ref(false)
+const aiEditError = ref('')
+const aiEditResult = ref('')
+const aiEditSelection = ref('')
+const editorEl = ref<HTMLTextAreaElement | null>(null)
+const previewEl = ref<HTMLElement | null>(null)
+const editorScrollLock = ref(false)
 const sideOpen = ref(false)
 const readProgress = ref(0)
 const dragging = ref(false)
@@ -127,7 +142,7 @@ function loadDocumentOverride() {
           if (!item || typeof item !== 'object') return false
           const value = item as Record<string, unknown>
           return typeof value.id === 'string' && typeof value.quote === 'string'
-            && (value.color === 'understand' || value.color === 'mastered' || value.color === 'mistake')
+            && ['yellow', 'green', 'blue', 'pink', 'purple'].includes(value.color as string)
         })
         : []
       if (!editing.value) draft.value = savedContent.value ?? baseMarkdownSource.value
@@ -135,16 +150,11 @@ function loadDocumentOverride() {
     .catch(() => undefined)
 }
 
-function closeSelectionToolbar() {
-  selectionToolbar.value = null
-  selectedText.value = ''
-}
-
 function onReaderSelection() {
   if (editing.value || !editableDocument.value) return
   const selection = window.getSelection()
   const text = selection?.toString().trim() ?? ''
-  if (!selection || text.length < 2 || !readerEl.value?.contains(selection.anchorNode)) {
+  if (!selection || selection.rangeCount === 0 || text.length < 2 || !readerEl.value?.contains(selection.anchorNode)) {
     closeSelectionToolbar()
     return
   }
@@ -152,9 +162,78 @@ function onReaderSelection() {
   selectedText.value = text
   selectionToolbar.value = {
     text,
-    x: Math.min(Math.max(12, rect.left + rect.width / 2 - 150), window.innerWidth - 312),
+    x: Math.min(Math.max(12, rect.left + rect.width / 2 - 120), window.innerWidth - 252),
     y: Math.max(12, rect.top - 48),
   }
+}
+
+function selectionContext(text: string) {
+  const source = markdownSource.value
+  const index = source.indexOf(text)
+  if (index < 0) return { prefix: '', suffix: '' }
+  return { prefix: source.slice(Math.max(0, index - 40), index), suffix: source.slice(index + text.length, index + text.length + 40) }
+}
+
+function openColorMenu() {
+  colorMenuOpen.value = !colorMenuOpen.value
+}
+
+function closeSelectionToolbar() {
+  selectionToolbar.value = null
+  selectedText.value = ''
+  colorMenuOpen.value = false
+}
+
+function selectionTextNodes(root: Node) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    if (node.parentElement?.closest('pre, .learn__annotation')) continue
+    nodes.push(node as Text)
+  }
+  return nodes
+}
+
+function wrapAnnotation(root: HTMLElement, annotation: Annotation) {
+  const nodes = selectionTextNodes(root)
+  const fullText = nodes.map((node) => node.data).join('')
+  const start = fullText.indexOf(annotation.quote)
+  if (start < 0) return false
+  let cursor = 0
+  const range = document.createRange()
+  let startNode: Text | null = null
+  let endNode: Text | null = null
+  let startOffset = 0
+  let endOffset = 0
+  for (const node of nodes) {
+    const next = cursor + node.data.length
+    if (!startNode && start >= cursor && start <= next) {
+      startNode = node
+      startOffset = start - cursor
+    }
+    const end = start + annotation.quote.length
+    if (end >= cursor && end <= next) {
+      endNode = node
+      endOffset = end - cursor
+      break
+    }
+    cursor = next
+  }
+  if (!startNode || !endNode) return false
+  range.setStart(startNode, startOffset)
+  range.setEnd(endNode, endOffset)
+  const mark = document.createElement('mark')
+  mark.className = `learn__annotation learn__annotation--${annotation.color}`
+  mark.title = `标注颜色：${annotationColors.find((item) => item.value === annotation.color)?.label ?? ''}`
+  try {
+    range.surroundContents(mark)
+  } catch {
+    const fragment = range.extractContents()
+    mark.append(fragment)
+    range.insertNode(mark)
+  }
+  return true
 }
 
 async function saveAnnotations(next: Annotation[]) {
@@ -190,14 +269,107 @@ function resetSelectionToolbar() {
 
 function annotate(color: AnnotationColor) {
   if (!selectedText.value || annotationSaving.value) return
+  const now = new Date().toISOString()
+  const context = selectionContext(selectedText.value)
   const existing = annotations.value.find((item) => item.quote === selectedText.value)
   const next = existing
-    ? annotations.value.map((item) => item.id === existing.id ? { ...item, color, stale: false } : item)
+    ? annotations.value.map((item) => item.id === existing.id
+      ? { ...item, color, ...context, updatedAt: now, stale: false }
+      : item)
     : [...annotations.value, {
-      id: crypto.randomUUID(), quote: selectedText.value, color, createdAt: new Date().toISOString(),
+      id: crypto.randomUUID(), quote: selectedText.value, color, ...context, createdAt: now, updatedAt: now,
     }]
   void saveAnnotations(next)
   closeSelectionToolbar()
+}
+
+async function requestAiEdit() {
+  if (!aiEditSelection.value || aiEditLoading.value) return
+  aiEditLoading.value = true
+  aiEditError.value = ''
+  aiEditResult.value = ''
+  const controller = new AbortController()
+  try {
+    await streamChat({
+      messages: [{ role: 'user', content: `请对下面选中的 Markdown 内容执行这个编辑要求：${aiEditInstruction.value || '优化表达并保持 Markdown 结构不变'}\n\n原文：\n${aiEditSelection.value}` }],
+      system: buildSystemPrompt(activeLesson.value, currentStep.value),
+      maxTokens: 2048,
+      signal: controller.signal,
+      onToken: (token) => { aiEditResult.value += token },
+      onDone: (full) => { aiEditResult.value = full },
+    })
+  } catch {
+    aiEditError.value = 'AI 编辑失败，请稍后重试。'
+  } finally {
+    aiEditLoading.value = false
+  }
+}
+
+function openAiEditor() {
+  if (!selectedText.value) return
+  aiEditSelection.value = selectedText.value
+  aiEditInstruction.value = ''
+  aiEditResult.value = ''
+  aiEditError.value = ''
+  aiEditOpen.value = true
+  closeSelectionToolbar()
+}
+
+function replaceAiSelection() {
+  if (!aiEditSelection.value || !aiEditResult.value) return
+  const index = draft.value.indexOf(aiEditSelection.value)
+  if (index < 0) {
+    aiEditError.value = '当前草稿中找不到这段内容，可能已经被修改。'
+    return
+  }
+  draft.value = `${draft.value.slice(0, index)}${aiEditResult.value}${draft.value.slice(index + aiEditSelection.value.length)}`
+  aiEditOpen.value = false
+}
+
+function insertAiResult() {
+  if (!aiEditResult.value) return
+  draft.value += `\n\n${aiEditResult.value}`
+  aiEditOpen.value = false
+}
+
+function syncEditorScroll() {
+  if (!editorEl.value || !previewEl.value || editorScrollLock.value) return
+  const sourceMax = editorEl.value.scrollHeight - editorEl.value.clientHeight
+  const targetMax = previewEl.value.scrollHeight - previewEl.value.clientHeight
+  if (sourceMax <= 0 || targetMax <= 0) return
+  editorScrollLock.value = true
+  previewEl.value.scrollTop = editorEl.value.scrollTop / sourceMax * targetMax
+  requestAnimationFrame(() => { editorScrollLock.value = false })
+}
+
+function syncPreviewScroll() {
+  if (!editorEl.value || !previewEl.value || editorScrollLock.value) return
+  const sourceMax = previewEl.value.scrollHeight - previewEl.value.clientHeight
+  const targetMax = editorEl.value.scrollHeight - editorEl.value.clientHeight
+  if (sourceMax <= 0 || targetMax <= 0) return
+  editorScrollLock.value = true
+  editorEl.value.scrollTop = previewEl.value.scrollTop / sourceMax * targetMax
+  requestAnimationFrame(() => { editorScrollLock.value = false })
+}
+
+function closeAiEditor() {
+  aiEditOpen.value = false
+  aiEditError.value = ''
+}
+
+function captureMarkdownSelection() {
+  const textarea = editorEl.value
+  if (!textarea || textarea.selectionStart === textarea.selectionEnd) return
+  aiEditSelection.value = draft.value.slice(textarea.selectionStart, textarea.selectionEnd)
+}
+
+function requestAiEditFromSelection() {
+  captureMarkdownSelection()
+  if (!aiEditSelection.value) return
+  aiEditInstruction.value = ''
+  aiEditResult.value = ''
+  aiEditError.value = ''
+  aiEditOpen.value = true
 }
 
 function copySelection() {
@@ -529,29 +701,7 @@ function applyAnnotations() {
   })
   for (const annotation of annotations.value) {
     if (annotation.stale || !annotation.quote) continue
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-    let node: Text | null
-    let found = false
-    while ((node = walker.nextNode() as Text | null)) {
-      const parent = node.parentElement
-      if (!parent || parent.closest('pre, code, .learn__annotation')) continue
-      const index = node.data.indexOf(annotation.quote)
-      if (index < 0) continue
-      const mark = document.createElement('mark')
-      mark.className = `learn__annotation learn__annotation--${annotation.color}`
-      mark.title = annotation.color === 'understand' ? '待理解' : annotation.color === 'mastered' ? '已掌握' : '易错'
-      const before = node.data.slice(0, index)
-      const after = node.data.slice(index + annotation.quote.length)
-      const fragment = document.createDocumentFragment()
-      if (before) fragment.append(document.createTextNode(before))
-      mark.textContent = annotation.quote
-      fragment.append(mark)
-      if (after) fragment.append(document.createTextNode(after))
-      node.replaceWith(fragment)
-      found = true
-      break
-    }
-    if (!found) annotation.stale = true
+    if (!wrapAnnotation(el, annotation)) annotation.stale = true
   }
 }
 
@@ -861,8 +1011,40 @@ onUnmounted(() => {
             </span>
           </div>
           <div class="learn__editor-grid">
-            <textarea v-model="draft" class="learn__textarea" spellcheck="false" aria-label="Markdown 编辑器" />
-            <article class="learn__reader learn__editor-preview" v-html="readerHtml" />
+            <div class="learn__textarea-wrap">
+              <textarea
+                ref="editorEl"
+                v-model="draft"
+                class="learn__textarea"
+                spellcheck="false"
+                aria-label="Markdown 编辑器"
+                @scroll="syncEditorScroll"
+                @mouseup="captureMarkdownSelection"
+                @keyup="captureMarkdownSelection"
+              />
+              <button type="button" class="learn__editor-ai-btn" title="对选中的 Markdown 使用 AI 编辑" @click="requestAiEditFromSelection">
+                <PhSparkle :size="14" weight="fill" /> AI 编辑选中内容
+              </button>
+            </div>
+            <article ref="previewEl" class="learn__reader learn__editor-preview" @scroll="syncPreviewScroll" v-html="readerHtml" />
+          </div>
+          <div v-if="aiEditOpen" class="learn__ai-edit-panel">
+            <div class="learn__ai-edit-head">
+              <strong>AI 编辑 Markdown</strong>
+              <button type="button" class="learn__ai-edit-close" aria-label="关闭" @click="closeAiEditor"><PhX :size="16" /></button>
+            </div>
+            <p class="learn__ai-edit-quote">{{ aiEditSelection }}</p>
+            <textarea v-model="aiEditInstruction" class="learn__ai-edit-input" placeholder="例如：改写得更适合初学者，保留 Markdown 结构" />
+            <button type="button" class="learn__bar-btn learn__bar-btn--primary" :disabled="aiEditLoading" @click="requestAiEdit">
+              <PhSparkle :size="15" weight="fill" />
+              {{ aiEditLoading ? '生成中…' : '生成修改建议' }}
+            </button>
+            <p v-if="aiEditError" class="learn__ai-edit-error">{{ aiEditError }}</p>
+            <div v-if="aiEditResult" class="learn__ai-edit-result">{{ aiEditResult }}</div>
+            <div v-if="aiEditResult" class="learn__ai-edit-actions">
+              <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="insertAiResult">插入结果</button>
+              <button type="button" class="learn__bar-btn learn__bar-btn--primary" @click="replaceAiSelection">替换原文</button>
+            </div>
           </div>
           <div class="learn__editor-actions">
             <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="restoreDocument">
@@ -893,17 +1075,24 @@ onUnmounted(() => {
           aria-label="选中文本工具"
           @mousedown="keepSelection"
         >
-          <button type="button" title="待理解" @click.stop="annotate('understand')">
-            <PhCircle :size="15" weight="fill" />
-          </button>
-          <button type="button" title="已掌握" @click.stop="annotate('mastered')">
-            <PhCheckCircle :size="15" weight="fill" />
-          </button>
-          <button type="button" title="易错" @click.stop="annotate('mistake')">
-            <PhWarningCircle :size="15" weight="fill" />
-          </button>
-          <button type="button" title="复制" @click="copySelection"><PhCopy :size="15" /></button>
-          <button type="button" title="AI 分析" @click="explainSelection"><PhChatText :size="15" /></button>
+          <div class="learn__color-action">
+            <button type="button" title="标注颜色" @click.stop="openColorMenu">
+              <PhHighlighter :size="15" />
+            </button>
+            <div v-if="colorMenuOpen" class="learn__color-menu" role="menu">
+              <button
+                v-for="color in annotationColors"
+                :key="color.value"
+                type="button"
+                role="menuitem"
+                :class="`learn__color-swatch learn__color-swatch--${color.value}`"
+                :title="color.label"
+                @click.stop="annotate(color.value)"
+              />
+            </div>
+          </div>
+          <button type="button" title="复制" @click.stop="copySelection"><PhCopy :size="15" /></button>
+          <button type="button" title="AI 分析" @click.stop="explainSelection"><PhChatText :size="15" /></button>
         </div>
       </div>
 
@@ -1682,6 +1871,60 @@ onUnmounted(() => {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
 }
 
+.learn__color-action { position: relative; }
+.learn__color-menu {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  display: flex;
+  gap: 5px;
+  padding: 6px;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+}
+.learn__color-swatch {
+  width: 18px !important;
+  height: 18px !important;
+  border: 2px solid var(--color-bg) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+.learn__color-swatch--yellow { background: #facc15 !important; }
+.learn__color-swatch--green { background: #5eead4 !important; }
+.learn__color-swatch--blue { background: #60a5fa !important; }
+.learn__color-swatch--pink { background: #f9a8d4 !important; }
+.learn__color-swatch--purple { background: #c4b5fd !important; }
+
+.learn__textarea-wrap { position: relative; min-height: 0; display: flex; flex-direction: column; }
+.learn__editor-ai-btn {
+  align-self: flex-end;
+  margin-top: 6px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.learn__editor-ai-btn:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.learn__ai-edit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.learn__ai-edit-head, .learn__ai-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.learn__ai-edit-close { border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.learn__ai-edit-quote, .learn__ai-edit-result { max-height: 8rem; overflow: auto; margin: 0; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg); white-space: pre-wrap; font: 0.78rem/1.5 var(--font-mono); }
+.learn__ai-edit-input { min-height: 3rem; resize: vertical; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text); }
+.learn__ai-edit-error { margin: 0; color: #dc2626; font-size: 0.78rem; }
+
 .learn__selection-toolbar button {
   display: inline-flex;
   align-items: center;
@@ -1700,12 +1943,16 @@ onUnmounted(() => {
   color: var(--color-accent);
 }
 
-.learn__selection-toolbar button:nth-child(1) { color: #ca8a04; }
-.learn__selection-toolbar button:nth-child(2) { color: #0f766e; }
-.learn__selection-toolbar button:nth-child(3) { color: #dc2626; }
-.learn__selection-toolbar button:nth-child(1):hover { background: rgba(250, 204, 21, 0.2); }
-.learn__selection-toolbar button:nth-child(2):hover { background: rgba(45, 212, 191, 0.2); }
-.learn__selection-toolbar button:nth-child(3):hover { background: rgba(248, 113, 113, 0.2); }
+.learn__selection-toolbar > button:first-of-type { color: var(--color-accent); }
+
+.learn__reader :deep(.learn__annotation--yellow) { background: rgba(250, 204, 21, 0.38); }
+.learn__reader :deep(.learn__annotation--green) { background: rgba(94, 234, 212, 0.3); }
+.learn__reader :deep(.learn__annotation--blue) { background: rgba(96, 165, 250, 0.3); }
+.learn__reader :deep(.learn__annotation--pink) { background: rgba(249, 168, 212, 0.34); }
+.learn__reader :deep(.learn__annotation--purple) { background: rgba(196, 181, 253, 0.36); }
+.learn__reader :deep(.learn__annotation) { padding: 0.05em 0.12em; border-radius: 0.2em; color: inherit; }
+
+/* ---------- Footer ---------- */
 
 .learn__reader--walk {
   max-width: 42rem;
