@@ -203,41 +203,33 @@ function wrapAnnotation(root: HTMLElement, annotation: Annotation) {
   const nodes = selectionTextNodes(root)
   const fullText = nodes.map((node) => node.data).join('')
   const start = fullText.indexOf(annotation.quote)
-  if (start < 0) return false
+  if (start < 0 || !annotation.quote.length) return false
+
+  const end = start + annotation.quote.length
   let cursor = 0
-  const range = document.createRange()
-  let startNode: Text | null = null
-  let endNode: Text | null = null
-  let startOffset = 0
-  let endOffset = 0
+  let wrapped = false
+
   for (const node of nodes) {
-    const next = cursor + node.data.length
-    if (!startNode && start >= cursor && start <= next) {
-      startNode = node
-      startOffset = start - cursor
-    }
-    const end = start + annotation.quote.length
-    if (end >= cursor && end <= next) {
-      endNode = node
-      endOffset = end - cursor
-      break
-    }
-    cursor = next
-  }
-  if (!startNode || !endNode) return false
-  range.setStart(startNode, startOffset)
-  range.setEnd(endNode, endOffset)
-  const mark = document.createElement('mark')
-  mark.className = `learn__annotation learn__annotation--${annotation.color}`
-  mark.title = `标注颜色：${annotationColors.find((item) => item.value === annotation.color)?.label ?? ''}`
-  try {
+    const nodeStart = cursor
+    const nodeEnd = cursor + node.data.length
+    cursor = nodeEnd
+
+    const segmentStart = Math.max(start, nodeStart)
+    const segmentEnd = Math.min(end, nodeEnd)
+    if (segmentStart >= segmentEnd) continue
+
+    const mark = document.createElement('mark')
+    mark.className = `learn__annotation learn__annotation--${annotation.color}`
+    mark.title = `标注颜色：${annotationColors.find((item) => item.value === annotation.color)?.label ?? ''}`
+
+    const range = document.createRange()
+    range.setStart(node, segmentStart - nodeStart)
+    range.setEnd(node, segmentEnd - nodeStart)
     range.surroundContents(mark)
-  } catch {
-    const fragment = range.extractContents()
-    mark.append(fragment)
-    range.insertNode(mark)
+    wrapped = true
   }
-  return true
+
+  return wrapped
 }
 
 async function saveAnnotations(next: Annotation[]) {
