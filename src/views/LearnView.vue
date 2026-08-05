@@ -73,6 +73,7 @@ type Annotation = {
 }
 const annotations = ref<Annotation[]>([])
 const selectionToolbar = ref<{ text: string; x: number; y: number } | null>(null)
+const editorSelectionToolbar = ref<{ x: number; y: number } | null>(null)
 const colorMenuOpen = ref(false)
 const annotationSaving = ref(false)
 const selectedText = ref('')
@@ -405,17 +406,50 @@ function closeSelectionAndOpenAiEditor() {
 
 function captureMarkdownSelection() {
   const textarea = editorEl.value
-  if (!textarea || textarea.selectionStart === textarea.selectionEnd) return
+  if (!textarea || textarea.selectionStart === textarea.selectionEnd) {
+    editorSelectionToolbar.value = null
+    return
+  }
   aiEditSelection.value = draft.value.slice(textarea.selectionStart, textarea.selectionEnd)
+  const rect = textarea.getBoundingClientRect()
+  editorSelectionToolbar.value = {
+    x: Math.min(window.innerWidth - 160, rect.left + rect.width / 2 - 60),
+    y: Math.max(12, rect.top + 12),
+  }
+}
+
+function closeEditorSelectionToolbar() {
+  editorSelectionToolbar.value = null
 }
 
 function requestAiEditFromSelection() {
   captureMarkdownSelection()
   if (!aiEditSelection.value) return
+  const toolbar = editorSelectionToolbar.value
   aiEditInstruction.value = ''
   aiEditResult.value = ''
   aiEditError.value = ''
   aiEditOpen.value = true
+  editorSelectionToolbar.value = null
+  aiEditPosition.value = {
+    x: Math.min(window.innerWidth - 380, Math.max(12, toolbar?.x ?? 12)),
+    y: Math.min(window.innerHeight - 440, Math.max(12, (toolbar?.y ?? 12) + 42)),
+  }
+}
+
+function askAiAboutSelection() {
+  if (!selectedText.value) return
+  const quote = selectedText.value
+  closeSelectionToolbar()
+  ui.toggleTutor(true)
+  nextTick(() => tutorRef.value?.sendPrompt(
+    `请结合当前课程「${readerTitle.value}」和当前步骤，解释下面这段内容，并回答我可能遇到的问题：\n\n「${quote}」`,
+  ))
+}
+
+function openReaderAiEdit() {
+  if (editing.value) return
+  askAiAboutSelection()
 }
 
 function copySelection() {
@@ -1067,7 +1101,18 @@ onUnmounted(() => {
                 @scroll="syncEditorScroll"
                 @mouseup="captureMarkdownSelection"
                 @keyup="captureMarkdownSelection"
+                @blur="closeEditorSelectionToolbar"
               />
+              <div
+                v-if="editorSelectionToolbar && editing"
+                class="learn__editor-selection-toolbar"
+                :style="{ left: `${editorSelectionToolbar.x}px`, top: `${editorSelectionToolbar.y}px` }"
+                @mousedown.prevent
+              >
+                <button type="button" title="AI 编辑选中内容" @click.stop="requestAiEditFromSelection">
+                  <PhSparkle :size="15" weight="fill" />
+                </button>
+              </div>
             </div>
             <article ref="previewEl" class="learn__reader learn__editor-preview" @scroll="syncPreviewScroll" v-html="readerHtml" />
           </div>
@@ -1117,7 +1162,7 @@ onUnmounted(() => {
             </div>
           </div>
           <button type="button" title="复制" @click.stop="copySelection"><PhCopy :size="15" /></button>
-          <button type="button" title="AI 编辑" @click.stop="closeSelectionAndOpenAiEditor"><PhSparkle :size="15" weight="fill" /></button>
+          <button type="button" title="AI 解释" @click.stop="askAiAboutSelection"><PhChatText :size="15" /></button>
         </div>
         <div
           v-if="aiEditOpen"
@@ -1906,11 +1951,21 @@ onUnmounted(() => {
   background: var(--color-bg);
 }
 
-.learn__selection-toolbar {
+.learn__selection-toolbar,
+.learn__editor-selection-toolbar {
   position: fixed;
   z-index: 80;
   display: inline-flex;
   gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+}
+
+.learn__editor-selection-toolbar {
+  z-index: 85;
   padding: 4px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -1972,7 +2027,8 @@ onUnmounted(() => {
 .learn__textarea { height: 100%; min-height: 0; flex: 1; }
 .learn__editor-preview { height: 100%; box-sizing: border-box; }
 
-.learn__selection-toolbar button {
+.learn__selection-toolbar button,
+.learn__editor-selection-toolbar button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1985,7 +2041,8 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.learn__selection-toolbar button:hover {
+.learn__selection-toolbar button:hover,
+.learn__editor-selection-toolbar button:hover {
   background: var(--color-accent-soft);
   color: var(--color-accent);
 }
