@@ -330,7 +330,7 @@ onUnmounted(() => {
             v-if="!streaming"
             type="button"
             class="tutor__send"
-            :disabled="!input.trim()"
+            :disabled="!input.trim() && !quotedText.trim()"
             @click="send(input)"
           >
             <PhPaperPlaneRight :size="17" weight="fill" />

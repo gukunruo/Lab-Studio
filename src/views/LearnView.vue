@@ -309,16 +309,6 @@ async function requestAiEdit() {
   }
 }
 
-function openAiEditor() {
-  if (!selectedText.value) return
-  aiEditSelection.value = selectedText.value
-  aiEditInstruction.value = ''
-  aiEditResult.value = ''
-  aiEditError.value = ''
-  aiEditOpen.value = true
-  closeSelectionToolbar()
-}
-
 function replaceAiSelection() {
   if (!aiEditSelection.value || !aiEditResult.value) return
   const index = draft.value.indexOf(aiEditSelection.value)
@@ -388,22 +378,6 @@ function stopAiEditDrag() {
   window.removeEventListener('pointermove', moveAiEdit)
 }
 
-function closeSelectionAndOpenAiEditor() {
-  const text = selectedText.value
-  if (!text) return
-  const toolbar = selectionToolbar.value
-  aiEditSelection.value = text
-  closeSelectionToolbar()
-  aiEditInstruction.value = ''
-  aiEditResult.value = ''
-  aiEditError.value = ''
-  aiEditOpen.value = true
-  aiEditPosition.value = {
-    x: Math.min(window.innerWidth - 380, Math.max(12, toolbar?.x ?? 12)),
-    y: Math.min(window.innerHeight - 440, Math.max(12, (toolbar?.y ?? 12) + 56)),
-  }
-}
-
 function captureMarkdownSelection() {
   const textarea = editorEl.value
   if (!textarea || textarea.selectionStart === textarea.selectionEnd) {
@@ -447,25 +421,10 @@ function askAiAboutSelection() {
   nextTick(() => tutorRef.value?.quote(quote))
 }
 
-function openReaderAiEdit() {
-  if (editing.value) return
-  askAiAboutSelection()
-}
-
 function copySelection() {
   if (!selectedText.value) return
   void navigator.clipboard.writeText(selectedText.value)
   closeSelectionToolbar()
-}
-
-function explainSelection() {
-  if (!selectedText.value) return
-  const quote = selectedText.value
-  closeSelectionToolbar()
-  ui.toggleTutor(true)
-  nextTick(() => tutorRef.value?.sendPrompt(
-    `请结合当前课程「${readerTitle.value}」和当前步骤，用前端工程师能懂的类比解释下面这段原文：\n\n「${quote}」`,
-  ))
 }
 
 function startEditing() {
@@ -2271,9 +2230,11 @@ onUnmounted(() => {
   color: inherit;
 }
 
-.learn__reader :deep(.learn__annotation--understand) { background: rgba(250, 204, 21, 0.38); }
-.learn__reader :deep(.learn__annotation--mastered) { background: rgba(45, 212, 191, 0.3); }
-.learn__reader :deep(.learn__annotation--mistake) { background: rgba(248, 113, 113, 0.3); }
+.learn__reader :deep(.learn__annotation--yellow) { background: rgba(250, 204, 21, 0.38); }
+.learn__reader :deep(.learn__annotation--green) { background: rgba(74, 222, 128, 0.3); }
+.learn__reader :deep(.learn__annotation--blue) { background: rgba(96, 165, 250, 0.3); }
+.learn__reader :deep(.learn__annotation--pink) { background: rgba(244, 114, 182, 0.3); }
+.learn__reader :deep(.learn__annotation--purple) { background: rgba(192, 132, 252, 0.3); }
 
 /* ---------- Footer ---------- */
 .learn__bar {
