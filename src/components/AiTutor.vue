@@ -35,6 +35,7 @@ const academy = useAcademyStore()
 
 const config = ref<AiConfig>({ available: false, model: '', baseUrlMasked: '' })
 const input = ref('')
+const quotedText = ref('')
 const streaming = ref(false)
 const streamingText = ref('')
 const error = ref('')
@@ -93,14 +94,27 @@ function autosize() {
   el.style.height = `${Math.min(el.scrollHeight, 160)}px`
 }
 
+function quote(text: string) {
+  quotedText.value = text
+}
+
+function clearQuote() {
+  quotedText.value = ''
+}
+
 async function send(text: string) {
   const content = text.trim()
-  if (!content || streaming.value || !config.value.available) return
+  const quoted = quotedText.value.trim()
+  const message = quoted ? `引用内容：\n> ${quoted.replace(/\n/g, '\n> ')}\n\n${content}` : content
+  const finalContent = message.trim()
+  if (!finalContent || streaming.value || !config.value.available) return
   error.value = ''
   input.value = ''
+  quotedText.value = ''
+  const messageContent = finalContent
   nextTick(autosize)
 
-  academy.addMessage(props.lesson.id, { role: 'user', content })
+  academy.addMessage(props.lesson.id, { role: 'user', content: messageContent })
   streaming.value = true
   streamingText.value = ''
   userScrolled = false
@@ -164,7 +178,7 @@ function sendPrompt(text: string) {
   send(text)
 }
 
-defineExpose({ sendPrompt })
+defineExpose({ sendPrompt, quote })
 
 watch(
   () => props.open,
@@ -295,6 +309,13 @@ onUnmounted(() => {
         </div>
 
         <div class="tutor__input">
+          <div v-if="quotedText" class="tutor__quote">
+            <div class="tutor__quote-head">
+              <span>引用内容</span>
+              <button type="button" aria-label="移除引用" @click="clearQuote"><PhX :size="13" /></button>
+            </div>
+            <p>{{ quotedText }}</p>
+          </div>
           <textarea
             ref="taEl"
             v-model="input"
@@ -626,6 +647,7 @@ onUnmounted(() => {
 
 .tutor__input {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.4rem;
   min-height: 60px;
@@ -634,6 +656,43 @@ onUnmounted(() => {
   border-top: 1px solid var(--color-border);
   background: var(--color-bg);
   flex-shrink: 0;
+}
+
+.tutor__quote {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border-left: 2px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+}
+
+.tutor__quote-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-accent);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.tutor__quote-head button {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tutor__quote p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0.2rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .tutor__ta {

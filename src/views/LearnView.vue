@@ -52,7 +52,7 @@ const mode = ref<Mode>('walk')
 const activeId = ref(academy.lastOpened ?? academy.todayLesson.id)
 const readerEl = ref<HTMLElement | null>(null)
 const listEl = ref<HTMLElement | null>(null)
-const tutorRef = ref<{ sendPrompt: (t: string) => void } | null>(null)
+const tutorRef = ref<{ sendPrompt: (t: string) => void; quote: (t: string) => void } | null>(null)
 const copied = ref(false)
 const menuOpen = ref(false)
 const editing = ref(false)
@@ -412,9 +412,11 @@ function captureMarkdownSelection() {
   }
   aiEditSelection.value = draft.value.slice(textarea.selectionStart, textarea.selectionEnd)
   const rect = textarea.getBoundingClientRect()
+  const lineHeight = Number.parseFloat(getComputedStyle(textarea).lineHeight) || 24
+  const line = draft.value.slice(0, textarea.selectionStart).split('\n').length - 1
   editorSelectionToolbar.value = {
-    x: Math.min(window.innerWidth - 160, rect.left + rect.width / 2 - 60),
-    y: Math.max(12, rect.top + 12),
+    x: Math.min(window.innerWidth - 160, rect.left + 12),
+    y: Math.min(window.innerHeight - 52, Math.max(12, rect.top + 12 + line * lineHeight - textarea.scrollTop)),
   }
 }
 
@@ -442,9 +444,7 @@ function askAiAboutSelection() {
   const quote = selectedText.value
   closeSelectionToolbar()
   ui.toggleTutor(true)
-  nextTick(() => tutorRef.value?.sendPrompt(
-    `请结合当前课程「${readerTitle.value}」和当前步骤，解释下面这段内容，并回答我可能遇到的问题：\n\n「${quote}」`,
-  ))
+  nextTick(() => tutorRef.value?.quote(quote))
 }
 
 function openReaderAiEdit() {
@@ -1101,7 +1101,6 @@ onUnmounted(() => {
                 @scroll="syncEditorScroll"
                 @mouseup="captureMarkdownSelection"
                 @keyup="captureMarkdownSelection"
-                @blur="closeEditorSelectionToolbar"
               />
               <div
                 v-if="editorSelectionToolbar && editing"
@@ -1966,6 +1965,7 @@ onUnmounted(() => {
 
 .learn__editor-selection-toolbar {
   z-index: 85;
+  position: fixed;
   padding: 4px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
