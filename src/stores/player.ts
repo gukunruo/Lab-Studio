@@ -214,7 +214,8 @@ async function connectNetease(musicU: string) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ musicU }),
   })
-  if (!response.ok) throw new Error('网易云登录态无效')
+  const data = await response.json().catch(() => null) as { error?: string } | null
+  if (!response.ok) throw new Error(data?.error ?? '网易云登录态无效')
   neteaseConnected.value = true
   await loadNeteasePlaylists()
 }
@@ -260,9 +261,9 @@ async function cancelNeteaseQr(key: string) {
 
 async function loadNeteasePlaylists() {
   const response = await fetch('/api/netease/playlists', { credentials: 'include' })
-  if (!response.ok) throw new Error('读取网易云歌单失败')
-  const data = await response.json() as { playlists?: typeof neteasePlaylists.value }
-  neteasePlaylists.value = data.playlists ?? []
+  const data = await response.json().catch(() => null) as { playlists?: typeof neteasePlaylists.value; error?: string } | null
+  if (!response.ok) throw new Error(data?.error ?? '读取网易云歌单失败')
+  neteasePlaylists.value = data?.playlists ?? []
 }
 
 async function switchNeteasePlaylist(id: number) {

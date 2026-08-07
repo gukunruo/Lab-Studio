@@ -302,6 +302,7 @@ export function createApp() {
 
   protectedApi.post('/netease/qr/start', async (c) => {
     clearExpiredQrSessions()
+    neteaseQrSessions.clear()
     const result = await neteaseApi.login_qr_key({ crypto: 'api' }).catch(() => null)
     const key = result?.body?.data?.unikey
     if (!key) return c.json({ error: '二维码生成失败' }, 502)
