@@ -20,6 +20,9 @@ import {
   PhSliders,
   PhMoon,
   PhWaveform,
+  PhCloud,
+  PhArrowClockwise,
+  PhCheckCircle,
 } from '@phosphor-icons/vue'
 import { usePlayerStore, EQ_PRESETS } from '@/stores/player'
 import type { Track } from '@/data/tracks'
@@ -58,26 +61,59 @@ const showSleep = ref(false)
 const showRate = ref(false)
 const neteasePrompt = ref(false)
 const neteaseMusicU = ref('')
+const neteaseLoading = ref(false)
+const neteaseError = ref('')
+const selectedNeteasePlaylist = ref<number | null>(null)
 async function connectNetease() {
-  if (!neteaseMusicU.value.trim()) return
+  if (!neteaseMusicU.value.trim() || neteaseLoading.value) return
+  neteaseLoading.value = true
+  neteaseError.value = ''
   try {
     await player.connectNetease(neteaseMusicU.value.trim())
     source.value = 'netease'
     neteaseMusicU.value = ''
     neteasePrompt.value = false
-  } catch {
-    neteasePrompt.value = true
+  } catch (error) {
+    neteaseError.value = error instanceof Error ? error.message : '网易云连接失败'
+  } finally {
+    neteaseLoading.value = false
   }
 }
 
 async function openNetease() {
+  source.value = 'netease'
   if (!neteaseConnected.value) {
     neteasePrompt.value = true
     return
   }
-  source.value = 'netease'
-  await player.loadNeteasePlaylists()
+  await refreshNeteasePlaylists()
 }
+
+async function refreshNeteasePlaylists() {
+  neteaseLoading.value = true
+  neteaseError.value = ''
+  try {
+    await player.loadNeteasePlaylists()
+  } catch (error) {
+    neteaseError.value = error instanceof Error ? error.message : '歌单加载失败'
+  } finally {
+    neteaseLoading.value = false
+  }
+}
+
+async function selectNeteasePlaylist(id: number) {
+  selectedNeteasePlaylist.value = id
+  neteaseLoading.value = true
+  neteaseError.value = ''
+  try {
+    await player.switchNeteasePlaylist(id)
+  } catch (error) {
+    neteaseError.value = error instanceof Error ? error.message : '歌曲加载失败'
+  } finally {
+    neteaseLoading.value = false
+  }
+}
+
 type SpectrumMode = 'bars' | 'mirror' | 'orbit'
 const spectrumMode = ref<SpectrumMode>('bars')
 const orbitCanvas = ref<HTMLCanvasElement | null>(null)
@@ -734,17 +770,61 @@ onUnmounted(() => {
                 @click="openNetease"
               >网易云音乐</button>
             </div>
-            <div v-if="neteasePrompt" class="playlist__netease-connect">
-              <p>输入你主动提供的 MUSIC_U，仅临时保存在当前服务进程内。</p>
-              <input v-model="neteaseMusicU" type="password" placeholder="MUSIC_U" />
-              <button @click="connectNetease">连接网易云</button>
-              <button @click="neteasePrompt = false">取消</button>
-            </div>
-            <div v-if="source === 'netease' && neteaseConnected" class="playlist__netease-list">
-              <button v-for="item in neteasePlaylists" :key="item.id" @click="player.switchNeteasePlaylist(item.id)">
-                {{ item.name }} · {{ item.trackCount }} 首
-              </button>
-              <button @click="player.disconnectNetease()">断开网易云</button>
+            <section v-if="source === 'netease'" class="playlist__netease">
+              <div class="playlist__netease-head">
+                <div class="playlist__netease-title">
+                  <span class="playlist__netease-icon"><PhCloud :size="16" weight="fill" /></span>
+                  <div>
+                    <strong>网易云音乐</strong>
+                    <span>{{ neteaseConnected ? '已连接 · 歌单实时读取' : '未连接网易云账号' }}</span>
+                  </div>
+                </div>
+                <button v-if="neteaseConnected" class="playlist__netease-refresh" type="button" title="刷新歌单" @click="refreshNeteasePlaylists">
+                  <PhArrowClockwise :size="15" :class="{ 'is-spinning': neteaseLoading }" />
+                </button>
+              </div>
+
+              <div v-if="neteasePrompt && !neteaseConnected" class="playlist__netease-connect">
+                <p>输入你主动提供的 MUSIC_U。仅保存在当前服务进程内，服务重启后失效。</p>
+                <input v-model="neteaseMusicU" type="password" placeholder="MUSIC_U" @keydown.enter="connectNetease" />
+                <div class="playlist__netease-actions">
+                  <button class="playlist__netease-primary" type="button" :disabled="neteaseLoading" @click="connectNetease">
+                    {{ neteaseLoading ? '连接中…' : '连接网易云' }}
+                  </button>
+                  <button type="button" @click="neteasePrompt = false">取消</button>
+                </div>
+              </div>
+
+              <p v-if="neteaseError" class="playlist__netease-error">{{ neteaseError }}</p>
+              <div v-else-if="neteaseLoading" class="playlist__netease-state">正在加载网易云歌单…</div>
+              <div v-else-if="!neteaseConnected" class="playlist__netease-state">
+                <PhCloud :size="24" weight="duotone" />
+                <span>连接后读取你的歌单，并在这里直接播放。</span>
+                <button type="button" @click="neteasePrompt = true">连接账号</button>
+              </div>
+              <div v-else-if="!neteasePlaylists.length" class="playlist__netease-state">暂未读取到歌单。</div>
+              <div v-else class="playlist__netease-grid">
+                <button
+                  v-for="item in neteasePlaylists"
+                  :key="item.id"
+                  type="button"
+                  class="playlist__netease-card"
+                  :class="{ 'playlist__netease-card--active': selectedNeteasePlaylist === item.id }"
+                  @click="selectNeteasePlaylist(item.id)"
+                >
+                  <img :src="item.cover" alt="" />
+                  <span class="playlist__netease-card-info">
+                    <strong>{{ item.name }}</strong>
+                    <small>{{ item.trackCount }} 首歌曲</small>
+                  </span>
+                  <PhCheckCircle v-if="selectedNeteasePlaylist === item.id" :size="16" weight="fill" />
+                </button>
+              </div>
+              <button v-if="neteaseConnected" class="playlist__netease-disconnect" type="button" @click="player.disconnectNetease()">断开网易云连接</button>
+            </section>
+            <div v-if="source === 'netease' && neteaseConnected && playlist.length" class="playlist__netease-now">
+              <span><PhCheckCircle :size="14" weight="fill" /> {{ playlist.length }} 首网易云歌曲已载入</span>
+              <button type="button" @click="player.playTrack(0)"><PhPlay :size="13" weight="fill" /> 播放全部</button>
             </div>
             <div class="playlist__bar">
               <div class="playlist__search-wrap">
@@ -1543,6 +1623,268 @@ onUnmounted(() => {
   color: var(--color-bg);
   background: var(--color-accent);
   border-color: var(--color-accent);
+}
+
+.playlist__netease {
+  margin: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.playlist__netease-head,
+.playlist__netease-title,
+.playlist__netease-actions {
+  display: flex;
+  align-items: center;
+}
+
+.playlist__netease-head {
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.playlist__netease-title {
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.playlist__netease-title > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.playlist__netease-title strong {
+  font-size: 0.82rem;
+}
+
+.playlist__netease-title span:last-child {
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+}
+
+.playlist__netease-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.playlist__netease-refresh {
+  display: inline-flex;
+  padding: 0.35rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.playlist__netease-refresh:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.playlist__netease-connect {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.playlist__netease-connect p {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.playlist__netease-connect input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.playlist__netease-connect input:focus {
+  border-color: var(--color-accent);
+}
+
+.playlist__netease-actions {
+  gap: 0.4rem;
+  margin-top: var(--space-2);
+}
+
+.playlist__netease-actions button,
+.playlist__netease-state button {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.playlist__netease-actions .playlist__netease-primary,
+.playlist__netease-state button {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.playlist__netease-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.playlist__netease-error {
+  margin: var(--space-3) 0 0;
+  color: #fca5a5;
+  font-size: 0.72rem;
+}
+
+.playlist__netease-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-2) var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.playlist__netease-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: var(--space-3);
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.playlist__netease-card {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  gap: 0.6rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.35rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.playlist__netease-card:hover,
+.playlist__netease-card--active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.playlist__netease-card img {
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--color-surface-2);
+}
+
+.playlist__netease-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.playlist__netease-card-info strong {
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist__netease-card-info small {
+  color: var(--color-text-muted);
+  font-size: 0.66rem;
+}
+
+.playlist__netease-card > svg {
+  color: var(--color-accent);
+}
+
+.playlist__netease-disconnect {
+  margin-top: var(--space-3);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.playlist__netease-disconnect:hover {
+  color: #fca5a5;
+}
+
+.is-spinning {
+  animation: playlist-spin 0.8s linear infinite;
+}
+
+@keyframes playlist-spin {
+  to { transform: rotate(360deg); }
+}
+
+.playlist__netease-now {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 var(--space-3) var(--space-2);
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.7rem;
+}
+
+.playlist__netease-now span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.playlist__netease-now button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  padding: 0.25rem 0.45rem;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
 }
 
 .playlist__bar {
