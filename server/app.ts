@@ -307,22 +307,49 @@ export function createApp() {
     if (!neteaseCookie) return c.json({ error: '网易云未连接' }, 401)
     const id = c.req.param('id')
     if (!/^\d+$/.test(id)) return c.json({ error: 'invalid playlist id' }, 400)
-    const response = await fetch(`https://music.163.com/api/v6/playlist/detail?id=${id}&n=1000`, {
-      headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
-    })
-    const data = await response.json().catch(() => null) as { playlist?: { tracks?: Array<{ id: number; name: string; ar?: Array<{ name: string }>; al?: { name?: string; picUrl?: string } }> } } | null
-    const tracks = data?.playlist?.tracks ?? []
-    if (!response.ok || !tracks.length) return c.json({ error: '歌单没有可读取的歌曲' }, 404)
-    const ids = tracks.map((track) => track.id)
-    const urlResponse = await fetch(`https://music.163.com/api/song/enhance/player/url?ids=[${ids.join(',')}]&br=320000`, {
-      headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
-    })
-    const urlData = await urlResponse.json().catch(() => null) as { data?: Array<{ id: number; url?: string | null }> } | null
-    const urls = new Map((urlData?.data ?? []).filter((item) => item.url).map((item) => [item.id, item.url as string]))
+    const headers = { Cookie: neteaseCookie, Referer: 'https://music.163.com' }
+    const response = await fetch(`https://music.163.com/api/v6/playlist/detail?id=${id}&n=1000`, { headers })
+    const data = await response.json().catch(() => null) as {
+      playlist?: {
+        tracks?: Array<{ id: number; name: string; ar?: Array<{ name: string }>; al?: { name?: string; picUrl?: string } }>
+        trackIds?: Array<{ id: number }>
+      }
+    } | null
+    if (!response.ok || !data?.playlist) return c.json({ error: '读取歌单详情失败' }, 502)
+
+    let tracks = data.playlist.tracks ?? []
+    const trackIds = data.playlist.trackIds?.map((track) => track.id).filter(Number.isInteger) ?? []
+
+    // “我喜欢的音乐”等歌单常只返回 trackIds，需要再请求歌曲详情补齐名称、艺人和封面。
+    if (!tracks.length && trackIds.length) {
+      const detailResponse = await fetch('https://music.163.com/api/v3/song/detail', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ c: JSON.stringify(trackIds.map((trackId) => ({ id: trackId }))) }),
+      })
+      const detailData = await detailResponse.json().catch(() => null) as {
+        songs?: Array<{ id: number; name: string; ar?: Array<{ name: string }>; al?: { name?: string; picUrl?: string } }>
+      } | null
+      tracks = detailData?.songs ?? []
+    }
+
+    if (!tracks.length) return c.json({ error: '歌单没有可读取的歌曲' }, 404)
+
+    const playableIds = new Set<number>()
+    for (let offset = 0; offset < tracks.length; offset += 50) {
+      const batch = tracks.slice(offset, offset + 50)
+      const ids = batch.map((track) => track.id)
+      const urlResponse = await fetch(`https://music.163.com/api/song/enhance/player/url?ids=[${ids.join(',')}]&br=320000`, { headers })
+      const urlData = await urlResponse.json().catch(() => null) as { data?: Array<{ id: number; url?: string | null }> } | null
+      for (const item of urlData?.data ?? []) {
+        if (!item.url) continue
+        neteaseAudioUrls.set(String(item.id), item.url)
+        playableIds.add(item.id)
+      }
+    }
+
     return c.json({ tracks: tracks.flatMap((track) => {
-      const src = urls.get(track.id)
-      if (!src) return []
-      neteaseAudioUrls.set(String(track.id), src)
+      if (!playableIds.has(track.id)) return []
       return [{
         id: `netease-${track.id}`,
         title: track.name,

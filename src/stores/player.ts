@@ -228,9 +228,9 @@ async function loadNeteasePlaylists() {
 
 async function switchNeteasePlaylist(id: number) {
   const response = await fetch(`/api/netease/playlists/${id}/tracks`, { credentials: 'include' })
-  if (!response.ok) throw new Error('读取网易云歌曲失败')
-  const data = await response.json() as { tracks?: Track[] }
-  if (!data.tracks?.length) throw new Error('歌单没有可播放歌曲')
+  const data = await response.json().catch(() => null) as { tracks?: Track[]; error?: string } | null
+  if (!response.ok) throw new Error(data?.error ?? '读取网易云歌曲失败')
+  if (!data?.tracks?.length) throw new Error('歌单中没有当前账号可播放的歌曲')
   source.value = 'netease'
   playlist.value = data.tracks
   collectionKey.value = 'all'
