@@ -18,6 +18,10 @@ const USER_KEY = 'admin'
 const NOTE_MAX = 20_000
 const MESSAGE_MAX = 50
 
+// 网易云登录态仅保存在当前 Node 进程内存中；服务重启或主动断开后自动失效。
+let neteaseCookie: string | null = null
+const neteaseAudioUrls = new Map<string, string>()
+
 type ProgressInput = {
   completed?: unknown
   lastOpened?: unknown
@@ -261,6 +265,88 @@ export function createApp() {
       set: { annotations: body.annotations, updatedAt },
     })
     return c.json({ ok: true, updatedAt: updatedAt.toISOString() })
+  })
+
+  protectedApi.post('/netease/connect', async (c) => {
+    const body = await c.req.json<{ musicU?: unknown }>().catch(() => null)
+    if (!body || typeof body.musicU !== 'string' || body.musicU.length < 20 || body.musicU.length > 2000) {
+      return c.json({ error: 'invalid MUSIC_U' }, 400)
+    }
+    const cookie = `MUSIC_U=${body.musicU}; os=pc;`
+    const response = await fetch('https://music.163.com/api/nuser/account/get', {
+      headers: { Cookie: cookie, Referer: 'https://music.163.com' },
+    })
+    const account = await response.json().catch(() => null) as { code?: number; account?: { id?: number } } | null
+    if (!response.ok || !account?.account?.id) return c.json({ error: '网易云登录态无效' }, 401)
+    neteaseCookie = cookie
+    return c.json({ connected: true })
+  })
+
+  protectedApi.post('/netease/disconnect', (c) => {
+    neteaseCookie = null
+    return c.json({ connected: false })
+  })
+
+  protectedApi.get('/netease/playlists', async (c) => {
+    if (!neteaseCookie) return c.json({ error: '网易云未连接' }, 401)
+    const accountResponse = await fetch('https://music.163.com/api/nuser/account/get', {
+      headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
+    })
+    const account = await accountResponse.json().catch(() => null) as { account?: { id?: number } } | null
+    const uid = account?.account?.id
+    if (!uid) return c.json({ error: '网易云登录态已失效' }, 401)
+    const response = await fetch(`https://music.163.com/api/user/playlist?uid=${uid}&limit=100`, {
+      headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
+    })
+    const data = await response.json().catch(() => null) as { playlist?: Array<{ id: number; name: string; trackCount: number; coverImgUrl: string }> } | null
+    if (!response.ok || !data?.playlist) return c.json({ error: '读取歌单失败' }, 502)
+    return c.json({ playlists: data.playlist.map((item) => ({ id: item.id, name: item.name, trackCount: item.trackCount, cover: item.coverImgUrl })) })
+  })
+
+  protectedApi.get('/netease/playlists/:id/tracks', async (c) => {
+    if (!neteaseCookie) return c.json({ error: '网易云未连接' }, 401)
+    const id = c.req.param('id')
+    if (!/^\d+$/.test(id)) return c.json({ error: 'invalid playlist id' }, 400)
+    const response = await fetch(`https://music.163.com/api/v6/playlist/detail?id=${id}&n=1000`, {
+      headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
+    })
+    const data = await response.json().catch(() => null) as { playlist?: { tracks?: Array<{ id: number; name: string; ar?: Array<{ name: string }>; al?: { name?: string; picUrl?: string } }> } } | null
+    const tracks = data?.playlist?.tracks ?? []
+    if (!response.ok || !tracks.length) return c.json({ error: '歌单没有可读取的歌曲' }, 404)
+    const ids = tracks.map((track) => track.id)
+    const urlResponse = await fetch(`https://music.163.com/api/song/enhance/player/url?ids=[${ids.join(',')}]&br=320000`, {
+      headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
+    })
+    const urlData = await urlResponse.json().catch(() => null) as { data?: Array<{ id: number; url?: string | null }> } | null
+    const urls = new Map((urlData?.data ?? []).filter((item) => item.url).map((item) => [item.id, item.url as string]))
+    return c.json({ tracks: tracks.flatMap((track) => {
+      const src = urls.get(track.id)
+      if (!src) return []
+      neteaseAudioUrls.set(String(track.id), src)
+      return [{
+        id: `netease-${track.id}`,
+        title: track.name,
+        artist: track.ar?.map((artist) => artist.name).join(' / ') ?? '未知歌手',
+        album: track.al?.name ?? '网易云音乐',
+        cover: track.al?.picUrl ?? '',
+        src: `/api/netease/audio/${track.id}`,
+        lyrics: [],
+      }]
+    }) })
+  })
+
+  protectedApi.get('/netease/audio/:id', async (c) => {
+    const src = neteaseAudioUrls.get(c.req.param('id'))
+    if (!src) return c.json({ error: 'audio url expired' }, 404)
+    const response = await fetch(src, { headers: { Referer: 'https://music.163.com' } })
+    if (!response.ok || !response.body) return c.json({ error: 'audio unavailable' }, 502)
+    return new Response(response.body, {
+      headers: {
+        'Content-Type': response.headers.get('content-type') ?? 'audio/mpeg',
+        'Content-Length': response.headers.get('content-length') ?? '',
+        'Cache-Control': 'private, max-age=300',
+      },
+    })
   })
 
   protectedApi.get('/ai/config', (c) => {

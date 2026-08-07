@@ -41,6 +41,9 @@ const {
   showFullPlayer,
   analyser,
   collectionKey,
+  source,
+  neteaseConnected,
+  neteasePlaylists,
   eqGains,
   eqEnabled,
   eqFreqs,
@@ -53,6 +56,28 @@ const showShortcuts = ref(false)
 const showEq = ref(false)
 const showSleep = ref(false)
 const showRate = ref(false)
+const neteasePrompt = ref(false)
+const neteaseMusicU = ref('')
+async function connectNetease() {
+  if (!neteaseMusicU.value.trim()) return
+  try {
+    await player.connectNetease(neteaseMusicU.value.trim())
+    source.value = 'netease'
+    neteaseMusicU.value = ''
+    neteasePrompt.value = false
+  } catch {
+    neteasePrompt.value = true
+  }
+}
+
+async function openNetease() {
+  if (!neteaseConnected.value) {
+    neteasePrompt.value = true
+    return
+  }
+  source.value = 'netease'
+  await player.loadNeteasePlaylists()
+}
 type SpectrumMode = 'bars' | 'mirror' | 'orbit'
 const spectrumMode = ref<SpectrumMode>('bars')
 const orbitCanvas = ref<HTMLCanvasElement | null>(null)
@@ -699,14 +724,27 @@ onUnmounted(() => {
           <div v-if="showPlaylist" class="playlist">
             <div class="playlist__collections">
               <button
-                v-for="c in player.collections"
-                :key="c.key"
                 class="playlist__col"
-                :class="{ 'playlist__col--active': collectionKey === c.key }"
-                @click="player.switchCollection(c.key)"
-              >
-                {{ c.label }}
+                :class="{ 'playlist__col--active': source === 'local' }"
+                @click="player.switchCollection('all')"
+              >本地音乐</button>
+              <button
+                class="playlist__col"
+                :class="{ 'playlist__col--active': source === 'netease' }"
+                @click="openNetease"
+              >网易云音乐</button>
+            </div>
+            <div v-if="neteasePrompt" class="playlist__netease-connect">
+              <p>输入你主动提供的 MUSIC_U，仅临时保存在当前服务进程内。</p>
+              <input v-model="neteaseMusicU" type="password" placeholder="MUSIC_U" />
+              <button @click="connectNetease">连接网易云</button>
+              <button @click="neteasePrompt = false">取消</button>
+            </div>
+            <div v-if="source === 'netease' && neteaseConnected" class="playlist__netease-list">
+              <button v-for="item in neteasePlaylists" :key="item.id" @click="player.switchNeteasePlaylist(item.id)">
+                {{ item.name }} · {{ item.trackCount }} 首
               </button>
+              <button @click="player.disconnectNetease()">断开网易云</button>
             </div>
             <div class="playlist__bar">
               <div class="playlist__search-wrap">

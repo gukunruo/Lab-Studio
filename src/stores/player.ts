@@ -16,6 +16,8 @@ const LIKED_KEY = 'lab-player-liked'
 const DISLIKED_KEY = 'lab-player-disliked'
 const PROGRESS_KEY = 'lab-player-progress'
 
+type PlayerSource = 'local' | 'netease'
+
 type Persisted = { volume?: number; playMode?: PlayMode; eqGains?: number[]; eqEnabled?: boolean; showFullPlayer?: boolean }
 type Progress = { collectionKey: 'all' | 'roco'; currentIndex: number; currentTime: number }
 
@@ -60,6 +62,9 @@ const initTracks = filterDisliked(
 )
 const playlist = ref<Track[]>(initTracks)
 const collectionKey = ref<'all' | 'roco'>(initKey)
+const source = ref<PlayerSource>('local')
+const neteaseConnected = ref(false)
+const neteasePlaylists = ref<Array<{ id: number; name: string; trackCount: number; cover: string }>>([])
 const currentIndex = ref(
   savedProgress ? Math.min(savedProgress.currentIndex, initTracks.length - 1) : -1,
 )
@@ -194,11 +199,50 @@ function stopSleepTimer() {
 function switchCollection(key: 'all' | 'roco') {
   const c = COLLECTIONS.find((c) => c.key === key)
   if (!c) return
+  source.value = 'local'
   collectionKey.value = key
   playlist.value = filterDisliked(c.tracks)
   currentIndex.value = 0
   load(0)
   if (isPlaying.value) play()
+}
+
+async function connectNetease(musicU: string) {
+  const response = await fetch('/api/netease/connect', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ musicU }),
+  })
+  if (!response.ok) throw new Error('网易云登录态无效')
+  neteaseConnected.value = true
+  await loadNeteasePlaylists()
+}
+
+async function loadNeteasePlaylists() {
+  const response = await fetch('/api/netease/playlists', { credentials: 'include' })
+  if (!response.ok) throw new Error('读取网易云歌单失败')
+  const data = await response.json() as { playlists?: typeof neteasePlaylists.value }
+  neteasePlaylists.value = data.playlists ?? []
+}
+
+async function switchNeteasePlaylist(id: number) {
+  const response = await fetch(`/api/netease/playlists/${id}/tracks`, { credentials: 'include' })
+  if (!response.ok) throw new Error('读取网易云歌曲失败')
+  const data = await response.json() as { tracks?: Track[] }
+  if (!data.tracks?.length) throw new Error('歌单没有可播放歌曲')
+  source.value = 'netease'
+  playlist.value = data.tracks
+  collectionKey.value = 'all'
+  currentIndex.value = 0
+  load(0)
+}
+
+async function disconnectNetease() {
+  await fetch('/api/netease/disconnect', { method: 'POST', credentials: 'include' })
+  neteaseConnected.value = false
+  neteasePlaylists.value = []
+  switchCollection('all')
 }
 
 function toggleLike(id: string) {
@@ -399,8 +443,15 @@ export const usePlayerStore = defineStore('player', () => {
     showPlaylist,
     analyser: analyserRef,
     collectionKey,
+    source,
+    neteaseConnected,
+    neteasePlaylists,
     collections: COLLECTIONS,
     switchCollection,
+    connectNetease,
+    loadNeteasePlaylists,
+    switchNeteasePlaylist,
+    disconnectNetease,
     likedIds,
     dislikedIds,
     isLiked: (id: string) => likedIds.value.includes(id),
