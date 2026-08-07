@@ -64,6 +64,67 @@ const neteaseMusicU = ref('')
 const neteaseLoading = ref(false)
 const neteaseError = ref('')
 const selectedNeteasePlaylist = ref<number | null>(null)
+const neteaseLoginMode = ref<'qr' | 'musicU'>('qr')
+const neteaseQrImage = ref('')
+const neteaseQrKey = ref('')
+const neteaseQrStatus = ref<'waiting' | 'scanned' | 'confirmed' | 'expired' | 'failed'>('waiting')
+let neteaseQrTimer: ReturnType<typeof setInterval> | null = null
+
+function stopNeteaseQrPolling() {
+  if (neteaseQrTimer) clearInterval(neteaseQrTimer)
+  neteaseQrTimer = null
+}
+
+async function pollNeteaseQr() {
+  if (!neteaseQrKey.value || neteaseLoading.value) return
+  try {
+    const status = await player.pollNeteaseQr(neteaseQrKey.value)
+    neteaseQrStatus.value = status as typeof neteaseQrStatus.value
+    if (status === 'confirmed' || status === 'expired' || status === 'failed') {
+      stopNeteaseQrPolling()
+      if (status === 'confirmed') neteasePrompt.value = false
+    }
+  } catch (error) {
+    stopNeteaseQrPolling()
+    neteaseQrStatus.value = 'failed'
+    neteaseError.value = error instanceof Error ? error.message : '扫码登录失败'
+  }
+}
+
+async function startNeteaseQr() {
+  stopNeteaseQrPolling()
+  neteaseLoading.value = true
+  neteaseError.value = ''
+  try {
+    const qr = await player.startNeteaseQr()
+    neteaseQrImage.value = qr.qrimg
+    neteaseQrKey.value = qr.key
+    neteaseQrStatus.value = 'waiting'
+    neteaseQrTimer = setInterval(pollNeteaseQr, 2000)
+  } catch (error) {
+    neteaseError.value = error instanceof Error ? error.message : '二维码生成失败'
+  } finally {
+    neteaseLoading.value = false
+  }
+}
+
+async function cancelNeteaseQr() {
+  stopNeteaseQrPolling()
+  if (neteaseQrKey.value) await player.cancelNeteaseQr(neteaseQrKey.value)
+  neteaseQrKey.value = ''
+  neteaseQrImage.value = ''
+}
+
+function qrStatusText() {
+  return {
+    waiting: '请使用网易云音乐 App 扫码',
+    scanned: '已扫码，请在手机上确认登录',
+    confirmed: '登录成功，正在读取歌单…',
+    expired: '二维码已过期，请刷新',
+    failed: '扫码登录失败，请重试',
+  }[neteaseQrStatus.value]
+}
+
 async function connectNetease() {
   if (!neteaseMusicU.value.trim() || neteaseLoading.value) return
   neteaseLoading.value = true
@@ -532,6 +593,7 @@ onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
   cancelAnimationFrame(raf)
+  stopNeteaseQrPolling()
 })
 </script>
 
@@ -785,14 +847,30 @@ onUnmounted(() => {
               </div>
 
               <div v-if="neteasePrompt && !neteaseConnected" class="playlist__netease-connect">
-                <p>输入你主动提供的 MUSIC_U。仅保存在当前服务进程内，服务重启后失效。</p>
-                <input v-model="neteaseMusicU" type="password" placeholder="MUSIC_U" @keydown.enter="connectNetease" />
-                <div class="playlist__netease-actions">
-                  <button class="playlist__netease-primary" type="button" :disabled="neteaseLoading" @click="connectNetease">
-                    {{ neteaseLoading ? '连接中…' : '连接网易云' }}
-                  </button>
-                  <button type="button" @click="neteasePrompt = false">取消</button>
+                <div class="playlist__netease-login-tabs">
+                  <button type="button" :class="{ 'is-active': neteaseLoginMode === 'qr' }" @click="neteaseLoginMode = 'qr'; startNeteaseQr()">扫码登录</button>
+                  <button type="button" :class="{ 'is-active': neteaseLoginMode === 'musicU' }" @click="neteaseLoginMode = 'musicU'; cancelNeteaseQr()">MUSIC_U</button>
                 </div>
+                <template v-if="neteaseLoginMode === 'qr'">
+                  <img v-if="neteaseQrImage" class="playlist__netease-qr" :src="neteaseQrImage" alt="网易云扫码登录二维码" />
+                  <p>{{ qrStatusText() }}</p>
+                  <div class="playlist__netease-actions">
+                    <button class="playlist__netease-primary" type="button" :disabled="neteaseLoading" @click="startNeteaseQr">
+                      {{ neteaseLoading ? '生成中…' : neteaseQrStatus === 'expired' ? '刷新二维码' : '生成二维码' }}
+                    </button>
+                    <button type="button" @click="neteasePrompt = false; cancelNeteaseQr()">取消</button>
+                  </div>
+                </template>
+                <template v-else>
+                  <p>输入你主动提供的 MUSIC_U。仅保存在当前服务进程内，服务重启后失效。</p>
+                  <input v-model="neteaseMusicU" type="password" placeholder="MUSIC_U" @keydown.enter="connectNetease" />
+                  <div class="playlist__netease-actions">
+                    <button class="playlist__netease-primary" type="button" :disabled="neteaseLoading" @click="connectNetease">
+                      {{ neteaseLoading ? '连接中…' : '连接网易云' }}
+                    </button>
+                    <button type="button" @click="neteasePrompt = false">取消</button>
+                  </div>
+                </template>
               </div>
 
               <p v-if="neteaseError" class="playlist__netease-error">{{ neteaseError }}</p>
@@ -1696,6 +1774,39 @@ onUnmounted(() => {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
+}
+
+.playlist__netease-login-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: var(--space-3);
+}
+
+.playlist__netease-login-tabs button {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.playlist__netease-login-tabs button.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.playlist__netease-qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto var(--space-2);
+  border-radius: var(--radius-sm);
+  background: #fff;
 }
 
 .playlist__netease-connect p {

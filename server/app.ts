@@ -1,4 +1,6 @@
 import { serveStatic } from '@hono/node-server/serve-static'
+import { createRequire } from 'node:module'
+import QRCode from 'qrcode'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { and, eq } from 'drizzle-orm'
@@ -20,6 +22,37 @@ const MESSAGE_MAX = 50
 
 // 网易云登录态仅保存在当前 Node 进程内存中；服务重启或主动断开后自动失效。
 let neteaseCookie: string | null = null
+type NeteaseQrSession = {
+  key: string
+  status: 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'failed'
+  expiresAt: number
+}
+
+const neteaseQrSessions = new Map<string, NeteaseQrSession>()
+const require = createRequire(import.meta.url)
+const neteaseApi = require('NeteaseCloudMusicApi') as {
+  login_qr_key: (query: { crypto: 'api' }) => Promise<{ body?: { data?: { unikey?: string } } }>
+  login_qr_check: (query: { key: string; crypto: 'api' }) => Promise<{
+    body?: { code?: number; message?: string; cookie?: string }
+    cookie?: string[]
+  }>
+}
+
+function clearExpiredQrSessions() {
+  const now = Date.now()
+  for (const [key, session] of neteaseQrSessions) {
+    if (session.expiresAt <= now) neteaseQrSessions.delete(key)
+  }
+}
+
+async function verifyNeteaseCookie(cookie: string) {
+  const response = await fetch('https://music.163.com/api/nuser/account/get', {
+    headers: { Cookie: cookie, Referer: 'https://music.163.com' },
+  })
+  const account = await response.json().catch(() => null) as { account?: { id?: number } } | null
+  return response.ok && Boolean(account?.account?.id)
+}
+
 const neteaseAudioUrls = new Map<string, string>()
 
 type ProgressInput = {
@@ -265,6 +298,58 @@ export function createApp() {
       set: { annotations: body.annotations, updatedAt },
     })
     return c.json({ ok: true, updatedAt: updatedAt.toISOString() })
+  })
+
+  protectedApi.post('/netease/qr/start', async (c) => {
+    clearExpiredQrSessions()
+    const result = await neteaseApi.login_qr_key({ crypto: 'api' }).catch(() => null)
+    const key = result?.body?.data?.unikey
+    if (!key) return c.json({ error: '二维码生成失败' }, 502)
+
+    const expiresAt = Date.now() + 3 * 60 * 1000
+    neteaseQrSessions.set(key, { key, status: 'waiting', expiresAt })
+    const loginUrl = `https://music.163.com/login?codekey=${encodeURIComponent(key)}`
+    const qrimg = await QRCode.toDataURL(loginUrl, { margin: 1, width: 220 })
+    return c.json({ key, qrimg, expiresAt })
+  })
+
+  protectedApi.get('/netease/qr/status/:key', async (c) => {
+    const key = c.req.param('key')
+    const session = neteaseQrSessions.get(key)
+    if (!session || session.expiresAt <= Date.now()) {
+      if (session) neteaseQrSessions.delete(key)
+      return c.json({ status: 'expired' as const })
+    }
+
+    const result = await neteaseApi.login_qr_check({ key, crypto: 'api' }).catch(() => null)
+    const body = result?.body
+    const code = body?.code
+    if (code === 803 || result?.cookie?.length) {
+      const cookie = result?.cookie?.join(';') ?? body?.cookie ?? ''
+      if (cookie && await verifyNeteaseCookie(cookie)) {
+        neteaseCookie = cookie
+        session.status = 'confirmed'
+        neteaseQrSessions.delete(key)
+        return c.json({ status: 'confirmed' as const })
+      }
+      session.status = 'failed'
+      return c.json({ status: 'failed' as const, error: '网易云登录态校验失败' }, 502)
+    }
+
+    if (code === 802) session.status = 'scanned'
+    else if (code === 801 || !code) session.status = 'waiting'
+    else if (code === 800) {
+      session.status = 'expired'
+      neteaseQrSessions.delete(key)
+    } else session.status = 'failed'
+
+    return c.json({ status: session.status, message: body?.message ?? '' })
+  })
+
+  protectedApi.post('/netease/qr/cancel', async (c) => {
+    const body = await c.req.json<{ key?: unknown }>().catch(() => null)
+    if (body && typeof body.key === 'string') neteaseQrSessions.delete(body.key)
+    return c.json({ ok: true })
   })
 
   protectedApi.post('/netease/connect', async (c) => {

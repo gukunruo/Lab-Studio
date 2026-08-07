@@ -219,6 +219,45 @@ async function connectNetease(musicU: string) {
   await loadNeteasePlaylists()
 }
 
+async function pollNeteaseQr(key: string) {
+  const response = await fetch(`/api/netease/qr/status/${encodeURIComponent(key)}`, {
+    credentials: 'include',
+  })
+  const data = await response.json().catch(() => null) as { status?: string; error?: string } | null
+  if (!response.ok) throw new Error(data?.error ?? '扫码登录失败')
+  if (data?.status === 'confirmed') {
+    neteaseConnected.value = true
+    await loadNeteasePlaylists()
+  }
+  return data?.status ?? 'failed'
+}
+
+async function startNeteaseQr() {
+  const response = await fetch('/api/netease/qr/start', {
+    method: 'POST',
+    credentials: 'include',
+  })
+  const data = await response.json().catch(() => null) as {
+    key?: string
+    qrimg?: string
+    expiresAt?: number
+    error?: string
+  } | null
+  if (!response.ok || !data?.key || !data.qrimg || !data.expiresAt) {
+    throw new Error(data?.error ?? '二维码生成失败')
+  }
+  return { key: data.key, qrimg: data.qrimg, expiresAt: data.expiresAt }
+}
+
+async function cancelNeteaseQr(key: string) {
+  await fetch('/api/netease/qr/cancel', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key }),
+  })
+}
+
 async function loadNeteasePlaylists() {
   const response = await fetch('/api/netease/playlists', { credentials: 'include' })
   if (!response.ok) throw new Error('读取网易云歌单失败')
@@ -449,6 +488,9 @@ export const usePlayerStore = defineStore('player', () => {
     collections: COLLECTIONS,
     switchCollection,
     connectNetease,
+    startNeteaseQr,
+    pollNeteaseQr,
+    cancelNeteaseQr,
     loadNeteasePlaylists,
     switchNeteasePlaylist,
     disconnectNetease,
