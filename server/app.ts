@@ -55,6 +55,27 @@ async function verifyNeteaseCookie(cookie: string) {
 
 const neteaseAudioUrls = new Map<string, string>()
 
+type NeteaseLyricLine = { time: number; text: string }
+
+function parseNeteaseLyrics(value: unknown): NeteaseLyricLine[] {
+  if (typeof value !== 'string') return []
+  const lines: NeteaseLyricLine[] = []
+  for (const line of value.split(/\\r?\\n/)) {
+    const matches = [...line.matchAll(/\\[(\\d{1,3}):(\\d{2})(?:\\.(\\d{1,3}))?\\]/g)]
+    const text = line.replace(/(?:\\[\\d{1,3}:\\d{2}(?:\\.\\d{1,3})?\\])+/, '').trim()
+    if (!text || !matches.length) continue
+    for (const match of matches) {
+      const minutes = Number(match[1])
+      const seconds = Number(match[2])
+      const fraction = Number(`0.${match[3] ?? '0'}`)
+      if (Number.isFinite(minutes) && Number.isFinite(seconds) && seconds < 60) {
+        lines.push({ time: minutes * 60 + seconds + fraction, text })
+      }
+    }
+  }
+  return lines.sort((a, b) => a.time - b.time)
+}
+
 type ProgressInput = {
   completed?: unknown
   lastOpened?: unknown
@@ -434,6 +455,22 @@ export function createApp() {
       }
     }
 
+    const lyrics = new Map<number, NeteaseLyricLine[]>()
+    for (let offset = 0; offset < tracks.length; offset += 50) {
+      const batch = tracks.slice(offset, offset + 50)
+      const results = await Promise.all(batch.map(async (track) => {
+        const lyricResponse = await fetch(`https://music.163.com/api/song/lyric?id=${track.id}&lv=-1&tv=-1`, { headers })
+        const lyricData = await lyricResponse.json().catch(() => null) as {
+          lrc?: { lyric?: string }
+          tlyric?: { lyric?: string }
+        } | null
+        const parsed = parseNeteaseLyrics(lyricData?.lrc?.lyric)
+        const translated = parseNeteaseLyrics(lyricData?.tlyric?.lyric)
+        return { id: track.id, lines: parsed.length ? parsed : translated }
+      }))
+      for (const result of results) lyrics.set(result.id, result.lines)
+    }
+
     return c.json({ tracks: tracks.flatMap((track) => {
       if (!playableIds.has(track.id)) return []
       return [{
@@ -443,7 +480,7 @@ export function createApp() {
         album: track.al?.name ?? '网易云音乐',
         cover: track.al?.picUrl ?? '',
         src: `/api/netease/audio/${track.id}`,
-        lyrics: [],
+        lyrics: lyrics.get(track.id) ?? [],
       }]
     }) })
   })

@@ -730,6 +730,7 @@ onUnmounted(() => {
           </div>
 
           <div class="lyrics" ref="lyricsEl" @wheel.passive="onLyricsWheel" @touchmove.passive="onLyricsWheel">
+            <p v-if="!current.lyrics.length" class="lyrics__empty">暂无歌词</p>
             <p
               v-for="(line, i) in current.lyrics"
               :key="i"
@@ -1408,6 +1409,13 @@ onUnmounted(() => {
 
 .lyrics::-webkit-scrollbar {
   width: 0;
+}
+
+.lyrics__empty {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  text-align: center;
 }
 
 .lyrics__line {
