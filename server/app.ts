@@ -24,6 +24,7 @@ const MESSAGE_MAX = 50
 let neteaseCookie: string | null = null
 type NeteaseQrSession = {
   key: string
+  cookie: string
   status: 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'failed'
   expiresAt: number
 }
@@ -31,8 +32,8 @@ type NeteaseQrSession = {
 const neteaseQrSessions = new Map<string, NeteaseQrSession>()
 const require = createRequire(import.meta.url)
 const neteaseApi = require('NeteaseCloudMusicApi') as {
-  login_qr_key: (query: { crypto: 'api' }) => Promise<{ body?: { data?: { unikey?: string } } }>
-  login_qr_check: (query: { key: string; crypto: 'api' }) => Promise<{
+  login_qr_key: (query: { crypto: 'api' }) => Promise<{ body?: { data?: { unikey?: string } }; cookie?: string[] }>
+  login_qr_check: (query: { key: string; crypto: 'api'; cookie?: string }) => Promise<{
     body?: { code?: number; message?: string; cookie?: string }
     cookie?: string[]
   }>
@@ -328,8 +329,10 @@ export function createApp() {
     const key = result?.body?.data?.unikey
     if (!key) return c.json({ error: '二维码生成失败' }, 502)
 
+    const cookie = result?.cookie?.join(';') ?? ''
     const expiresAt = Date.now() + 3 * 60 * 1000
-    neteaseQrSessions.set(key, { key, status: 'waiting', expiresAt })
+    neteaseQrSessions.set(key, { key, cookie, status: 'waiting', expiresAt })
+    if (!cookie) return c.json({ error: '二维码会话创建失败' }, 502)
     const loginUrl = `https://music.163.com/login?codekey=${encodeURIComponent(key)}`
     const qrimg = await QRCode.toDataURL(loginUrl, { margin: 1, width: 220 })
     return c.json({ key, qrimg, expiresAt })
@@ -343,7 +346,7 @@ export function createApp() {
       return c.json({ status: 'expired' as const })
     }
 
-    const result = await neteaseApi.login_qr_check({ key, crypto: 'api' }).catch(() => null)
+    const result = await neteaseApi.login_qr_check({ key, crypto: 'api', cookie: session.cookie }).catch(() => null)
     const body = result?.body
     const code = body?.code
     if (code === 803 || result?.cookie?.length) {
