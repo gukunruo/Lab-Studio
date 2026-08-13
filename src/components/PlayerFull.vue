@@ -907,18 +907,28 @@ onUnmounted(() => {
         <transition name="slide">
           <div v-if="showPlaylist" class="playlist">
             <div class="playlist__collections">
-              <button
-                class="playlist__col"
-                :class="{ 'playlist__col--active': source === 'local' }"
-                @click="player.switchCollection('all')"
-              >本地音乐</button>
-              <button
-                class="playlist__col"
-                :class="{ 'playlist__col--active': source === 'netease' }"
-                @click="openNetease"
-              >网易云音乐</button>
+              <div class="playlist__sources" role="tablist" aria-label="音乐来源">
+                <button
+                  class="playlist__col"
+                  :class="{ 'playlist__col--active': source === 'local' }"
+                  role="tab"
+                  :aria-selected="source === 'local'"
+                  @click="player.switchCollection('all')"
+                >本地音乐</button>
+                <button
+                  class="playlist__col"
+                  :class="{ 'playlist__col--active': source === 'netease' }"
+                  role="tab"
+                  :aria-selected="source === 'netease'"
+                  @click="openNetease"
+                >网易云音乐</button>
+              </div>
+              <button class="playlist__close" type="button" @click="onPlaylistClose" aria-label="关闭播放列表">
+                <PhX :size="18" />
+              </button>
             </div>
-            <section v-if="source === 'netease'" class="playlist__netease">
+            <div class="playlist__body">
+              <section v-if="source === 'netease'" class="playlist__netease">
               <div class="playlist__netease-head">
                 <div class="playlist__netease-title">
                   <span class="playlist__netease-icon"><PhCloud :size="16" weight="fill" /></span>
@@ -989,7 +999,7 @@ onUnmounted(() => {
                 </button>
               </div>
               <button v-if="neteaseConnected" class="playlist__netease-disconnect" type="button" @click="onNeteaseDisconnect">断开网易云连接</button>
-            </section>
+              </section>
             <div v-if="source === 'netease' && neteaseConnected && playlist.length" class="playlist__netease-now">
               <span><PhCheckCircle :size="14" weight="fill" /> {{ playlist.length }} 首网易云歌曲已载入</span>
               <button type="button" @click="player.playTrack(0)"><PhPlay :size="13" weight="fill" /> 播放全部</button>
@@ -1016,9 +1026,6 @@ onUnmounted(() => {
                     {{ tab.label }}
                   </button>
                 </div>
-                <button class="playlist__close" @click="onPlaylistClose" aria-label="关闭播放列表">
-                  <PhX :size="18" />
-                </button>
               </div>
             </div>
             <ul class="playlist__list" ref="playlistListEl">
@@ -1044,6 +1051,7 @@ onUnmounted(() => {
                 </button>
               </li>
             </ul>
+            </div>
           </div>
         </transition>
 
@@ -1761,8 +1769,10 @@ onUnmounted(() => {
   top: 0;
   right: 0;
   bottom: 0;
+  display: flex;
+  flex-direction: column;
   width: 380px;
-  overflow-y: auto;
+  overflow: hidden;
   border-left: 1px solid var(--color-border);
   background: var(--color-bg);
   z-index: 3;
@@ -1770,14 +1780,25 @@ onUnmounted(() => {
 }
 
 .playlist__collections {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
+  align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
   padding: var(--space-3);
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
+}
+
+.playlist__sources {
+  display: flex;
+  flex: 1;
+  gap: var(--space-2);
+}
+
+.playlist__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .playlist__col {

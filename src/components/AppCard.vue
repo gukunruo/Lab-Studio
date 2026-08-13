@@ -17,9 +17,12 @@ const linkTarget = computed(() => ({
   params: { slug: props.exp.slug },
 }))
 
-function openApp(event: MouseEvent) {
-  if (props.routeName || props.exp.slug !== 'music-player') return
-  event.preventDefault()
+const isDirectPlayer = computed(
+  () => !props.routeName && props.exp.slug === 'music-player',
+)
+
+function openApp() {
+  if (!isDirectPlayer.value) return
   const player = usePlayerStore()
   if (!player.current && player.playlist.length) player.playTrack(0)
   player.openFull()
@@ -57,13 +60,15 @@ function onLeave(e: MouseEvent) {
 </script>
 
 <template>
-  <RouterLink
-    :to="linkTarget"
+  <component
+    :is="isDirectPlayer ? 'button' : RouterLink"
+    v-bind="isDirectPlayer ? {} : { to: linkTarget }"
     class="card"
     :data-app="kind"
     @mousemove="onMove"
     @mouseleave="onLeave"
     @click="openApp"
+    :type="isDirectPlayer ? 'button' : undefined"
   >
     <div class="card__visual" :data-kind="kind">
       <template v-if="kind === 'music'">
@@ -99,13 +104,21 @@ function onLeave(e: MouseEvent) {
     </div>
 
     <span class="card__spot" aria-hidden="true" />
-  </RouterLink>
+  </component>
 </template>
 
 <style scoped lang="scss">
 .card {
   --rx: 0deg;
   --ry: 0deg;
+  appearance: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+
+  &:where(button) {
+    color: inherit;
+  }
   position: relative;
   display: flex;
   flex-direction: column;
