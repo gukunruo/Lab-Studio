@@ -78,9 +78,9 @@ type NeteaseLyricLine = { time: number; text: string }
 function parseNeteaseLyrics(value: unknown): NeteaseLyricLine[] {
   if (typeof value !== 'string') return []
   const lines: NeteaseLyricLine[] = []
-  for (const line of value.split(/\\r?\\n/)) {
-    const matches = [...line.matchAll(/\\[(\\d{1,3}):(\\d{2})(?:\\.(\\d{1,3}))?\\]/g)]
-    const text = line.replace(/(?:\\[\\d{1,3}:\\d{2}(?:\\.\\d{1,3})?\\])+/, '').trim()
+  for (const line of value.split(/\r?\n/)) {
+    const matches = [...line.matchAll(/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]/g)]
+    const text = line.replace(/(?:\[\d{1,3}:\d{2}(?:\.\d{1,3})?\])+/, '').trim()
     if (!text || !matches.length) continue
     for (const match of matches) {
       const minutes = Number(match[1])
@@ -483,14 +483,27 @@ export function createApp() {
     for (let offset = 0; offset < tracks.length; offset += 50) {
       const batch = tracks.slice(offset, offset + 50)
       const results = await Promise.all(batch.map(async (track) => {
-        const lyricResponse = await fetch(`https://music.163.com/api/song/lyric?id=${track.id}&lv=-1&tv=-1`, { headers })
+        const lyricResponse = await fetch(`https://music.163.com/api/song/lyric?id=${track.id}&lv=-1&tv=-1`, {
+          headers: {
+            ...headers,
+            Accept: 'application/json, text/plain, */*',
+          },
+        })
         const lyricData = await lyricResponse.json().catch(() => null) as {
           lrc?: { lyric?: string }
           tlyric?: { lyric?: string }
+          romalrc?: { lyric?: string }
+          klyric?: { lyric?: string }
         } | null
-        const parsed = parseNeteaseLyrics(lyricData?.lrc?.lyric)
-        const translated = parseNeteaseLyrics(lyricData?.tlyric?.lyric)
-        return { id: track.id, lines: parsed.length ? parsed : translated }
+        const lines = [
+          lyricData?.lrc?.lyric,
+          lyricData?.tlyric?.lyric,
+          lyricData?.romalrc?.lyric,
+          lyricData?.klyric?.lyric,
+        ]
+          .map((value) => parseNeteaseLyrics(value))
+          .find((value) => value.length) ?? []
+        return { id: track.id, lines }
       }))
       for (const result of results) lyrics.set(result.id, result.lines)
     }
