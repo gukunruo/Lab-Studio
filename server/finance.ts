@@ -74,7 +74,7 @@ export interface FundNavResponse {
 }
 
 export function registerFinanceRoutes(app: Hono): void {
-  app.get('/api/finance/search', async (c) => {
+  app.get('/finance/search', async (c) => {
     const q = c.req.query('q')?.trim() ?? ''
     if (!q || q.length > 40) return c.json({ error: 'invalid query' }, 400)
     const cacheKey = `search:${q}`
@@ -103,7 +103,7 @@ export function registerFinanceRoutes(app: Hono): void {
     }
   })
 
-  app.get('/api/finance/kline', async (c) => {
+  app.get('/finance/kline', async (c) => {
     const secid = c.req.query('secid')?.trim() ?? ''
     const klt = c.req.query('klt') ?? '101'
     const limit = Number(c.req.query('limit') ?? '250')
@@ -150,7 +150,7 @@ export function registerFinanceRoutes(app: Hono): void {
     }
   })
 
-  app.get('/api/finance/fund/nav', async (c) => {
+  app.get('/finance/fund/nav', async (c) => {
     const code = c.req.query('code')?.trim() ?? ''
     const limit = Number(c.req.query('limit') ?? '250')
     if (!/^\d{6}$/.test(code)) return c.json({ error: 'invalid fund code' }, 400)
