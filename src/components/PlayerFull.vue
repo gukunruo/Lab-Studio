@@ -1770,9 +1770,14 @@ onUnmounted(() => {
 }
 
 .playlist__collections {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .playlist__col {

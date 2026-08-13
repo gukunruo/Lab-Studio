@@ -46,6 +46,23 @@ function clearExpiredQrSessions() {
   }
 }
 
+function mergeNeteaseCookies(...headers: string[]) {
+  const cookies = new Map<string, string>()
+
+  for (const header of headers) {
+    for (const part of header.split(';')) {
+      const separator = part.indexOf('=')
+      if (separator <= 0) continue
+      const name = part.slice(0, separator).trim()
+      const value = part.slice(separator + 1).trim()
+      if (!name || /^(domain|path|expires|max-age|samesite|secure|httponly)$/i.test(name)) continue
+      cookies.set(name, value)
+    }
+  }
+
+  return [...cookies].map(([name, value]) => `${name}=${value}`).join('; ')
+}
+
 async function verifyNeteaseCookie(cookie: string) {
   const response = await fetch('https://music.163.com/api/nuser/account/get', {
     headers: { Cookie: cookie, Referer: 'https://music.163.com' },
@@ -349,8 +366,12 @@ export function createApp() {
     const result = await neteaseApi.login_qr_check({ key, crypto: 'api', cookie: session.cookie }).catch(() => null)
     const body = result?.body
     const code = body?.code
-    if (code === 803 || result?.cookie?.length) {
-      const cookie = result?.cookie?.join(';') ?? body?.cookie ?? ''
+    if (code === 803) {
+      const cookie = mergeNeteaseCookies(
+        session.cookie,
+        result?.cookie?.join(';') ?? '',
+        body?.cookie ?? '',
+      )
       if (cookie && await verifyNeteaseCookie(cookie)) {
         neteaseCookie = cookie
         session.status = 'confirmed'
