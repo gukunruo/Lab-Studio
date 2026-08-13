@@ -618,12 +618,7 @@ const playlistListEl = ref<HTMLElement | null>(null)
 watch(showPlaylist, async (v) => {
   if (!v) return
   await nextTick()
-  setTimeout(() => {
-    const c = playlistListEl.value
-    if (!c) return
-    const active = c.querySelector('.playlist__item--active') as HTMLElement | null
-    if (active) active.scrollIntoView({ block: 'center' })
-  }, 280)
+  resetPlaylistScroll()
 })
 
 // spectrum: rAF loop reading analyser frequency data into 32 bars
@@ -940,31 +935,31 @@ onUnmounted(() => {
                 <PhX :size="18" />
               </button>
             </div>
-            <div class="playlist__body">
-              <div class="playlist__tools">
-                <div class="playlist__search-wrap">
-                  <PhMagnifyingGlass :size="16" class="playlist__search-icon" />
-                  <input
-                    class="playlist__search"
-                    v-model="searchQuery"
-                    placeholder="歌曲 / 艺人 / 专辑"
-                    aria-label="搜索歌单"
-                  />
-                </div>
-                <div class="playlist__tabs-row">
-                  <div class="playlist__tabs">
-                    <button
-                      v-for="tab in tabs"
-                      :key="tab.key"
-                      class="playlist__tab"
-                      :class="{ 'playlist__tab--active': langTab === tab.key }"
-                      @click="langTab = tab.key"
-                    >
-                      {{ tab.label }}
-                    </button>
-                  </div>
+            <div class="playlist__tools">
+              <div class="playlist__search-wrap">
+                <PhMagnifyingGlass :size="16" class="playlist__search-icon" />
+                <input
+                  class="playlist__search"
+                  v-model="searchQuery"
+                  placeholder="歌曲 / 艺人 / 专辑"
+                  aria-label="搜索歌单"
+                />
+              </div>
+              <div class="playlist__tabs-row">
+                <div class="playlist__tabs">
+                  <button
+                    v-for="tab in tabs"
+                    :key="tab.key"
+                    class="playlist__tab"
+                    :class="{ 'playlist__tab--active': langTab === tab.key }"
+                    @click="langTab = tab.key"
+                  >
+                    {{ tab.label }}
+                  </button>
                 </div>
               </div>
+            </div>
+            <div class="playlist__body">
               <section v-if="source === 'netease'" class="playlist__netease">
               <div class="playlist__netease-head">
                 <div class="playlist__netease-title">
@@ -1809,21 +1804,44 @@ onUnmounted(() => {
 }
 
 .playlist__body {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--color-accent-rgb), 0.35) transparent;
+}
+
+.playlist__body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.playlist__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.playlist__body::-webkit-scrollbar-thumb {
+  background: rgba(var(--color-accent-rgb), 0.35);
+  border-radius: 999px;
+}
+
+.playlist__body::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--color-accent-rgb), 0.6);
 }
 
 .playlist__tools {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3);
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
+}
+
+.playlist__tools {
+  position: relative;
+  z-index: 2;
 }
 
 .playlist__tools .playlist__tabs-row {
@@ -2465,6 +2483,14 @@ onUnmounted(() => {
   .playlist {
     width: 88%;
     max-width: 360px;
+  }
+
+  .playlist__body {
+    scrollbar-width: none;
+  }
+
+  .playlist__body::-webkit-scrollbar {
+    display: none;
   }
 
   .playlist__tabs {
