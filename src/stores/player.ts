@@ -266,6 +266,30 @@ async function loadNeteasePlaylists() {
   neteasePlaylists.value = data?.playlists ?? []
 }
 
+async function restoreNeteaseConnection() {
+  const response = await fetch('/api/netease/playlists', { credentials: 'include' })
+  if (response.status === 401) {
+    neteaseConnected.value = false
+    return false
+  }
+  const data = await response.json().catch(() => null) as { playlists?: typeof neteasePlaylists.value; error?: string } | null
+  if (!response.ok) throw new Error(data?.error ?? '读取网易云歌单失败')
+  neteaseConnected.value = true
+  neteasePlaylists.value = data?.playlists ?? []
+  return true
+}
+
+let restoreNeteasePromise: Promise<boolean> | null = null
+function restoreNeteaseOnce() {
+  restoreNeteasePromise ??= restoreNeteaseConnection().catch(() => false)
+  return restoreNeteasePromise
+}
+
+const neteaseRestorePending = ref(true)
+void restoreNeteaseOnce().finally(() => {
+  neteaseRestorePending.value = false
+})
+
 async function switchNeteasePlaylist(id: number) {
   const response = await fetch(`/api/netease/playlists/${id}/tracks`, { credentials: 'include' })
   const data = await response.json().catch(() => null) as { tracks?: Track[]; error?: string } | null
@@ -486,6 +510,8 @@ export const usePlayerStore = defineStore('player', () => {
     source,
     neteaseConnected,
     neteasePlaylists,
+    neteaseRestorePending,
+    restoreNeteaseConnection,
     collections: COLLECTIONS,
     switchCollection,
     connectNetease,

@@ -47,6 +47,7 @@ const {
   source,
   neteaseConnected,
   neteasePlaylists,
+  neteaseRestorePending,
   eqGains,
   eqEnabled,
   eqFreqs,
@@ -241,6 +242,7 @@ async function openNetease() {
   source.value = 'netease'
   await nextTick()
   resetPlaylistScroll()
+  if (neteaseRestorePending.value) return
   if (!neteaseConnected.value) {
     await openNeteaseLogin()
     return
@@ -1005,6 +1007,7 @@ onUnmounted(() => {
               </div>
 
               <p v-if="neteaseError" class="playlist__netease-error">{{ neteaseError }}</p>
+              <div v-else-if="neteaseRestorePending" class="playlist__netease-state">正在恢复网易云连接…</div>
               <div v-else-if="neteaseLoading" class="playlist__netease-state">正在加载网易云歌单…</div>
               <div v-else-if="!neteaseConnected" class="playlist__netease-state">
                 <PhCloud :size="24" weight="duotone" />
