@@ -226,8 +226,21 @@ async function connectNetease() {
   }
 }
 
+function resetPlaylistScroll() {
+  const body = document.querySelector('.playlist__body')
+  body?.scrollTo({ top: 0, behavior: 'instant' })
+}
+
+async function openLocal() {
+  player.switchCollection('all')
+  await nextTick()
+  resetPlaylistScroll()
+}
+
 async function openNetease() {
   source.value = 'netease'
+  await nextTick()
+  resetPlaylistScroll()
   if (!neteaseConnected.value) {
     await openNeteaseLogin()
     return
@@ -913,7 +926,7 @@ onUnmounted(() => {
                   :class="{ 'playlist__col--active': source === 'local' }"
                   role="tab"
                   :aria-selected="source === 'local'"
-                  @click="player.switchCollection('all')"
+                  @click="openLocal"
                 >本地音乐</button>
                 <button
                   class="playlist__col"
@@ -928,6 +941,30 @@ onUnmounted(() => {
               </button>
             </div>
             <div class="playlist__body">
+              <div class="playlist__tools">
+                <div class="playlist__search-wrap">
+                  <PhMagnifyingGlass :size="16" class="playlist__search-icon" />
+                  <input
+                    class="playlist__search"
+                    v-model="searchQuery"
+                    placeholder="歌曲 / 艺人 / 专辑"
+                    aria-label="搜索歌单"
+                  />
+                </div>
+                <div class="playlist__tabs-row">
+                  <div class="playlist__tabs">
+                    <button
+                      v-for="tab in tabs"
+                      :key="tab.key"
+                      class="playlist__tab"
+                      :class="{ 'playlist__tab--active': langTab === tab.key }"
+                      @click="langTab = tab.key"
+                    >
+                      {{ tab.label }}
+                    </button>
+                  </div>
+                </div>
+              </div>
               <section v-if="source === 'netease'" class="playlist__netease">
               <div class="playlist__netease-head">
                 <div class="playlist__netease-title">
@@ -1003,30 +1040,6 @@ onUnmounted(() => {
             <div v-if="source === 'netease' && neteaseConnected && playlist.length" class="playlist__netease-now">
               <span><PhCheckCircle :size="14" weight="fill" /> {{ playlist.length }} 首网易云歌曲已载入</span>
               <button type="button" @click="player.playTrack(0)"><PhPlay :size="13" weight="fill" /> 播放全部</button>
-            </div>
-            <div class="playlist__bar">
-              <div class="playlist__search-wrap">
-                <PhMagnifyingGlass :size="16" class="playlist__search-icon" />
-                <input
-                  class="playlist__search"
-                  v-model="searchQuery"
-                  placeholder="歌曲 / 艺人 / 专辑"
-                  aria-label="搜索歌单"
-                />
-              </div>
-              <div class="playlist__tabs-row">
-                <div class="playlist__tabs">
-                  <button
-                    v-for="tab in tabs"
-                    :key="tab.key"
-                    class="playlist__tab"
-                    :class="{ 'playlist__tab--active': langTab === tab.key }"
-                    @click="langTab = tab.key"
-                  >
-                    {{ tab.label }}
-                  </button>
-                </div>
-              </div>
             </div>
             <ul class="playlist__list" ref="playlistListEl">
               <li
@@ -1799,6 +1812,36 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.playlist__tools {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.playlist__tools .playlist__tabs-row {
+  justify-content: flex-start;
+}
+
+.playlist__tools .playlist__tabs {
+  display: flex;
+}
+
+.playlist__tools .playlist__search-wrap {
+  max-width: none;
+}
+
+@media (max-width: 720px) {
+  .playlist__tools {
+    padding: var(--space-2) var(--space-3);
+  }
 }
 
 .playlist__col {
