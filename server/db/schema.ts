@@ -28,6 +28,17 @@ export const adminSessions = sqliteTable('admin_sessions', {
   lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
+export const neteaseSessions = sqliteTable('netease_sessions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userKey: text('user_key').notNull().unique(),
+  encryptedCookie: text('encrypted_cookie').notNull(),
+  iv: text('iv').notNull(),
+  authTag: text('auth_tag').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+})
+
 export const chatSessions = sqliteTable('chat_sessions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userKey: text('user_key').notNull(),
