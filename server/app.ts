@@ -1,4 +1,5 @@
 import { serveStatic } from '@hono/node-server/serve-static'
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
 import QRCode from 'qrcode'
 import { Hono } from 'hono'
@@ -11,6 +12,7 @@ import {
   learningProgress,
   lessonAnnotations,
   lessonDocuments,
+  neteaseSessions,
 } from './db/schema'
 import { authenticate, login, logout, requireAuth } from './auth'
 
@@ -20,8 +22,87 @@ const USER_KEY = 'admin'
 const NOTE_MAX = 20_000
 const MESSAGE_MAX = 50
 
-// 网易云登录态仅保存在当前 Node 进程内存中；服务重启或主动断开后自动失效。
 let neteaseCookie: string | null = null
+let neteaseCookieLoad: Promise<void> | null = null
+const neteaseEncryptionKey = process.env.NETEASE_COOKIE_ENCRYPTION_KEY
+  ? Buffer.from(process.env.NETEASE_COOKIE_ENCRYPTION_KEY, 'base64')
+  : null
+
+type NeteaseSessionRecord = {
+  encryptedCookie: string
+  iv: string
+  authTag: string
+}
+
+function encryptNeteaseCookie(cookie: string): NeteaseSessionRecord | null {
+  if (!neteaseEncryptionKey || neteaseEncryptionKey.length !== 32) return null
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', neteaseEncryptionKey, iv)
+  const encryptedCookie = Buffer.concat([cipher.update(cookie, 'utf8'), cipher.final()])
+  return {
+    encryptedCookie: encryptedCookie.toString('base64'),
+    iv: iv.toString('base64'),
+    authTag: cipher.getAuthTag().toString('base64'),
+  }
+}
+
+function decryptNeteaseCookie(record: NeteaseSessionRecord): string | null {
+  if (!neteaseEncryptionKey || neteaseEncryptionKey.length !== 32) return null
+  try {
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      neteaseEncryptionKey,
+      Buffer.from(record.iv, 'base64'),
+    )
+    decipher.setAuthTag(Buffer.from(record.authTag, 'base64'))
+    return Buffer.concat([
+      decipher.update(Buffer.from(record.encryptedCookie, 'base64')),
+      decipher.final(),
+    ]).toString('utf8')
+  } catch {
+    return null
+  }
+}
+
+async function deletePersistedNeteaseCookie() {
+  if (!neteaseEncryptionKey || neteaseEncryptionKey.length !== 32) return
+  await db.delete(neteaseSessions).where(eq(neteaseSessions.userKey, USER_KEY))
+}
+
+async function persistNeteaseCookie(cookie: string) {
+  const encrypted = encryptNeteaseCookie(cookie)
+  if (!encrypted) return
+  const now = new Date()
+  await db.insert(neteaseSessions).values({
+    userKey: USER_KEY,
+    ...encrypted,
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: null,
+  }).onConflictDoUpdate({
+    target: neteaseSessions.userKey,
+    set: { ...encrypted, updatedAt: now, expiresAt: null },
+  })
+}
+
+async function restoreNeteaseCookie() {
+  if (!neteaseEncryptionKey || neteaseEncryptionKey.length !== 32) return
+  const record = await db.select().from(neteaseSessions)
+    .where(eq(neteaseSessions.userKey, USER_KEY)).get()
+  if (!record) return
+  const cookie = decryptNeteaseCookie(record)
+  if (cookie && await verifyNeteaseCookie(cookie)) {
+    neteaseCookie = cookie
+    return
+  }
+  neteaseCookie = null
+  await deletePersistedNeteaseCookie()
+}
+
+function ensureNeteaseCookieLoaded() {
+  neteaseCookieLoad ??= restoreNeteaseCookie().catch(() => undefined)
+  return neteaseCookieLoad
+}
 type NeteaseQrSession = {
   key: string
   cookie: string
@@ -160,6 +241,7 @@ function maskUrl(value: string): string {
 
 export function createApp() {
   const app = new Hono()
+  void ensureNeteaseCookieLoaded()
 
   // 开发环境由 Vite 代理 /api；生产环境由这里统一处理跨域和静态资源。
   // credentials 必须开启，否则浏览器不会携带 HttpOnly Session Cookie。
@@ -374,6 +456,7 @@ export function createApp() {
       )
       if (cookie && await verifyNeteaseCookie(cookie)) {
         neteaseCookie = cookie
+        await persistNeteaseCookie(cookie)
         session.status = 'confirmed'
         neteaseQrSessions.delete(key)
         return c.json({ status: 'confirmed' as const })
@@ -399,6 +482,7 @@ export function createApp() {
   })
 
   protectedApi.post('/netease/connect', async (c) => {
+    await ensureNeteaseCookieLoaded()
     const body = await c.req.json<{ musicU?: unknown }>().catch(() => null)
     if (!body || typeof body.musicU !== 'string' || body.musicU.length < 20 || body.musicU.length > 2000) {
       return c.json({ error: 'invalid MUSIC_U' }, 400)
@@ -410,22 +494,29 @@ export function createApp() {
     const account = await response.json().catch(() => null) as { code?: number; account?: { id?: number } } | null
     if (!response.ok || !account?.account?.id) return c.json({ error: '网易云登录态无效' }, 401)
     neteaseCookie = cookie
+    await persistNeteaseCookie(cookie)
     return c.json({ connected: true })
   })
 
-  protectedApi.post('/netease/disconnect', (c) => {
+  protectedApi.post('/netease/disconnect', async (c) => {
     neteaseCookie = null
+    await deletePersistedNeteaseCookie()
     return c.json({ connected: false })
   })
 
   protectedApi.get('/netease/playlists', async (c) => {
+    await ensureNeteaseCookieLoaded()
     if (!neteaseCookie) return c.json({ error: '网易云未连接' }, 401)
     const accountResponse = await fetch('https://music.163.com/api/nuser/account/get', {
       headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
     })
     const account = await accountResponse.json().catch(() => null) as { account?: { id?: number } } | null
     const uid = account?.account?.id
-    if (!uid) return c.json({ error: '网易云登录态已失效' }, 401)
+    if (!uid) {
+      neteaseCookie = null
+      await deletePersistedNeteaseCookie()
+      return c.json({ error: '网易云登录态已失效' }, 401)
+    }
     const response = await fetch(`https://music.163.com/api/user/playlist?uid=${uid}&limit=100`, {
       headers: { Cookie: neteaseCookie, Referer: 'https://music.163.com' },
     })
@@ -435,6 +526,7 @@ export function createApp() {
   })
 
   protectedApi.get('/netease/playlists/:id/tracks', async (c) => {
+    await ensureNeteaseCookieLoaded()
     if (!neteaseCookie) return c.json({ error: '网易云未连接' }, 401)
     const id = c.req.param('id')
     if (!/^\d+$/.test(id)) return c.json({ error: 'invalid playlist id' }, 400)
