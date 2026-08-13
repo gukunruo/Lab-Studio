@@ -995,7 +995,7 @@ onUnmounted(() => {
                   </div>
                 </template>
                 <template v-else>
-                  <p>输入你主动提供的 MUSIC_U。仅保存在当前服务进程内，服务重启后失效。</p>
+                  <p>输入你主动提供的 MUSIC_U。凭证只在服务端加密保存，浏览器不会保存原始 Cookie。</p>
                   <input v-model="neteaseMusicU" type="password" placeholder="MUSIC_U" @keydown.enter="connectNetease" />
                   <div class="playlist__netease-actions">
                     <button class="playlist__netease-primary" type="button" :disabled="neteaseLoading" @click="connectNetease">
