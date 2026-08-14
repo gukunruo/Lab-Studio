@@ -42,8 +42,14 @@ export function itemToSymbol(item: SearchItem | WatchItem): string | null {
   if (/^\d{6}$/.test(code)) {
     if (market === '1') return `sh${code}`
     if (market === '0') return `sz${code}`
+    // 港股：5 位数字
+    if (market === '116') return `hk${code.padStart(5, '0')}`
     // 基金（市场通常为 0/1 之外，如 OF）无腾讯实时行情；板块也无。
     return null
+  }
+  // 美股：纯字母代码
+  if (/^[A-Za-z]+$/.test(code) && (market === '105' || market === '106' || market === '107')) {
+    return `us${code.toUpperCase()}`
   }
   return null
 }
@@ -175,6 +181,21 @@ export function useFinance() {
     await loadKline()
   }
 
+  // 重点板块卡片点击：直接用行情 Quote 触发 K 线
+  function selectBoard(q: Quote) {
+    const item: SearchItem = {
+      quoteId: '',
+      code: q.code,
+      name: q.name,
+      type: 'Index',
+      typeName: '指数',
+      market: '',
+    }
+    selected.value = item
+    suggestions.value = []
+    void loadKlineForSymbol(q.symbol, item)
+  }
+
   async function loadKline() {
     const item = selected.value
     if (!item) return
@@ -186,8 +207,36 @@ export function useFinance() {
     loading.value = true
     error.value = ''
     try {
+      // 附带 code（美股/港股映射需要）与 symbol（重点板块直传）
+      const params = new URLSearchParams({
+        secid: item.quoteId || `0.${item.code}`,
+        name: item.name,
+        klt: '101',
+        limit: '250',
+      })
+      if (item.code) params.set('code', item.code)
+      const res = await fetch(`/api/finance/kline?${params.toString()}`, { credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
+      if (!res.ok) throw new Error(data?.error ?? '加载失败')
+      if (seq !== loadSeq) return
+      klines.value = data?.klines ?? []
+    } catch (e) {
+      if (seq !== loadSeq) return
+      error.value = e instanceof Error ? e.message : '加载失败'
+      klines.value = []
+    } finally {
+      if (seq === loadSeq) loading.value = false
+    }
+  }
+
+  // 重点板块 K 线：直接传 symbol（如 us.DJI/hkHSI/sh000001），secid 用 symbol 占位
+  async function loadKlineForSymbol(symbol: string, item: SearchItem) {
+    const seq = ++loadSeq
+    loading.value = true
+    error.value = ''
+    try {
       const res = await fetch(
-        `/api/finance/kline?secid=${encodeURIComponent(item.quoteId)}&name=${encodeURIComponent(item.name)}&klt=101&limit=250`,
+        `/api/finance/kline?secid=${encodeURIComponent(symbol)}&name=${encodeURIComponent(item.name)}&symbol=${encodeURIComponent(symbol)}&klt=101&limit=250`,
         { credentials: 'include' },
       )
       const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
@@ -270,6 +319,7 @@ export function useFinance() {
     addWatch,
     removeWatch,
     select,
+    selectBoard,
     loadKline,
     viewWatch,
   }

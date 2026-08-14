@@ -181,13 +181,53 @@ async function searchEastmoney(q: string): Promise<SearchItem[]> {
 }
 
 // ---- 腾讯 K 线（个股/ETF/指数主源）----
-function secidToTencentSymbol(secid: string): string | null {
+// 东财 market → 腾讯 symbol：
+// 1=沪A/沪指数, 0=深A/深指数, 116=港股, 100=环球指数（美股指数带点走 kline/kline 接口）
+// 105/106/107=美股个股，腾讯 fqkline 数据不完整，改走新浪
+const US_INDEX_SYMBOL: Record<string, string> = {
+  DJI: 'us.DJI',
+  IXIC: 'us.IXIC',
+  INX: 'us.INX',
+  NDX: 'us.NDX',
+  NDX100: 'us.NDX',
+}
+
+// 重点板块 quote symbol → K 线 symbol：美股指数需带点（us.DJI）走 kline/kline 接口
+const QUOTE_TO_KLINE_SYMBOL: Record<string, string> = {
+  usDJI: 'us.DJI',
+  usIXIC: 'us.IXIC',
+  usINX: 'us.INX',
+  usNDX: 'us.NDX',
+}
+
+function normalizeKlineSymbol(symbol: string): string {
+  return QUOTE_TO_KLINE_SYMBOL[symbol] ?? symbol
+}
+
+function secidToTencentSymbol(secid: string, code?: string): string | null {
   const dot = secid.indexOf('.')
   const market = secid.slice(0, dot)
-  const code = secid.slice(dot + 1)
-  if (!/^\d{6}$/.test(code)) return null
-  if (market === '1') return `sh${code}`
-  if (market === '0') return `sz${code}`
+  const secCode = secid.slice(dot + 1)
+  const raw = (code || secCode).toUpperCase()
+
+  if (market === '1' && /^\d{6}$/.test(secCode)) return `sh${secCode}`
+  if (market === '0' && /^\d{6}$/.test(secCode)) return `sz${secCode}`
+
+  // 港股：代码为 5 位数字，腾讯用 hk + 5 位补零代码
+  if (market === '116') {
+    const digits = raw.replace(/\D/g, '')
+    if (/^\d{1,5}$/.test(digits)) return `hk${digits.padStart(5, '0')}`
+    return null
+  }
+
+  // 环球指数：美股指数（道琼斯/纳斯达克/标普500/纳指100）→ 腾讯 kline/kline 带点 code
+  // 恒生指数 → 腾讯 fqkline hkHSI
+  if (market === '100') {
+    if (raw === 'HSI') return 'hkHSI'
+    return US_INDEX_SYMBOL[raw] ?? null
+  }
+
+  // 美股个股走新浪，不由腾讯处理
   return null
 }
 
@@ -195,7 +235,10 @@ async function fetchTencentKline(
   symbol: string,
   limit: number,
 ): Promise<{ code: string; name: string; klines: Kline[] } | null> {
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${limit},qfq`
+  // 带点的美股指数 code（us.DJI）走 kline/kline 接口，其余走 fqkline
+  const url = symbol.includes('.')
+    ? `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${symbol},day,,,${limit}`
+    : `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${limit},qfq`
   try {
     const data = (await fetchJson(url, 'https://gu.qq.com/')) as {
       data?: {
@@ -237,6 +280,48 @@ async function fetchTencentKline(
     const name = qt?.[1] ?? ''
     const code = qt?.[2] ?? symbol.slice(2)
     return { code, name, klines }
+  } catch {
+    return null
+  }
+}
+
+// ---- 新浪美股个股 K 线（腾讯美股 fqkline 数据不完整，此处兜底）----
+// 返回 jsonp：var _x=([{d,o,h,l,c,v,a}, ...]); 为整段历史，需截断最近 limit 根
+async function fetchSinaUsKline(
+  code: string,
+  name: string,
+  limit: number,
+): Promise<{ code: string; name: string; klines: Kline[] } | null> {
+  const url = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_x=/US_MinKService.getDailyK?symbol=${encodeURIComponent(code)}`
+  try {
+    const text = await fetchText(url, 'https://stock.finance.sina.com.cn/')
+    if (!text) return null
+    const m = text.match(/=\s*\((\[.*\]|null)\)\s*;?\s*$/s)
+    if (!m || m[1] === 'null') return null
+    const rows = JSON.parse(m[1]!) as Array<{ d: string; o: string; h: string; l: string; c: string; v: string }>
+    if (!rows.length) return null
+    const klines: Kline[] = rows.slice(-limit).map((r) => {
+      const open = Number(r.o ?? 0)
+      const close = Number(r.c ?? 0)
+      const high = Number(r.h ?? 0)
+      const low = Number(r.l ?? 0)
+      const prevClose = open
+      const pct = prevClose ? ((close - prevClose) / prevClose) * 100 : 0
+      return {
+        date: r.d ?? '',
+        open,
+        close,
+        high,
+        low,
+        volume: Number(r.v ?? 0),
+        amount: 0,
+        amplitude: low ? ((high - low) / low) * 100 : 0,
+        pct: Number(pct.toFixed(2)),
+        change: Number((close - prevClose).toFixed(2)),
+        turnover: 0,
+      }
+    })
+    return { code: code.toUpperCase(), name: name || code.toUpperCase(), klines }
   } catch {
     return null
   }
@@ -491,15 +576,38 @@ export function registerFinanceRoutes(app: Hono): void {
     }
   })
 
-  // K 线：个股/ETF/指数走腾讯，板块走同花顺（板块无腾讯对应）
+  // K 线：个股/ETF/指数走腾讯（美股个股走新浪），板块走同花顺（板块无腾讯对应）
   app.get('/finance/kline', async (c) => {
     const secid = c.req.query('secid')?.trim() ?? ''
     const name = c.req.query('name')?.trim() ?? ''
+    const code = c.req.query('code')?.trim() ?? ''
     const klt = c.req.query('klt') ?? '101'
     const limit = Number(c.req.query('limit') ?? '250')
-    if (!/^[0-9A-Za-z]+\.[0-9A-Za-z]+$/.test(secid)) return c.json({ error: 'invalid secid' }, 400)
+    // 重点板块直接传入腾讯 symbol（如 sh000001/us.DJI/hkHSI），跳过 secid 映射
+    const symbolParam = c.req.query('symbol')?.trim() ?? ''
     if (!['101', '102', '103'].includes(klt)) return c.json({ error: 'invalid klt' }, 400)
     if (!Number.isInteger(limit) || limit < 1 || limit > 500) return c.json({ error: 'invalid limit' }, 400)
+
+    // 重点板块：有 symbol 参数时直接按 symbol 抓腾讯 K 线
+    if (symbolParam) {
+      const cacheKey = `kline:sym:${symbolParam}:${klt}:${limit}`
+      const cached = cacheGet<KlineResponse>(cacheKey)
+      if (cached) return c.json(cached)
+      const symbol = normalizeKlineSymbol(symbolParam)
+      const fallback = await fetchTencentKline(symbol, limit)
+      if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
+      const result: KlineResponse = {
+        code: fallback.code,
+        name: fallback.name || name,
+        secid: symbolParam,
+        klt,
+        klines: fallback.klines,
+      }
+      cacheSet(cacheKey, result, 300_000)
+      return c.json(result)
+    }
+
+    if (!/^[0-9A-Za-z]+\.[0-9A-Za-z]+$/.test(secid)) return c.json({ error: 'invalid secid' }, 400)
 
     const cacheKey = `kline:${secid}:${klt}:${limit}`
     const cached = cacheGet<KlineResponse>(cacheKey)
@@ -524,7 +632,25 @@ export function registerFinanceRoutes(app: Hono): void {
       return c.json(result)
     }
 
-    const symbol = secidToTencentSymbol(secid)
+    // 美股个股走新浪（腾讯美股 fqkline 数据不完整）
+    const market = secid.slice(0, secid.indexOf('.'))
+    if (market === '105' || market === '106' || market === '107') {
+      const usCode = code || secid.slice(secid.indexOf('.') + 1)
+      const fallback = await fetchSinaUsKline(usCode, name, limit)
+      if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
+      const result: KlineResponse = {
+        code: fallback.code,
+        name: fallback.name,
+        secid,
+        klt,
+        klines: fallback.klines,
+      }
+      cacheSet(cacheKey, result, 300_000)
+      return c.json(result)
+    }
+
+    // 其余走腾讯（A股/ETF/指数/港股/环球指数）
+    const symbol = secidToTencentSymbol(secid, code)
     if (!symbol) return c.json({ error: '数据源暂时不可用' }, 502)
     const fallback = await fetchTencentKline(symbol, limit)
     if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)

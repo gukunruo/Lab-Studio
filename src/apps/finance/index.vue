@@ -183,16 +183,18 @@ onMounted(async () => {
     <section class="fin__section">
       <h2 class="fin__section-title">国内重点板块</h2>
       <div class="fin__cards">
-        <div
+        <button
           v-for="q in domesticBoards"
           :key="q.symbol"
           class="fin__card"
           :class="pctClass(q.pct)"
+          type="button"
+          @click="finance.selectBoard(q)"
         >
           <div class="fin__card-name">{{ q.name }}</div>
           <div class="fin__card-price">{{ fmtPrice(q.price) }}</div>
           <div class="fin__card-pct">{{ fmtPct(q.pct) }}</div>
-        </div>
+        </button>
         <div v-if="finance.boardsLoading && !finance.boards" class="fin__card fin__card--loading">
           加载中…
         </div>
@@ -202,16 +204,18 @@ onMounted(async () => {
     <section class="fin__section">
       <h2 class="fin__section-title">国外重点板块</h2>
       <div class="fin__cards">
-        <div
+        <button
           v-for="q in overseasBoards"
           :key="q.symbol"
           class="fin__card"
           :class="pctClass(q.pct)"
+          type="button"
+          @click="finance.selectBoard(q)"
         >
           <div class="fin__card-name">{{ q.name }}</div>
           <div class="fin__card-price">{{ fmtPrice(q.price) }}</div>
           <div class="fin__card-pct">{{ fmtPct(q.pct) }}</div>
-        </div>
+        </button>
       </div>
     </section>
 
@@ -455,6 +459,19 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  font: inherit;
+  text-align: left;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.fin__card:hover {
+  border-color: var(--color-accent);
+}
+
+.fin__card:active {
+  transform: scale(0.98);
 }
 
 .fin__card--loading {
