@@ -297,15 +297,7 @@ const lastVolRatio = computed(() => {
 
 <style scoped lang="scss">
 .kchart {
-  --fin-up: #dc2626;
-  --fin-down: #16a34a;
-  --fin-boll: rgba(13, 148, 136, 0.7);
   width: 100%;
-}
-:global([data-theme='dark']) .kchart {
-  --fin-up: #f87171;
-  --fin-down: #4ade80;
-  --fin-boll: rgba(45, 212, 191, 0.7);
 }
 
 .kchart__svg {

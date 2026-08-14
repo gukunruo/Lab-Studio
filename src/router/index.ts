@@ -11,6 +11,11 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     {
+      path: '/finance',
+      name: 'finance',
+      component: () => import('@/views/FinanceView.vue'),
+    },
+    {
       path: '/',
       component: LabShell,
       children: [

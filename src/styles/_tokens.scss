@@ -61,6 +61,14 @@ $radius-full: 9999px;
   --color-on-accent: #04150e;
   --color-danger: #{$color-danger};
 
+  // 行情涨跌配色（默认 A 股习惯：红涨绿跌）。可在页面级覆盖以切换为国际习惯。
+  --fin-up: #dc2626;
+  --fin-down: #16a34a;
+  --fin-boll: rgba(13, 148, 136, 0.7);
+  // 国际习惯（绿涨红跌）备用值，切换配色时引用。
+  --fin-up-intl: #16a34a;
+  --fin-down-intl: #dc2626;
+
   --space-1: #{$space-1};
   --space-2: #{$space-2};
   --space-3: #{$space-3};
@@ -97,4 +105,10 @@ $radius-full: 9999px;
   --color-accent-soft: rgba(45, 212, 191, 0.16);
   --color-accent-rgb: 45, 212, 191;
   --color-danger: #f87171;
+
+  --fin-up: #f87171;
+  --fin-down: #4ade80;
+  --fin-boll: rgba(45, 212, 191, 0.7);
+  --fin-up-intl: #4ade80;
+  --fin-down-intl: #f87171;
 }
