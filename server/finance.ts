@@ -105,6 +105,78 @@ export interface FundNavResponse {
   nav: FundNavPoint[]
 }
 
+// 东财 secid（market.code）→ 腾讯 symbol（sh/sz + 代码）。
+// 仅支持 A 股/指数/ETF/LOF；板块（BK）等无腾讯对应，返回 null。
+function secidToTencentSymbol(secid: string): string | null {
+  const dot = secid.indexOf('.')
+  const market = secid.slice(0, dot)
+  const code = secid.slice(dot + 1)
+  if (!/^\d{6}$/.test(code)) return null
+  if (market === '1') return `sh${code}`
+  if (market === '0') return `sz${code}`
+  return null
+}
+
+async function fetchTencentKline(
+  symbol: string,
+  limit: number,
+): Promise<{ code: string; name: string; klines: Kline[] } | null> {
+  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${limit},qfq`
+  try {
+    await throttleUpstream()
+    const response = await fetch(url, {
+      headers: { 'User-Agent': UA, Accept: 'application/json, text/plain, */*' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return null
+    const data = (await response.json()) as {
+      data?: {
+        [sym: string]: {
+          qfqday?: string[][]
+          day?: string[][]
+          qt?: { [sym: string]: string[] }
+        }
+      }
+    }
+    const bucket = data.data?.[symbol]
+    if (!bucket) return null
+    // 个股/ETF/LOF 用 qfqday（前复权），指数用 day。
+    const rows = bucket.qfqday?.length ? bucket.qfqday : bucket.day
+    if (!rows?.length) return null
+    const klines: Kline[] = rows.map((r) => {
+      const date = r[0] ?? ''
+      const open = Number(r[1] ?? 0)
+      const close = Number(r[2] ?? 0)
+      const high = Number(r[3] ?? 0)
+      const low = Number(r[4] ?? 0)
+      const volume = Number(r[5] ?? 0)
+      const change = close - open
+      const prev = open
+      const pct = prev ? (change / prev) * 100 : 0
+      return {
+        date,
+        open,
+        close,
+        high,
+        low,
+        volume,
+        amount: 0,
+        amplitude: low ? ((high - low) / low) * 100 : 0,
+        pct: Number(pct.toFixed(2)),
+        change: Number(change.toFixed(2)),
+        turnover: 0,
+      }
+    })
+    // qt 字段：['1', 名称, 代码, ...]，名称在索引 1。
+    const qt = bucket.qt?.[symbol]
+    const name = qt?.[1] ?? ''
+    const code = qt?.[2] ?? symbol.slice(2)
+    return { code, name, klines }
+  } catch {
+    return null
+  }
+}
+
 export function registerFinanceRoutes(app: Hono): void {
   app.get('/finance/search', async (c) => {
     const q = c.req.query('q')?.trim() ?? ''
@@ -147,6 +219,7 @@ export function registerFinanceRoutes(app: Hono): void {
     const cached = cacheGet<KlineResponse>(cacheKey)
     if (cached) return c.json(cached)
 
+    // 主源：东财历史行情；失败时回退到腾讯（对抗东财 IP 风控）。
     const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${encodeURIComponent(secid)}&ut=fa5fd1943c7b386f172d6893dbfba10b&klt=${klt}&fqt=1&lmt=${limit}&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`
     try {
       const data = (await fetchJson(url, 'https://quote.eastmoney.com/')) as {
@@ -178,7 +251,20 @@ export function registerFinanceRoutes(app: Hono): void {
       cacheSet(cacheKey, result)
       return c.json(result)
     } catch {
-      return c.json({ error: '数据源暂时不可用' }, 502)
+      // 回退：腾讯行情（不支持板块，仅个股/指数/ETF/LOF）。
+      const symbol = secidToTencentSymbol(secid)
+      if (!symbol) return c.json({ error: '数据源暂时不可用' }, 502)
+      const fallback = await fetchTencentKline(symbol, limit)
+      if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
+      const result: KlineResponse = {
+        code: fallback.code,
+        name: fallback.name,
+        secid,
+        klt,
+        klines: fallback.klines,
+      }
+      cacheSet(cacheKey, result)
+      return c.json(result)
     }
   })
 
