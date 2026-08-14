@@ -11,6 +11,7 @@ export function useFinance() {
   const error = ref('')
 
   let debounce: ReturnType<typeof setTimeout> | null = null
+  let loadSeq = 0
 
   async function search() {
     const q = query.value.trim()
@@ -51,6 +52,7 @@ export function useFinance() {
       await loadFundNav(item)
       return
     }
+    const seq = ++loadSeq
     loading.value = true
     error.value = ''
     try {
@@ -60,16 +62,19 @@ export function useFinance() {
       )
       const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
       if (!res.ok) throw new Error(data?.error ?? '加载失败')
+      if (seq !== loadSeq) return // 已切换到新标的，丢弃过期响应
       klines.value = data?.klines ?? []
     } catch (e) {
+      if (seq !== loadSeq) return
       error.value = e instanceof Error ? e.message : '加载失败'
       klines.value = []
     } finally {
-      loading.value = false
+      if (seq === loadSeq) loading.value = false
     }
   }
 
   async function loadFundNav(item: SearchItem) {
+    const seq = ++loadSeq
     loading.value = true
     error.value = ''
     try {
@@ -82,6 +87,7 @@ export function useFinance() {
         error?: string
       } | null
       if (!res.ok) throw new Error(data?.error ?? '加载失败')
+      if (seq !== loadSeq) return
       // 场外净值转成伪 K 线（open/high/low/close 均取单位净值），让图表复用。
       klines.value = (data?.nav ?? []).map((p) => ({
         date: p.date,
@@ -97,10 +103,11 @@ export function useFinance() {
         turnover: 0,
       }))
     } catch (e) {
+      if (seq !== loadSeq) return
       error.value = e instanceof Error ? e.message : '加载失败'
       klines.value = []
     } finally {
-      loading.value = false
+      if (seq === loadSeq) loading.value = false
     }
   }
 

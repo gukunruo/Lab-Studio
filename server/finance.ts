@@ -21,12 +21,27 @@ function cacheSet(key: string, value: unknown): void {
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL })
 }
 
+// 上游（东财）对高频请求做 IP 级风控：同一 IP 短时间内连续请求会触发
+// 约 3 分钟的全量拒绝（UND_ERR_SOCKET / other side closed）。因此对上游
+// 请求做全局节流（两次请求最小间隔），并在失败时退避更久，避免触发风控。
+let lastUpstreamAt = 0
+const MIN_UPSTREAM_INTERVAL = 2500
+
+async function throttleUpstream(): Promise<void> {
+  const elapsed = Date.now() - lastUpstreamAt
+  if (elapsed < MIN_UPSTREAM_INTERVAL) {
+    await new Promise((r) => setTimeout(r, MIN_UPSTREAM_INTERVAL - elapsed))
+  }
+  lastUpstreamAt = Date.now()
+}
+
 async function fetchJson(url: string, referer: string): Promise<unknown> {
-  // 东财 K 线走多 IP 负载均衡，部分节点会直接断开连接（UND_ERR_SOCKET / other side closed）。
-  // 多次重试 + 指数退避可命中健康节点，显著降低偶发 502。
-  const MAX_ATTEMPTS = 4
+  // 连接类错误（UND_ERR_SOCKET）在风控窗口内重试无效，退避后重试一次，
+  // 仍未恢复则向上抛错，由前端提示「稍后重试」。避免密集重试加剧风控。
+  const MAX_ATTEMPTS = 2
   let lastErr: unknown
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    await throttleUpstream()
     try {
       const response = await fetch(url, {
         headers: { 'User-Agent': UA, Referer: referer, Accept: 'application/json, text/plain, */*' },
@@ -39,7 +54,7 @@ async function fetchJson(url: string, referer: string): Promise<unknown> {
       // 4xx/5xx（已拿到响应）不重试；仅连接类错误重试。
       if (err instanceof Error && err.message.startsWith('upstream ')) throw err
       if (attempt < MAX_ATTEMPTS - 1) {
-        await new Promise((r) => setTimeout(r, 800 * 2 ** attempt))
+        await new Promise((r) => setTimeout(r, 4000))
       }
     }
   }
