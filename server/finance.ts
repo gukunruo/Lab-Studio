@@ -22,22 +22,28 @@ function cacheSet(key: string, value: unknown): void {
 }
 
 async function fetchJson(url: string, referer: string): Promise<unknown> {
-  // 上游（东财）对连续请求有波动性限流，失败后短暂退避重试一次可显著降低偶发 502。
-  const attempt = async (): Promise<Response> => {
+  // 东财 K 线走多 IP 负载均衡，部分节点会直接断开连接（UND_ERR_SOCKET / other side closed）。
+  // 多次重试 + 指数退避可命中健康节点，显著降低偶发 502。
+  const MAX_ATTEMPTS = 4
+  let lastErr: unknown
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      return await fetch(url, {
+      const response = await fetch(url, {
         headers: { 'User-Agent': UA, Referer: referer, Accept: 'application/json, text/plain, */*' },
+        signal: AbortSignal.timeout(10_000),
       })
+      if (!response.ok) throw new Error(`upstream ${response.status}`)
+      return await response.json()
     } catch (err) {
-      await new Promise((r) => setTimeout(r, 1500))
-      return fetch(url, {
-        headers: { 'User-Agent': UA, Referer: referer, Accept: 'application/json, text/plain, */*' },
-      })
+      lastErr = err
+      // 4xx/5xx（已拿到响应）不重试；仅连接类错误重试。
+      if (err instanceof Error && err.message.startsWith('upstream ')) throw err
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, 800 * 2 ** attempt))
+      }
     }
   }
-  const response = await attempt()
-  if (!response.ok) throw new Error(`upstream ${response.status}`)
-  return response.json()
+  throw lastErr
 }
 
 export interface SearchItem {
