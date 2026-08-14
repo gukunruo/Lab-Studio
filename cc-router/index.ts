@@ -10,16 +10,26 @@ const app = new Hono()
 app.all('/v1/messages', async (c) => {
   const reqHeaders = c.req.raw.headers
   const method = c.req.method
+  const upstreamUrl = `${config.upstreamBaseUrl.replace(/\/$/, '')}/v1/messages`
+  const forwardHeaders = new Headers(reqHeaders)
+  forwardHeaders.delete('content-length')
 
   let upstreamBody: string
   if (method === 'POST') {
     const rawBody = await c.req.text()
-    let parsed: Record<string, unknown> = {}
+    let parsed: Record<string, unknown>
     try {
       parsed = JSON.parse(rawBody)
     } catch {
-      upstreamBody = rawBody
-      parsed = {}
+      const upstream = await fetch(upstreamUrl, {
+        method,
+        headers: forwardHeaders,
+        body: rawBody,
+      })
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: upstream.headers,
+      })
     }
 
     if (parsed && !Array.isArray(parsed)) {
@@ -33,10 +43,9 @@ app.all('/v1/messages', async (c) => {
     upstreamBody = ''
   }
 
-  const upstreamUrl = `${config.upstreamBaseUrl.replace(/\/$/, '')}/v1/messages`
   const upstream = await fetch(upstreamUrl, {
     method,
-    headers: reqHeaders,
+    headers: forwardHeaders,
     body: method === 'POST' ? upstreamBody : undefined,
   })
 
@@ -50,10 +59,12 @@ app.all('*', async (c) => {
   const reqHeaders = c.req.raw.headers
   const method = c.req.method
   const upstreamUrl = `${config.upstreamBaseUrl.replace(/\/$/, '')}${c.req.path}`
+  const forwardHeaders = new Headers(reqHeaders)
+  forwardHeaders.delete('content-length')
 
   const upstream = await fetch(upstreamUrl, {
     method,
-    headers: reqHeaders,
+    headers: forwardHeaders,
     body: method !== 'GET' && method !== 'HEAD' ? await c.req.text() : undefined,
   })
 
