@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { BoardRow, Kline, QuoteDetail, SearchItem } from './types'
+import type { BoardRow, Kline, MinutePoint, QuoteDetail, SearchItem } from './types'
 
 export interface Quote {
   symbol: string
@@ -85,6 +85,8 @@ export function useFinance() {
   // K 线周期：101=日 102=周 103=月；selectedSymbol 为指数/板块直传腾讯 symbol 时使用
   const klt = ref('101')
   const selectedSymbol = ref<string | null>(null)
+  const selectedPlatecode = ref<string | null>(null)
+  const minutePoints = ref<MinutePoint[]>([])
 
   let debounce: ReturnType<typeof setTimeout> | null = null
   let loadSeq = 0
@@ -170,9 +172,12 @@ export function useFinance() {
     }
     selected.value = item
     selectedSymbol.value = null
+    selectedPlatecode.value = row.code
     suggestions.value = []
     detail.value = null
-    await loadKline()
+    klines.value = []
+    klt.value = '101'
+    await Promise.all([loadKline(), loadMinute()])
   }
 
   async function loadWatchlist() {
@@ -264,10 +269,13 @@ export function useFinance() {
   async function select(item: SearchItem) {
     selected.value = item
     selectedSymbol.value = null
+    selectedPlatecode.value = null
     suggestions.value = []
     query.value = item.name
     detail.value = null
-    await Promise.all([loadKline(), loadDetail(item)])
+    klines.value = []
+    klt.value = '101'
+    await Promise.all([loadKline(), loadDetail(item), loadMinute()])
   }
 
   // 重点板块卡片点击：直接用行情 Quote 触发 K 线
@@ -282,9 +290,12 @@ export function useFinance() {
     }
     selected.value = item
     selectedSymbol.value = q.symbol
+    selectedPlatecode.value = null
     suggestions.value = []
     detail.value = null
-    void Promise.all([loadKlineForSymbol(q.symbol, item), loadDetail(item)])
+    klines.value = []
+    klt.value = '101'
+    void Promise.all([loadKlineForSymbol(q.symbol, item), loadDetail(item), loadMinute()])
   }
 
   async function loadKline() {
@@ -358,6 +369,37 @@ export function useFinance() {
     }
   }
 
+  // 分时：板块传 platecode 走同花顺，其余走腾讯 symbol
+  async function loadMinute() {
+    const item = selected.value
+    if (!item) return
+    if (item.type === 'OTCFUND') {
+      minutePoints.value = []
+      return
+    }
+    const params = new URLSearchParams()
+    if (selectedPlatecode.value) {
+      params.set('platecode', selectedPlatecode.value)
+    } else if (selectedSymbol.value) {
+      params.set('symbol', selectedSymbol.value)
+    } else {
+      const symbol = itemToSymbol(item)
+      if (!symbol) {
+        minutePoints.value = []
+        return
+      }
+      params.set('symbol', symbol)
+    }
+    try {
+      const res = await fetch(`/api/finance/minute?${params.toString()}`, { credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as { points?: MinutePoint[]; error?: string } | null
+      if (!res.ok) throw new Error(data?.error ?? '加载失败')
+      minutePoints.value = data?.points ?? []
+    } catch {
+      minutePoints.value = []
+    }
+  }
+
   async function loadFundNav(item: SearchItem) {
     const seq = ++loadSeq
     loading.value = true
@@ -421,6 +463,7 @@ export function useFinance() {
     selected,
     klines,
     detail,
+    minutePoints,
     loading,
     error,
     search,

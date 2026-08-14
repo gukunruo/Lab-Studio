@@ -251,12 +251,17 @@ onMounted(async () => {
 
       <div class="fin__detail-grid">
         <div class="fin__chart">
-          <div v-if="finance.loading.value" class="fin__state">加载中…</div>
+          <div v-if="finance.loading.value && !finance.klines.value.length" class="fin__state">加载中…</div>
           <div v-else-if="finance.error.value" class="fin__state fin__state--error">
             <p>{{ finance.error.value }}</p>
             <button class="fin__retry" @click="finance.loadKline()">重试</button>
           </div>
-          <KlineChart v-else :klines="finance.klines.value" @period-change="finance.setPeriod" />
+          <KlineChart
+            v-else
+            :klines="finance.klines.value"
+            :minute="finance.minutePoints.value"
+            @period-change="finance.setPeriod"
+          />
         </div>
 
         <aside class="fin__ai">
