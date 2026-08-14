@@ -36,12 +36,16 @@ async function throttleUpstream(): Promise<void> {
   lastUpstreamAt = Date.now()
 }
 
-async function fetchJson(url: string, referer: string, retryDelayMs = 4000): Promise<unknown> {
+async function fetchJson(
+  url: string,
+  referer: string,
+  retryDelayMs = 4000,
+  maxAttempts = 2,
+): Promise<unknown> {
   // 连接类错误（UND_ERR_SOCKET）在拒绝窗口内重试无效，退避到窗口过后重试
   // 一次，仍未恢复则向上抛错，由前端提示「稍后重试」。
-  const MAX_ATTEMPTS = 2
   let lastErr: unknown
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await throttleUpstream()
     try {
       const response = await fetch(url, {
@@ -54,7 +58,7 @@ async function fetchJson(url: string, referer: string, retryDelayMs = 4000): Pro
       lastErr = err
       // 4xx/5xx（已拿到响应）不重试；仅连接类错误重试。
       if (err instanceof Error && err.message.startsWith('upstream ')) throw err
-      if (attempt < MAX_ATTEMPTS - 1) {
+      if (attempt < maxAttempts - 1) {
         await new Promise((r) => setTimeout(r, retryDelayMs))
       }
     }
@@ -178,6 +182,161 @@ async function fetchTencentKline(
   }
 }
 
+// ---- 同花顺板块 K 线回退 ----
+// 东财 push2his 对部分 IP 做应用层风控（TLS 握手成功但读完请求即断开），
+// 板块（BK）又无腾讯行情可回退，故为板块接入同花顺历史 K 线。
+// 接口 d.10jqka.com.cn/v6/line/bk_<platecode>/01/all.js 返回 JS 赋值形式，
+// price 每根 4 值 [low, open-low, high-low, close-low]（已乘 priceFactor），
+// 日期存 MMDD，需配合 sortYear 逐年还原年份。
+
+interface ThsBoard {
+  platecode: string
+  name: string
+  kind: 'concept' | 'industry'
+}
+
+let thsBoardCache: { concepts: ThsBoard[]; industries: ThsBoard[]; expiresAt: number } | null = null
+
+async function fetchThsGbk(url: string, referer: string): Promise<string | null> {
+  try {
+    await throttleUpstream()
+    const response = await fetch(url, {
+      headers: { 'User-Agent': UA, Referer: referer, Accept: 'text/html, */*' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return null
+    const buf = await response.arrayBuffer()
+    return new TextDecoder('gbk').decode(buf)
+  } catch {
+    return null
+  }
+}
+
+async function loadThsBoards(): Promise<{ concepts: ThsBoard[]; industries: ThsBoard[] } | null> {
+  if (thsBoardCache && thsBoardCache.expiresAt > Date.now()) {
+    return { concepts: thsBoardCache.concepts, industries: thsBoardCache.industries }
+  }
+  const concepts: ThsBoard[] = []
+  const industries: ThsBoard[] = []
+  // 概念板块：gn/ 页的 gnSection JSON（platecode + platename）。
+  const gnHtml = await fetchThsGbk('http://q.10jqka.com.cn/gn/', 'http://q.10jqka.com.cn/')
+  if (gnHtml) {
+    const m = gnHtml.match(/id="gnSection" value='([^']+)'/)
+    if (m) {
+      try {
+        const obj = JSON.parse(m[1]!) as Record<string, { platecode?: string; platename?: string }>
+        for (const v of Object.values(obj)) {
+          if (v.platecode && v.platename) concepts.push({ platecode: v.platecode, name: v.platename, kind: 'concept' })
+        }
+      } catch {
+        /* 解析失败则跳过概念板块 */
+      }
+    }
+  }
+  // 行业板块：thshy/ 页的 /thshy/detail/code/<code>/ 链接 + 名称。
+  const hyHtml = await fetchThsGbk('http://q.10jqka.com.cn/thshy/', 'http://q.10jqka.com.cn/')
+  if (hyHtml) {
+    const re = /thshy\/detail\/code\/(\d{6})\/[^>]*>([^<]+)<\/a>/g
+    let mm: RegExpExecArray | null
+    while ((mm = re.exec(hyHtml))) {
+      industries.push({ platecode: mm[1]!, name: mm[2]!.trim(), kind: 'industry' })
+    }
+  }
+  if (!concepts.length && !industries.length) return null
+  thsBoardCache = { concepts, industries, expiresAt: Date.now() + 24 * 3600_000 }
+  return { concepts, industries }
+}
+
+function matchBoardIn(list: ThsBoard[], target: string): string | null {
+  for (const b of list) if (b.name === target) return b.platecode
+  const withSuffix = `${target}概念`
+  for (const b of list) if (b.name === withSuffix) return b.platecode
+  for (const b of list) if (b.name.startsWith(target) || target.startsWith(b.name)) return b.platecode
+  return null
+}
+
+function resolveThsPlatecode(
+  boards: { concepts: ThsBoard[]; industries: ThsBoard[] },
+  boardName: string,
+): string | null {
+  const target = boardName.trim()
+  if (!target) return null
+  // 东财板块代码无法区分行业/概念（BK04xx/BK08xx 均有例外），用户搜索
+  // 板块词多为概念板块，故概念优先，行业兜底，避免「白酒」误配到行业同名。
+  return matchBoardIn(boards.concepts, target) ?? matchBoardIn(boards.industries, target)
+}
+
+async function fetchThsKline(
+  platecode: string,
+  limit: number,
+): Promise<{ code: string; name: string; klines: Kline[] } | null> {
+  const url = `http://d.10jqka.com.cn/v6/line/bk_${platecode}/01/all.js`
+  try {
+    await throttleUpstream()
+    const response = await fetch(url, {
+      headers: { 'User-Agent': UA, Referer: 'http://q.10jqka.com.cn/', Accept: '*/*' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return null
+    const text = await response.text()
+    const m = text.match(/^[^(]*\((.*)\)\s*$/s)
+    if (!m) return null
+    const obj = JSON.parse(m[1]!) as {
+      name?: string
+      priceFactor?: number
+      price?: string
+      volumn?: string
+      dates?: string
+      sortYear?: [number, number][]
+    }
+    const pf = obj.priceFactor || 1
+    const price = (obj.price ?? '').split(',').filter((x) => x !== '')
+    const vol = (obj.volumn ?? '').split(',').filter((x) => x !== '')
+    const dates = (obj.dates ?? '').split(',').filter((x) => x !== '')
+    if (!price.length || !dates.length) return null
+    const n = Math.round(price.length / dates.length)
+    if (n !== 4) return null
+    // 日期重建：sortYear 逐年分配 MMDD。
+    const fullDates: string[] = []
+    for (const [year, count] of obj.sortYear ?? []) {
+      for (let i = 0; i < count; i++) {
+        const md = dates[fullDates.length]
+        if (!md) break
+        fullDates.push(`${year}-${md.slice(0, 2)}-${md.slice(2, 4)}`)
+      }
+    }
+    const total = Math.min(dates.length, Math.floor(price.length / n))
+    const klines: Kline[] = []
+    for (let i = 0; i < total; i++) {
+      const base = i * n
+      const low = Number(price[base]) / pf
+      const open = (Number(price[base]) + Number(price[base + 1])) / pf
+      const high = (Number(price[base]) + Number(price[base + 2])) / pf
+      const close = (Number(price[base]) + Number(price[base + 3])) / pf
+      const volume = Number(vol[i] ?? 0)
+      const prevClose = i > 0 ? klines[i - 1]!.close : open
+      const pct = prevClose ? ((close - prevClose) / prevClose) * 100 : 0
+      klines.push({
+        date: fullDates[i] ?? '',
+        open: Number(open.toFixed(3)),
+        close: Number(close.toFixed(3)),
+        high: Number(high.toFixed(3)),
+        low: Number(low.toFixed(3)),
+        volume,
+        amount: 0,
+        amplitude: low ? ((high - low) / low) * 100 : 0,
+        pct: Number(pct.toFixed(2)),
+        change: Number((close - prevClose).toFixed(3)),
+        turnover: 0,
+      })
+    }
+    if (!klines.length) return null
+    return { code: platecode, name: obj.name ?? '', klines: klines.slice(-limit) }
+  } catch {
+    return null
+  }
+}
+
 export function registerFinanceRoutes(app: Hono): void {
   app.get('/finance/search', async (c) => {
     const q = c.req.query('q')?.trim() ?? ''
@@ -210,6 +369,7 @@ export function registerFinanceRoutes(app: Hono): void {
 
   app.get('/finance/kline', async (c) => {
     const secid = c.req.query('secid')?.trim() ?? ''
+    const name = c.req.query('name')?.trim() ?? ''
     const klt = c.req.query('klt') ?? '101'
     const limit = Number(c.req.query('limit') ?? '250')
     if (!/^[0-9A-Za-z]+\.[0-9A-Za-z]+$/.test(secid)) return c.json({ error: 'invalid secid' }, 400)
@@ -220,11 +380,13 @@ export function registerFinanceRoutes(app: Hono): void {
     const cached = cacheGet<KlineResponse>(cacheKey)
     if (cached) return c.json(cached)
 
-    // 主源：东财历史行情；失败时回退到腾讯（对抗东财 push2his 概率性 RST）。
-    // K 线用 25s 退避：跨过东财 ~15-20s 的拒绝窗口，让重试真正有机会成功。
+    // 主源：东财历史行情；失败时回退到腾讯/同花顺（对抗东财 push2his 概率性 RST）。
+    // 个股/指数用 25s 退避跨过东财 ~15-20s 的拒绝窗口再重试；板块有同花顺
+    // 兜底，单次不重试快速失败，避免用户等待过长。
+    const isBoard = secid.startsWith('90.')
     const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${encodeURIComponent(secid)}&ut=fa5fd1943c7b386f172d6893dbfba10b&klt=${klt}&fqt=1&lmt=${limit}&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`
     try {
-      const data = (await fetchJson(url, 'https://quote.eastmoney.com/', 25_000)) as {
+      const data = (await fetchJson(url, 'https://quote.eastmoney.com/', 25_000, isBoard ? 1 : 2)) as {
         data?: { code?: string; name?: string; klines?: string[] }
       }
       const klines: Kline[] = (data.data?.klines ?? []).map((line) => {
@@ -253,7 +415,27 @@ export function registerFinanceRoutes(app: Hono): void {
       cacheSet(cacheKey, result)
       return c.json(result)
     } catch {
-      // 回退：腾讯行情（不支持板块，仅个股/指数/ETF/LOF）。
+      // 回退顺序：板块（BK）→ 同花顺历史 K 线；其余 → 腾讯行情。
+      // 腾讯不支持板块，板块此前在东财失败时只能 502，现由同花顺兜底。
+      if (isBoard) {
+        const boards = await loadThsBoards()
+        const platecode = boards ? resolveThsPlatecode(boards, name) : null
+        if (platecode) {
+          const fallback = await fetchThsKline(platecode, limit)
+          if (fallback) {
+            const result: KlineResponse = {
+              code: fallback.code,
+              name: fallback.name || name,
+              secid,
+              klt,
+              klines: fallback.klines,
+            }
+            cacheSet(cacheKey, result)
+            return c.json(result)
+          }
+        }
+        return c.json({ error: '数据源暂时不可用' }, 502)
+      }
       const symbol = secidToTencentSymbol(secid)
       if (!symbol) return c.json({ error: '数据源暂时不可用' }, 502)
       const fallback = await fetchTencentKline(symbol, limit)

@@ -57,7 +57,7 @@ export function useFinance() {
     error.value = ''
     try {
       const res = await fetch(
-        `/api/finance/kline?secid=${encodeURIComponent(item.quoteId)}&klt=101&limit=250`,
+        `/api/finance/kline?secid=${encodeURIComponent(item.quoteId)}&name=${encodeURIComponent(item.name)}&klt=101&limit=250`,
         { credentials: 'include' },
       )
       const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
