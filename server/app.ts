@@ -1,6 +1,9 @@
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import QRCode from 'qrcode'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -237,6 +240,38 @@ function maskUrl(value: string): string {
     return `${url.protocol}//${url.host}`
   } catch {
     return value
+  }
+}
+
+// AI 凭证优先读进程环境，其次回退到 ~/.claude/settings.json（与前端
+// vite-ai-proxy 的 readConfig 保持一致）。.env 里的 ANTHROPIC_* 常为空，
+// 真实值由 Claude Code 通过 settings.json 的 env 注入，这里做同样回退。
+let aiEnvCache: { apiKey: string; baseUrl: string; model: string } | null = null
+function aiEnv(): { apiKey: string; baseUrl: string; model: string } {
+  if (aiEnvCache) return aiEnvCache
+  const fromEnv = {
+    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    baseUrl: process.env.ANTHROPIC_BASE_URL ?? '',
+    model: process.env.ANTHROPIC_MODEL ?? '',
+  }
+  if (fromEnv.apiKey && fromEnv.baseUrl) {
+    aiEnvCache = fromEnv
+    return fromEnv
+  }
+  try {
+    const settings = JSON.parse(readFileSync(join(homedir(), '.claude', 'settings.json'), 'utf8')) as {
+      env?: Record<string, string>
+    }
+    const e = settings.env ?? {}
+    aiEnvCache = {
+      apiKey: fromEnv.apiKey || e.ANTHROPIC_API_KEY || '',
+      baseUrl: fromEnv.baseUrl || e.ANTHROPIC_BASE_URL || '',
+      model: fromEnv.model || e.ANTHROPIC_MODEL || '',
+    }
+    return aiEnvCache
+  } catch {
+    aiEnvCache = fromEnv
+    return fromEnv
   }
 }
 
@@ -630,18 +665,17 @@ export function createApp() {
   })
 
   protectedApi.get('/ai/config', (c) => {
-    const baseUrl = process.env.ANTHROPIC_BASE_URL ?? ''
+    const cfg = aiEnv()
     return c.json({
-      available: Boolean(process.env.ANTHROPIC_API_KEY && baseUrl),
-      model: process.env.ANTHROPIC_MODEL ?? '',
-      baseUrlMasked: baseUrl ? maskUrl(baseUrl) : '',
+      available: Boolean(cfg.apiKey && cfg.baseUrl),
+      model: cfg.model,
+      baseUrlMasked: cfg.baseUrl ? maskUrl(cfg.baseUrl) : '',
     })
   })
 
   // 上游服务的凭证和流式响应都留在 Node 服务端，不暴露给浏览器。
   protectedApi.post('/ai/chat', async (c) => {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    const baseUrl = process.env.ANTHROPIC_BASE_URL
+    const { apiKey, baseUrl, model } = aiEnv()
     if (!apiKey || !baseUrl) return c.json({ error: 'AI not configured' }, 503)
     const body = await c.req.json<{ messages?: unknown[]; system?: string; maxTokens?: number }>()
     if (!Array.isArray(body.messages)) return c.json({ error: 'messages[] required' }, 400)
@@ -657,7 +691,7 @@ export function createApp() {
         'x-stainless-runtime': 'node',
       },
       body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6',
+        model: model || 'claude-sonnet-4-6',
         messages: body.messages,
         system: body.system ?? '',
         max_tokens: body.maxTokens ?? 2048,
