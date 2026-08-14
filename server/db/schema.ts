@@ -62,3 +62,16 @@ export const lessonAnnotations = sqliteTable('lesson_annotations', {
   annotations: text('annotations', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
+
+// 金融分析自选/关注列表，按管理员身份（userKey）归属。
+export const watchlist = sqliteTable('watchlist', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userKey: text('user_key').notNull(),
+  quoteId: text('quote_id').notNull(),
+  code: text('code').notNull(),
+  name: text('name').notNull(),
+  type: text('type').notNull(),
+  typeName: text('type_name').notNull().default(''),
+  market: text('market').notNull().default(''),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+})
