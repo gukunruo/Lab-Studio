@@ -22,9 +22,20 @@ function cacheSet(key: string, value: unknown): void {
 }
 
 async function fetchJson(url: string, referer: string): Promise<unknown> {
-  const response = await fetch(url, {
-    headers: { 'User-Agent': UA, Referer: referer, Accept: 'application/json, text/plain, */*' },
-  })
+  // 上游（东财）对连续请求有波动性限流，失败后短暂退避重试一次可显著降低偶发 502。
+  const attempt = async (): Promise<Response> => {
+    try {
+      return await fetch(url, {
+        headers: { 'User-Agent': UA, Referer: referer, Accept: 'application/json, text/plain, */*' },
+      })
+    } catch (err) {
+      await new Promise((r) => setTimeout(r, 1500))
+      return fetch(url, {
+        headers: { 'User-Agent': UA, Referer: referer, Accept: 'application/json, text/plain, */*' },
+      })
+    }
+  }
+  const response = await attempt()
   if (!response.ok) throw new Error(`upstream ${response.status}`)
   return response.json()
 }
@@ -115,7 +126,7 @@ export function registerFinanceRoutes(app: Hono): void {
     const cached = cacheGet<KlineResponse>(cacheKey)
     if (cached) return c.json(cached)
 
-    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${encodeURIComponent(secid)}&klt=${klt}&fqt=1&lmt=${limit}&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`
+    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${encodeURIComponent(secid)}&ut=fa5fd1943c7b386f172d6893dbfba10b&klt=${klt}&fqt=1&lmt=${limit}&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`
     try {
       const data = (await fetchJson(url, 'https://quote.eastmoney.com/')) as {
         data?: { code?: string; name?: string; klines?: string[] }
