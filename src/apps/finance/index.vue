@@ -6,6 +6,7 @@ import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
 import { useFinance, itemToSymbol, type Quote, type WatchItem } from './useFinance'
 import type { SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
+import QuoteHeader from './components/QuoteHeader.vue'
 
 const finance = useFinance()
 
@@ -259,6 +260,8 @@ onMounted(async () => {
         <span class="fin__detail-type">{{ finance.selected.value.typeName }}</span>
         <button class="fin__detail-close" type="button" @click="finance.selected.value = null">关闭</button>
       </div>
+
+      <QuoteHeader v-if="finance.detail.value" :detail="finance.detail.value" />
 
       <div class="fin__detail-grid">
         <div class="fin__chart">

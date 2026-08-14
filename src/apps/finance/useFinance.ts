@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { Kline, SearchItem } from './types'
+import type { Kline, QuoteDetail, SearchItem } from './types'
 
 export interface Quote {
   symbol: string
@@ -73,6 +73,7 @@ export function useFinance() {
   const klines = ref<Kline[]>([])
   const loading = ref(false)
   const error = ref('')
+  const detail = ref<QuoteDetail | null>(null)
 
   // K 线周期：101=日 102=周 103=月；selectedSymbol 为指数/板块直传腾讯 symbol 时使用
   const klt = ref('101')
@@ -178,12 +179,40 @@ export function useFinance() {
     }
   }
 
+  // 腾讯实时详情 symbol（指数/个股/ETF）。板块、基金无此数据，返回 null。
+  function detailSymbolOf(item: SearchItem): string | null {
+    if (item.type === 'OTCFUND') return null
+    const s = itemToSymbol(item)
+    if (s) return s
+    if (selectedSymbol.value) return selectedSymbol.value
+    return null
+  }
+
+  async function loadDetail(item: SearchItem) {
+    const symbol = detailSymbolOf(item)
+    if (!symbol) {
+      detail.value = null
+      return
+    }
+    try {
+      const res = await fetch(`/api/finance/detail?symbol=${encodeURIComponent(symbol)}`, {
+        credentials: 'include',
+      })
+      const data = (await res.json().catch(() => null)) as QuoteDetail | { error?: string } | null
+      if (!res.ok) throw new Error((data as { error?: string })?.error ?? '加载失败')
+      detail.value = data as QuoteDetail
+    } catch {
+      detail.value = null
+    }
+  }
+
   async function select(item: SearchItem) {
     selected.value = item
     selectedSymbol.value = null
     suggestions.value = []
     query.value = item.name
-    await loadKline()
+    detail.value = null
+    await Promise.all([loadKline(), loadDetail(item)])
   }
 
   // 重点板块卡片点击：直接用行情 Quote 触发 K 线
@@ -199,7 +228,8 @@ export function useFinance() {
     selected.value = item
     selectedSymbol.value = q.symbol
     suggestions.value = []
-    void loadKlineForSymbol(q.symbol, item)
+    detail.value = null
+    void Promise.all([loadKlineForSymbol(q.symbol, item), loadDetail(item)])
   }
 
   async function loadKline() {
@@ -331,6 +361,7 @@ export function useFinance() {
     quotes,
     selected,
     klines,
+    detail,
     loading,
     error,
     search,

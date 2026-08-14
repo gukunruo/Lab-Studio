@@ -27,3 +27,39 @@ export interface FundNavPoint {
   accNav: number
   pct: number
 }
+
+export interface QuoteDetail {
+  symbol: string
+  name: string
+  code: string
+  price: number
+  prevClose: number
+  change: number
+  pct: number
+  open: number
+  high: number
+  low: number
+  volume: number
+  amount: number
+  turnover: number
+  amplitude: number
+  volumeRatio: number
+}
+
+export interface BoardRow {
+  code: string
+  name: string
+  pct: number
+  leaderName: string
+  leaderPct: number
+  upCount: number
+  downCount: number
+  netInflow: number
+  kind: 'industry' | 'concept'
+}
+
+export interface MinutePoint {
+  time: string
+  price: number
+  avg: number
+}
