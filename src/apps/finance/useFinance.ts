@@ -74,6 +74,10 @@ export function useFinance() {
   const loading = ref(false)
   const error = ref('')
 
+  // K 线周期：101=日 102=周 103=月；selectedSymbol 为指数/板块直传腾讯 symbol 时使用
+  const klt = ref('101')
+  const selectedSymbol = ref<string | null>(null)
+
   let debounce: ReturnType<typeof setTimeout> | null = null
   let loadSeq = 0
 
@@ -176,6 +180,7 @@ export function useFinance() {
 
   async function select(item: SearchItem) {
     selected.value = item
+    selectedSymbol.value = null
     suggestions.value = []
     query.value = item.name
     await loadKline()
@@ -192,6 +197,7 @@ export function useFinance() {
       market: '',
     }
     selected.value = item
+    selectedSymbol.value = q.symbol
     suggestions.value = []
     void loadKlineForSymbol(q.symbol, item)
   }
@@ -211,7 +217,7 @@ export function useFinance() {
       const params = new URLSearchParams({
         secid: item.quoteId || `0.${item.code}`,
         name: item.name,
-        klt: '101',
+        klt: klt.value,
         limit: '250',
       })
       if (item.code) params.set('code', item.code)
@@ -236,7 +242,7 @@ export function useFinance() {
     error.value = ''
     try {
       const res = await fetch(
-        `/api/finance/kline?secid=${encodeURIComponent(symbol)}&name=${encodeURIComponent(item.name)}&symbol=${encodeURIComponent(symbol)}&klt=101&limit=250`,
+        `/api/finance/kline?secid=${encodeURIComponent(symbol)}&name=${encodeURIComponent(item.name)}&symbol=${encodeURIComponent(symbol)}&klt=${klt.value}&limit=250`,
         { credentials: 'include' },
       )
       const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
@@ -249,6 +255,21 @@ export function useFinance() {
       klines.value = []
     } finally {
       if (seq === loadSeq) loading.value = false
+    }
+  }
+
+  // K 线周期切换（日/周/月），按当前选中标的重载
+  async function setPeriod(period: 'day' | 'week' | 'month') {
+    const next = period === 'week' ? '102' : period === 'month' ? '103' : '101'
+    if (next === klt.value) return
+    klt.value = next
+    const item = selected.value
+    if (!item) return
+    if (item.type === 'OTCFUND') return // 基金无周/月净值
+    if (selectedSymbol.value) {
+      await loadKlineForSymbol(selectedSymbol.value, item)
+    } else {
+      await loadKline()
     }
   }
 
@@ -321,6 +342,7 @@ export function useFinance() {
     select,
     selectBoard,
     loadKline,
+    setPeriod,
     viewWatch,
   }
 }

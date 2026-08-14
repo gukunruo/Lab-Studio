@@ -29,6 +29,9 @@ importers:
       hono:
         specifier: ^4.13.0
         version: 4.13.0
+      klinecharts:
+        specifier: 10.0.2
+        version: 10.0.2
       marked:
         specifier: ^18.0.5
         version: 18.0.5
@@ -2217,6 +2220,9 @@ packages:
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==, tarball: https://registry.npmmirror.com/keyv/-/keyv-4.5.4.tgz}
+
+  klinecharts@10.0.2:
+    resolution: {integrity: sha512-OJmaG047vd6RPKXxQAnbGPnfUQ3tKCKBlxk/oMvRJBXO6CyaZuqFGQ8ccoU6YTNew7DV8ynbsfti/JERe+M5IQ==, tarball: https://registry.npmmirror.com/klinecharts/-/klinecharts-10.0.2.tgz}
 
   kolorist@1.8.0:
     resolution: {integrity: sha512-Y+60/zizpJ3HRH8DCss+q95yr6145JXZo46OTpFvDZWLfRCE4qChOyk1b26nMaNpfHHgxagk9dXT5OP0Tfe+dQ==, tarball: https://registry.npmmirror.com/kolorist/-/kolorist-1.8.0.tgz}
@@ -5116,6 +5122,8 @@ snapshots:
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
+
+  klinecharts@10.0.2: {}
 
   kolorist@1.8.0: {}
 

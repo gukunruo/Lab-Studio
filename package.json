@@ -27,6 +27,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.0",
+    "klinecharts": "10.0.2",
     "marked": "^18.0.5",
     "pinia": "^3.0.4",
     "qrcode": "1.5.4",

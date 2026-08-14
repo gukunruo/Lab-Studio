@@ -267,7 +267,7 @@ onMounted(async () => {
             <p>{{ finance.error.value }}</p>
             <button class="fin__retry" @click="finance.loadKline()">重试</button>
           </div>
-          <KlineChart v-else :klines="finance.klines.value" />
+          <KlineChart v-else :klines="finance.klines.value" @period-change="finance.setPeriod" />
         </div>
 
         <aside class="fin__ai">
