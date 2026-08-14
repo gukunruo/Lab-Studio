@@ -3,9 +3,10 @@ import type { Hono } from 'hono'
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 
-// 内存缓存：key → { value, expiresAt }。行情为公开数据，仅做短期缓存避免触发上游风控。
+// 内存缓存：key → { value, expiresAt }。行情为公开数据，做较长缓存（10 分钟），
+// 命中缓存可让用户切换/重选标的时不再打到上游（东财对新连接有概率性 RST）。
 const cache = new Map<string, { value: unknown; expiresAt: number }>()
-const CACHE_TTL = 60_000
+const CACHE_TTL = 600_000
 
 function cacheGet<T>(key: string): T | null {
   const hit = cache.get(key)
@@ -21,9 +22,9 @@ function cacheSet(key: string, value: unknown): void {
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL })
 }
 
-// 上游（东财）对高频请求做 IP 级风控：同一 IP 短时间内连续请求会触发
-// 约 3 分钟的全量拒绝（UND_ERR_SOCKET / other side closed）。因此对上游
-// 请求做全局节流（两次请求最小间隔），并在失败时退避更久，避免触发风控。
+// 东财 push2his 对新连接有概率性 RST（UND_ERR_SOCKET），失败后进入约
+// 15-20s 的拒绝窗口，期间重试无效；窗口过后恢复。因此对上游请求做全局
+// 节流（两次最小间隔），并在失败时退避到超过拒绝窗口后再重试一次。
 let lastUpstreamAt = 0
 const MIN_UPSTREAM_INTERVAL = 2500
 
@@ -35,9 +36,9 @@ async function throttleUpstream(): Promise<void> {
   lastUpstreamAt = Date.now()
 }
 
-async function fetchJson(url: string, referer: string): Promise<unknown> {
-  // 连接类错误（UND_ERR_SOCKET）在风控窗口内重试无效，退避后重试一次，
-  // 仍未恢复则向上抛错，由前端提示「稍后重试」。避免密集重试加剧风控。
+async function fetchJson(url: string, referer: string, retryDelayMs = 4000): Promise<unknown> {
+  // 连接类错误（UND_ERR_SOCKET）在拒绝窗口内重试无效，退避到窗口过后重试
+  // 一次，仍未恢复则向上抛错，由前端提示「稍后重试」。
   const MAX_ATTEMPTS = 2
   let lastErr: unknown
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -54,7 +55,7 @@ async function fetchJson(url: string, referer: string): Promise<unknown> {
       // 4xx/5xx（已拿到响应）不重试；仅连接类错误重试。
       if (err instanceof Error && err.message.startsWith('upstream ')) throw err
       if (attempt < MAX_ATTEMPTS - 1) {
-        await new Promise((r) => setTimeout(r, 4000))
+        await new Promise((r) => setTimeout(r, retryDelayMs))
       }
     }
   }
@@ -219,10 +220,11 @@ export function registerFinanceRoutes(app: Hono): void {
     const cached = cacheGet<KlineResponse>(cacheKey)
     if (cached) return c.json(cached)
 
-    // 主源：东财历史行情；失败时回退到腾讯（对抗东财 IP 风控）。
+    // 主源：东财历史行情；失败时回退到腾讯（对抗东财 push2his 概率性 RST）。
+    // K 线用 25s 退避：跨过东财 ~15-20s 的拒绝窗口，让重试真正有机会成功。
     const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${encodeURIComponent(secid)}&ut=fa5fd1943c7b386f172d6893dbfba10b&klt=${klt}&fqt=1&lmt=${limit}&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`
     try {
-      const data = (await fetchJson(url, 'https://quote.eastmoney.com/')) as {
+      const data = (await fetchJson(url, 'https://quote.eastmoney.com/', 25_000)) as {
         data?: { code?: string; name?: string; klines?: string[] }
       }
       const klines: Kline[] = (data.data?.klines ?? []).map((line) => {
