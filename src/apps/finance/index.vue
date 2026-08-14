@@ -7,6 +7,8 @@ import { useFinance, itemToSymbol, type Quote, type WatchItem } from './useFinan
 import type { SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
+import IndexStrip from './components/IndexStrip.vue'
+import BoardTable from './components/BoardTable.vue'
 
 const finance = useFinance()
 
@@ -139,6 +141,7 @@ function stopAnalysis() {
 
 onMounted(async () => {
   void finance.loadBoards()
+  void finance.loadBoardRank()
   void finance.loadWatchlist()
   const config = await getAiConfig()
   aiAvailable.value = config.available
@@ -180,44 +183,27 @@ onMounted(async () => {
       </ul>
     </div>
 
-    <!-- 重点板块 -->
+    <!-- 顶部指数条 -->
     <section class="fin__section">
-      <h2 class="fin__section-title">国内重点板块</h2>
-      <div class="fin__cards">
-        <button
-          v-for="q in domesticBoards"
-          :key="q.symbol"
-          class="fin__card"
-          :class="pctClass(q.pct)"
-          type="button"
-          @click="finance.selectBoard(q)"
-        >
-          <div class="fin__card-name">{{ q.name }}</div>
-          <div class="fin__card-price">{{ fmtPrice(q.price) }}</div>
-          <div class="fin__card-pct">{{ fmtPct(q.pct) }}</div>
-        </button>
-        <div v-if="finance.boardsLoading && !finance.boards" class="fin__card fin__card--loading">
-          加载中…
-        </div>
-      </div>
+      <IndexStrip
+        :domestic="domesticBoards"
+        :overseas="overseasBoards"
+        @select="finance.selectBoard"
+      />
     </section>
 
+    <!-- 板块行情（核心区） -->
     <section class="fin__section">
-      <h2 class="fin__section-title">国外重点板块</h2>
-      <div class="fin__cards">
-        <button
-          v-for="q in overseasBoards"
-          :key="q.symbol"
-          class="fin__card"
-          :class="pctClass(q.pct)"
-          type="button"
-          @click="finance.selectBoard(q)"
-        >
-          <div class="fin__card-name">{{ q.name }}</div>
-          <div class="fin__card-price">{{ fmtPrice(q.price) }}</div>
-          <div class="fin__card-pct">{{ fmtPct(q.pct) }}</div>
-        </button>
-      </div>
+      <h2 class="fin__section-title">板块行情</h2>
+      <BoardTable
+        :kind="finance.boardKind.value"
+        :order="finance.boardOrder.value"
+        :rows="finance.boardRows.value"
+        :loading="finance.boardsRankLoading.value"
+        @set-kind="finance.setBoardKind"
+        @set-order="finance.setBoardOrder"
+        @select="finance.selectBoardRow"
+      />
     </section>
 
     <!-- 自选 / 关注列表 -->
@@ -446,65 +432,6 @@ onMounted(async () => {
 .fin__section-hint {
   font-size: 0.76rem;
   color: var(--color-text-muted);
-}
-
-.fin__cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--space-3);
-}
-
-.fin__card {
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font: inherit;
-  text-align: left;
-  color: var(--color-text);
-  cursor: pointer;
-  transition: border-color 0.15s, transform 0.1s;
-}
-
-.fin__card:hover {
-  border-color: var(--color-accent);
-}
-
-.fin__card:active {
-  transform: scale(0.98);
-}
-
-.fin__card--loading {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-  justify-content: center;
-  align-items: center;
-}
-
-.fin__card-name {
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-}
-
-.fin__card-price {
-  font-size: 1.2rem;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  color: var(--color-text);
-}
-
-.fin__card.fin__up .fin__card-price,
-.fin__card.fin__down .fin__card-price {
-  color: inherit;
-}
-
-.fin__card-pct {
-  font-size: 0.85rem;
-  font-family: var(--font-mono);
-  font-weight: 600;
 }
 
 // 自选

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { Kline, QuoteDetail, SearchItem } from './types'
+import type { BoardRow, Kline, QuoteDetail, SearchItem } from './types'
 
 export interface Quote {
   symbol: string
@@ -60,9 +60,16 @@ export function useFinance() {
   const suggestions = ref<SearchItem[]>([])
   const searching = ref(false)
 
-  // 重点板块
+  // 重点板块（指数条）
   const boards = ref<BoardsData | null>(null)
   const boardsLoading = ref(false)
+
+  // 板块排行（行业/概念）
+  const boardKind = ref<'industry' | 'concept'>('industry')
+  const boardOrder = ref<'up' | 'down'>('up')
+  const boardRows = ref<BoardRow[]>([])
+  const boardsRankLoading = ref(false)
+  let boardLoadSeq = 0
 
   // 自选
   const watchlist = ref<WatchItem[]>([])
@@ -118,6 +125,54 @@ export function useFinance() {
     } finally {
       boardsLoading.value = false
     }
+  }
+
+  async function loadBoardRank() {
+    const seq = ++boardLoadSeq
+    boardsRankLoading.value = true
+    try {
+      const res = await fetch(
+        `/api/finance/boards/${boardKind.value}?order=${boardOrder.value}`,
+        { credentials: 'include' },
+      )
+      const data = (await res.json().catch(() => null)) as { items?: BoardRow[]; error?: string } | null
+      if (!res.ok) throw new Error(data?.error ?? '加载失败')
+      if (seq !== boardLoadSeq) return
+      boardRows.value = data?.items ?? []
+    } catch {
+      if (seq !== boardLoadSeq) return
+      boardRows.value = []
+    } finally {
+      if (seq === boardLoadSeq) boardsRankLoading.value = false
+    }
+  }
+
+  function setBoardKind(kind: 'industry' | 'concept') {
+    if (boardKind.value === kind) return
+    boardKind.value = kind
+    void loadBoardRank()
+  }
+
+  function setBoardOrder(order: 'up' | 'down') {
+    if (boardOrder.value === order) return
+    boardOrder.value = order
+    void loadBoardRank()
+  }
+
+  async function selectBoardRow(row: BoardRow) {
+    const item: SearchItem = {
+      quoteId: `90.${row.code}`,
+      code: row.code,
+      name: row.name,
+      type: 'Board',
+      typeName: row.kind === 'industry' ? '行业板块' : '概念板块',
+      market: '90',
+    }
+    selected.value = item
+    selectedSymbol.value = null
+    suggestions.value = []
+    detail.value = null
+    await loadKline()
   }
 
   async function loadWatchlist() {
@@ -357,6 +412,10 @@ export function useFinance() {
     searching,
     boards,
     boardsLoading,
+    boardKind,
+    boardOrder,
+    boardRows,
+    boardsRankLoading,
     watchlist,
     quotes,
     selected,
@@ -367,6 +426,10 @@ export function useFinance() {
     search,
     scheduleSearch,
     loadBoards,
+    loadBoardRank,
+    setBoardKind,
+    setBoardOrder,
+    selectBoardRow,
     loadWatchlist,
     addWatch,
     removeWatch,
