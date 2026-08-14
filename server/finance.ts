@@ -92,6 +92,48 @@ export interface Quote {
   volume: number
   amount: number
   time: string
+  turnover: number
+  amplitude: number
+  volumeRatio: number
+  pe: number
+  totalMarketCap: number
+  floatMarketCap: number
+}
+
+export interface BoardRow {
+  code: string
+  name: string
+  pct: number
+  leaderName: string
+  leaderPct: number
+  upCount: number
+  downCount: number
+  netInflow: number
+  kind: 'industry' | 'concept'
+}
+
+export interface MinutePoint {
+  time: string
+  price: number
+  avg: number
+}
+
+export interface QuoteDetail {
+  symbol: string
+  name: string
+  code: string
+  price: number
+  prevClose: number
+  change: number
+  pct: number
+  open: number
+  high: number
+  low: number
+  volume: number
+  amount: number
+  turnover: number
+  amplitude: number
+  volumeRatio: number
 }
 
 // ---- 通用抓取 ----
@@ -146,6 +188,12 @@ function parseTencentQuoteLine(line: string): Quote | null {
     volume: num(f[6]),
     amount: num(f[37]),
     time: f[30] ?? '',
+    turnover: num(f[38]),
+    amplitude: num(f[43]),
+    volumeRatio: num(f[49]),
+    pe: num(f[39]),
+    totalMarketCap: num(f[45]),
+    floatMarketCap: num(f[44]),
   }
 }
 
@@ -234,24 +282,40 @@ function secidToTencentSymbol(secid: string, code?: string): string | null {
 async function fetchTencentKline(
   symbol: string,
   limit: number,
+  klt = '101',
 ): Promise<{ code: string; name: string; klines: Kline[] } | null> {
-  // 带点的美股指数 code（us.DJI）走 kline/kline 接口，其余走 fqkline
+  // klt：101=日 102=周 103=月。周期参数：day/week/month。
+  const period = klt === '102' ? 'week' : klt === '103' ? 'month' : 'day'
+  // 带点的美股指数 code（us.DJI）走 kline/kline 接口（仅日线），其余走 fqkline
   const url = symbol.includes('.')
-    ? `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${symbol},day,,,${limit}`
-    : `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${limit},qfq`
+    ? `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${symbol},${period},,,${limit}`
+    : `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},${period},,,${limit},qfq`
   try {
     const data = (await fetchJson(url, 'https://gu.qq.com/')) as {
       data?: {
         [sym: string]: {
           qfqday?: string[][]
+          qfqweek?: string[][]
+          qfqmonth?: string[][]
           day?: string[][]
+          week?: string[][]
+          month?: string[][]
           qt?: { [sym: string]: string[] }
         }
       }
     }
     const bucket = data.data?.[symbol]
     if (!bucket) return null
-    const rows = bucket.qfqday?.length ? bucket.qfqday : bucket.day
+    // 日线有前复权 qfqday，周/月无复权直接 week/month
+    const rows = bucket.qfqday?.length ? bucket.qfqday : bucket.qfqweek?.length
+      ? bucket.qfqweek
+      : bucket.qfqmonth?.length
+        ? bucket.qfqmonth
+        : bucket.day?.length
+          ? bucket.day
+          : bucket.week?.length
+            ? bucket.week
+            : bucket.month
     if (!rows?.length) return null
     const klines: Kline[] = rows.map((r) => {
       const date = r[0] ?? ''
@@ -490,22 +554,134 @@ const OVERSEAS_INDICES = [
   { symbol: 'hkHSI', name: '恒生指数' },
 ]
 
-// 新浪行业板块（返回 GBK JS 赋值串），字段以逗号分隔：
-// [1]=名称 [3]=家数 [5]=涨跌幅% [6]=成交额 [8]=领涨股代码 [11]=领涨股名称
-async function fetchSinaIndustryBoards(): Promise<Array<{ name: string; pct: number }>> {
-  const url = 'http://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php'
-  const text = await fetchText(url, 'https://finance.sina.com.cn/', true)
-  if (!text) return []
-  const m = text.match(/=\s*(\{.*\})\s*;?\s*$/)
-  if (!m) return []
-  try {
-    const obj = JSON.parse(m[1]!) as Record<string, string>
-    return Object.values(obj).map((v) => {
-      const f = v.split(',')
-      return { name: f[1] ?? '', pct: Number(f[5] ?? 0) }
+// ---- 同花顺板块排行 ----
+// 行业板块：q.10jqka.com.cn/thshy 表格，列序（td）：0 序号 / 1 板块(含 platecode) /
+// 2 涨跌幅 / 3 总成交量(万手) / 4 总成交额(亿) / 5 净流入(亿) / 6 上涨家数 / 7 下跌家数 /
+// 8 均价 / 9 领涨股 / 10 领涨股最新价 / 11 领涨股涨跌幅
+async function fetchIndustryBoards(): Promise<BoardRow[]> {
+  const html = await fetchText('http://q.10jqka.com.cn/thshy/', 'http://q.10jqka.com.cn/', true)
+  if (!html) return []
+  const rows: BoardRow[] = []
+  const re = /<tr[^>]*>([\s\S]*?)<\/tr>/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html))) {
+    const rowHtml = m[1]!
+    const codeM = rowHtml.match(/thshy\/detail\/code\/(\d{6})\//)
+    if (!codeM) continue
+    const cells = Array.from(rowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)).map((c) =>
+      c[1]!.replace(/<[^>]+>/g, '').trim(),
+    )
+    if (cells.length < 12) continue
+    const num = (s: string) => Number(s) || 0
+    rows.push({
+      code: codeM[1]!,
+      name: cells[1] ?? '',
+      pct: num(cells[2]),
+      netInflow: num(cells[5]),
+      upCount: num(cells[6]),
+      downCount: num(cells[7]),
+      leaderName: cells[9] ?? '',
+      leaderPct: num(cells[11]),
+      kind: 'industry',
     })
+  }
+  return rows
+}
+
+// 概念板块：q.10jqka.com.cn/gn 的 gnSection JSON，
+// 字段：platecode / platename / 199112=涨跌幅 / zjjlr=净流入(亿) / cid=领涨股代码。
+// 领涨股名称与涨跌幅需按 cid 批量查腾讯补全。
+function codeToTencentSymbol(code: string): string | null {
+  if (!/^\d{6}$/.test(code)) return null
+  if (/^(60|68|90)/.test(code)) return `sh${code}`
+  if (/^(00|30|20)/.test(code)) return `sz${code}`
+  if (/^(4|8)/.test(code)) return `bj${code}`
+  return null
+}
+
+async function fetchTencentNames(codes: string[]): Promise<Map<string, { name: string; pct: number }>> {
+  const map = new Map<string, { name: string; pct: number }>()
+  const symbols = codes.map(codeToTencentSymbol).filter((s): s is string => s != null)
+  for (let i = 0; i < symbols.length; i += 60) {
+    const quotes = await fetchTencentQuotes(symbols.slice(i, i + 60))
+    for (const q of quotes) map.set(q.code, { name: q.name, pct: q.pct })
+  }
+  return map
+}
+
+async function fetchConceptBoards(): Promise<BoardRow[]> {
+  const html = await fetchText('http://q.10jqka.com.cn/gn/', 'http://q.10jqka.com.cn/', true)
+  if (!html) return []
+  const m = html.match(/id="gnSection" value='([^']+)'/)
+  if (!m) return []
+  let obj: Record<string, { platecode?: string; platename?: string; cid?: string; '199112'?: number; zjjlr?: number }>
+  try {
+    obj = JSON.parse(m[1]!) as typeof obj
   } catch {
     return []
+  }
+  const entries = Object.values(obj).filter((v) => v.platecode && v.platename)
+  const leaderCodes = entries.map((v) => v.cid ?? '').filter((c) => /^\d{6}$/.test(c))
+  const names = await fetchTencentNames(leaderCodes)
+  const rows: BoardRow[] = entries.map((v) => {
+    const leader = names.get(v.cid ?? '')
+    return {
+      code: v.platecode!,
+      name: v.platename!,
+      pct: Number(v['199112'] ?? 0) || 0,
+      netInflow: Number(v.zjjlr ?? 0) || 0,
+      upCount: 0,
+      downCount: 0,
+      leaderName: leader?.name ?? '',
+      leaderPct: leader?.pct ?? 0,
+      kind: 'concept',
+    }
+  })
+  return rows
+}
+
+function sortBoards(rows: BoardRow[], order: string): BoardRow[] {
+  return rows.sort((a, b) => (order === 'down' ? a.pct - b.pct : b.pct - a.pct))
+}
+
+// ---- 分时 ----
+// 腾讯个股/指数分时：appstock/app/minute/query，data[code].data.data 为 ["HHMM price cumVol cumAmount", ...]
+async function fetchTencentMinute(symbol: string): Promise<MinutePoint[] | null> {
+  const url = `https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${symbol}`
+  try {
+    const data = (await fetchJson(url, 'https://gu.qq.com/')) as {
+      data?: { [sym: string]: { data?: { data?: string[] } } }
+    }
+    const rows = data.data?.[symbol]?.data?.data
+    if (!rows?.length) return null
+    return rows.map((r) => {
+      const f = r.split(' ')
+      return { time: f[0] ?? '', price: Number(f[1] ?? 0), avg: 0 }
+    })
+  } catch {
+    return null
+  }
+}
+
+// 同花顺板块分时：d.10jqka.com.cn/v6/time/bk_<code>/last.js
+// data 为 "HHMM,price,cumVol,avgPrice,cumAmount;..." 分号分隔
+async function fetchThsMinute(platecode: string): Promise<MinutePoint[] | null> {
+  const url = `http://d.10jqka.com.cn/v6/time/bk_${platecode}/last.js`
+  try {
+    const text = await fetchText(url, 'http://q.10jqka.com.cn/')
+    if (!text) return null
+    const m = text.match(/^[^(]*\((.*)\)\s*$/s)
+    if (!m) return null
+    const obj = JSON.parse(m[1]!) as { [key: string]: { data?: string } }
+    const bucket = Object.values(obj)[0]
+    const raw = bucket?.data ?? ''
+    if (!raw) return null
+    return raw.split(';').filter(Boolean).map((r) => {
+      const f = r.split(',')
+      return { time: f[0] ?? '', price: Number(f[1] ?? 0), avg: Number(f[3] ?? 0) }
+    })
+  } catch {
+    return null
   }
 }
 
@@ -527,22 +703,17 @@ export function registerFinanceRoutes(app: Hono): void {
     }
   })
 
-  // 重点板块实时行情（腾讯指数 + 新浪行业板块）
+  // 指数条实时行情（国内 + 国外重点指数）
   app.get('/finance/boards', async (c) => {
-    const cacheKey = 'boards:all'
-    const cached = cacheGet<{
-      domestic: Quote[]
-      overseas: Quote[]
-      industries: Array<{ name: string; pct: number }>
-    }>(cacheKey)
+    const cacheKey = 'boards:indices'
+    const cached = cacheGet<{ domestic: Quote[]; overseas: Quote[] }>(cacheKey)
     if (cached) return c.json(cached)
     try {
       const domesticSymbols = DOMESTIC_INDICES.map((i) => i.symbol)
       const overseasSymbols = OVERSEAS_INDICES.map((i) => i.symbol)
-      const [domestic, overseas, industries] = await Promise.all([
+      const [domestic, overseas] = await Promise.all([
         fetchTencentQuotes(domesticSymbols),
         fetchTencentQuotes(overseasSymbols),
-        fetchSinaIndustryBoards(),
       ])
       const domesticNamed = domestic.map((q) => ({
         ...q,
@@ -552,12 +723,27 @@ export function registerFinanceRoutes(app: Hono): void {
         ...q,
         name: OVERSEAS_INDICES.find((i) => i.symbol === q.symbol)?.name ?? q.name,
       }))
-      const result = { domestic: domesticNamed, overseas: overseasNamed, industries }
+      const result = { domestic: domesticNamed, overseas: overseasNamed }
       cacheSet(cacheKey, result, 30_000)
       return c.json(result)
     } catch {
       return c.json({ error: '数据源暂时不可用' }, 502)
     }
+  })
+
+  // 板块排行：行业 / 概念，order=up|down
+  app.get('/finance/boards/:kind', async (c) => {
+    const kind = c.req.param('kind')
+    if (kind !== 'industry' && kind !== 'concept') return c.json({ error: 'invalid kind' }, 400)
+    const order = c.req.query('order') === 'down' ? 'down' : 'up'
+    const cacheKey = `boards:${kind}:${order}`
+    const cached = cacheGet<BoardRow[]>(cacheKey)
+    if (cached) return c.json({ items: cached })
+    const rows = kind === 'industry' ? await fetchIndustryBoards() : await fetchConceptBoards()
+    if (!rows.length) return c.json({ error: '数据源暂时不可用' }, 502)
+    const sorted = sortBoards(rows, order)
+    cacheSet(cacheKey, sorted, 30_000)
+    return c.json({ items: sorted })
   })
 
   // 实时行情批量（自选列表刷新用）
@@ -594,7 +780,7 @@ export function registerFinanceRoutes(app: Hono): void {
       const cached = cacheGet<KlineResponse>(cacheKey)
       if (cached) return c.json(cached)
       const symbol = normalizeKlineSymbol(symbolParam)
-      const fallback = await fetchTencentKline(symbol, limit)
+      const fallback = await fetchTencentKline(symbol, limit, klt)
       if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
       const result: KlineResponse = {
         code: fallback.code,
@@ -652,7 +838,7 @@ export function registerFinanceRoutes(app: Hono): void {
     // 其余走腾讯（A股/ETF/指数/港股/环球指数）
     const symbol = secidToTencentSymbol(secid, code)
     if (!symbol) return c.json({ error: '数据源暂时不可用' }, 502)
-    const fallback = await fetchTencentKline(symbol, limit)
+    const fallback = await fetchTencentKline(symbol, limit, klt)
     if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
     const result: KlineResponse = {
       code: fallback.code,
@@ -662,6 +848,68 @@ export function registerFinanceRoutes(app: Hono): void {
       klines: fallback.klines,
     }
     cacheSet(cacheKey, result, 300_000)
+    return c.json(result)
+  })
+
+  // 分时：个股/指数走腾讯，板块走同花顺
+  app.get('/finance/minute', async (c) => {
+    const secid = c.req.query('secid')?.trim() ?? ''
+    const code = c.req.query('code')?.trim() ?? ''
+    const symbolParam = c.req.query('symbol')?.trim() ?? ''
+    const platecode = c.req.query('platecode')?.trim() ?? ''
+
+    const cacheKey = `minute:${secid}:${symbolParam}:${platecode}`
+    const cached = cacheGet<{ points: MinutePoint[] }>(cacheKey)
+    if (cached) return c.json(cached)
+
+    try {
+      let points: MinutePoint[] | null = null
+      // 板块：有 platecode 走同花顺
+      if (platecode) {
+        points = await fetchThsMinute(platecode)
+      } else if (symbolParam) {
+        points = await fetchTencentMinute(normalizeKlineSymbol(symbolParam))
+      } else {
+        const symbol = secidToTencentSymbol(secid, code)
+        points = symbol ? await fetchTencentMinute(symbol) : null
+      }
+      if (!points) return c.json({ error: '数据源暂时不可用' }, 502)
+      const result = { points }
+      cacheSet(cacheKey, result, 30_000)
+      return c.json(result)
+    } catch {
+      return c.json({ error: '数据源暂时不可用' }, 502)
+    }
+  })
+
+  // 详情：单个标的实时详情（指标格用）
+  app.get('/finance/detail', async (c) => {
+    const symbolParam = c.req.query('symbol')?.trim() ?? ''
+    if (!symbolParam) return c.json({ error: 'invalid symbol' }, 400)
+    const cacheKey = `detail:${symbolParam}`
+    const cached = cacheGet<QuoteDetail>(cacheKey)
+    if (cached) return c.json(cached)
+    const quotes = await fetchTencentQuotes([symbolParam])
+    const q = quotes[0]
+    if (!q) return c.json({ error: '数据源暂时不可用' }, 502)
+    const result: QuoteDetail = {
+      symbol: q.symbol,
+      name: q.name,
+      code: q.code,
+      price: q.price,
+      prevClose: q.prevClose,
+      change: q.change,
+      pct: q.pct,
+      open: q.open,
+      high: q.high,
+      low: q.low,
+      volume: q.volume,
+      amount: q.amount,
+      turnover: q.turnover,
+      amplitude: q.amplitude,
+      volumeRatio: q.volumeRatio,
+    }
+    cacheSet(cacheKey, result, 15_000)
     return c.json(result)
   })
 
