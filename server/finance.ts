@@ -69,6 +69,45 @@ export interface KlineResponse {
   secid: string
   klt: string
   klines: Kline[]
+  hasMore: boolean
+  oldest: string | null
+  latest: string | null
+}
+
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** Normalize a pagination cursor and reject malformed or future dates. */
+export function parseBeforeDate(value: string | undefined): string | null {
+  if (!value) return null
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value)
+  const parsed = dateOnly ? new Date(`${value}T00:00:00.000Z`) : new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  const normalized = parsed.toISOString().slice(0, 10)
+  if (dateOnly && normalized !== value) return null
+  if (normalized > todayUtc()) return null
+  return normalized
+}
+
+export function filterKlinesBefore(klines: Kline[], before: string | null, today: string): Kline[] {
+  return klines
+    .filter((item) => item.date < today && (before === null || item.date < before))
+    .sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export function mergeKlines(existing: Kline[], incoming: Kline[]): Kline[] {
+  const byDate = new Map(existing.map((item) => [item.date, item]))
+  for (const item of incoming) byDate.set(item.date, item)
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
+}
+
+function klineMeta(klines: Kline[], limit: number): Pick<KlineResponse, 'hasMore' | 'oldest' | 'latest'> {
+  return {
+    hasMore: klines.length >= limit,
+    oldest: klines[0]?.date ?? null,
+    latest: klines.at(-1)?.date ?? null,
+  }
 }
 
 export interface FundNavPoint {
@@ -283,13 +322,16 @@ async function fetchTencentKline(
   symbol: string,
   limit: number,
   klt = '101',
+  before: string | null = null,
 ): Promise<{ code: string; name: string; klines: Kline[] } | null> {
   // klt：101=日 102=周 103=月。周期参数：day/week/month。
   const period = klt === '102' ? 'week' : klt === '103' ? 'month' : 'day'
+  // 腾讯接口的 end-date 位于第三、四参数之间；cursor 请求只取 before 之前的窗口。
+  const range = `,,${before ?? ''},${limit}`
   // 带点的美股指数 code（us.DJI）走 kline/kline 接口（仅日线），其余走 fqkline
   const url = symbol.includes('.')
-    ? `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${symbol},${period},,,${limit}`
-    : `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},${period},,,${limit},qfq`
+    ? `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${symbol},${period}${range}`
+    : `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},${period}${range},qfq`
   try {
     const data = (await fetchJson(url, 'https://gu.qq.com/')) as {
       data?: {
@@ -355,6 +397,7 @@ async function fetchSinaUsKline(
   code: string,
   name: string,
   limit: number,
+  before: string | null = null,
 ): Promise<{ code: string; name: string; klines: Kline[] } | null> {
   const url = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_x=/US_MinKService.getDailyK?symbol=${encodeURIComponent(code)}`
   try {
@@ -364,27 +407,30 @@ async function fetchSinaUsKline(
     if (!m || m[1] === 'null') return null
     const rows = JSON.parse(m[1]!) as Array<{ d: string; o: string; h: string; l: string; c: string; v: string }>
     if (!rows.length) return null
-    const klines: Kline[] = rows.slice(-limit).map((r) => {
-      const open = Number(r.o ?? 0)
+    const klines: Kline[] = rows
+      .filter((r) => !before || (r.d ?? '') < before)
+      .slice(-limit)
+      .map((r) => {
+        const open = Number(r.o ?? 0)
       const close = Number(r.c ?? 0)
       const high = Number(r.h ?? 0)
       const low = Number(r.l ?? 0)
       const prevClose = open
       const pct = prevClose ? ((close - prevClose) / prevClose) * 100 : 0
-      return {
-        date: r.d ?? '',
-        open,
-        close,
-        high,
-        low,
-        volume: Number(r.v ?? 0),
-        amount: 0,
-        amplitude: low ? ((high - low) / low) * 100 : 0,
-        pct: Number(pct.toFixed(2)),
-        change: Number((close - prevClose).toFixed(2)),
-        turnover: 0,
-      }
-    })
+        return {
+          date: r.d ?? '',
+          open,
+          close,
+          high,
+          low,
+          volume: Number(r.v ?? 0),
+          amount: 0,
+          amplitude: low ? ((high - low) / low) * 100 : 0,
+          pct: Number(pct.toFixed(2)),
+          change: Number((close - prevClose).toFixed(2)),
+          turnover: 0,
+        }
+      })
     return { code: code.toUpperCase(), name: name || code.toUpperCase(), klines }
   } catch {
     return null
@@ -453,6 +499,7 @@ function resolveThsPlatecode(
 async function fetchThsKline(
   platecode: string,
   limit: number,
+  before: string | null = null,
 ): Promise<{ code: string; name: string; klines: Kline[] } | null> {
   const url = `http://d.10jqka.com.cn/v6/line/bk_${platecode}/01/all.js`
   try {
@@ -509,7 +556,8 @@ async function fetchThsKline(
       })
     }
     if (!klines.length) return null
-    return { code: platecode, name: obj.name ?? '', klines: klines.slice(-limit) }
+    const filtered = klines.filter((item) => !before || item.date < before)
+    return { code: platecode, name: obj.name ?? '', klines: filtered.slice(-limit) }
   } catch {
     return null
   }
@@ -769,33 +817,35 @@ export function registerFinanceRoutes(app: Hono): void {
     const code = c.req.query('code')?.trim() ?? ''
     const klt = c.req.query('klt') ?? '101'
     const limit = Number(c.req.query('limit') ?? '250')
+    const beforeValue = c.req.query('before')
+    const before = parseBeforeDate(beforeValue)
     // 重点板块直接传入腾讯 symbol（如 sh000001/us.DJI/hkHSI），跳过 secid 映射
     const symbolParam = c.req.query('symbol')?.trim() ?? ''
     if (!['101', '102', '103'].includes(klt)) return c.json({ error: 'invalid klt' }, 400)
     if (!Number.isInteger(limit) || limit < 1 || limit > 500) return c.json({ error: 'invalid limit' }, 400)
+    if (beforeValue !== undefined && !before) return c.json({ error: 'invalid before' }, 400)
+    const today = todayUtc()
+    const withMeta = (fallback: { code: string; name: string; klines: Kline[] }, responseSecid: string): KlineResponse => {
+      const klines = filterKlinesBefore(mergeKlines([], fallback.klines), before, today)
+      return { code: fallback.code, name: fallback.name, secid: responseSecid, klt, klines, ...klineMeta(klines, limit) }
+    }
 
     // 重点板块：有 symbol 参数时直接按 symbol 抓腾讯 K 线
     if (symbolParam) {
-      const cacheKey = `kline:sym:${symbolParam}:${klt}:${limit}`
+      const cacheKey = `kline:sym:${symbolParam}:${klt}:${limit}:${before ?? ''}`
       const cached = cacheGet<KlineResponse>(cacheKey)
       if (cached) return c.json(cached)
       const symbol = normalizeKlineSymbol(symbolParam)
-      const fallback = await fetchTencentKline(symbol, limit, klt)
+      const fallback = await fetchTencentKline(symbol, limit, klt, before)
       if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
-      const result: KlineResponse = {
-        code: fallback.code,
-        name: fallback.name || name,
-        secid: symbolParam,
-        klt,
-        klines: fallback.klines,
-      }
+      const result = withMeta({ ...fallback, name: fallback.name || name }, symbolParam)
       cacheSet(cacheKey, result, 300_000)
       return c.json(result)
     }
 
     if (!/^[0-9A-Za-z]+\.[0-9A-Za-z]+$/.test(secid)) return c.json({ error: 'invalid secid' }, 400)
 
-    const cacheKey = `kline:${secid}:${klt}:${limit}`
+    const cacheKey = `kline:${secid}:${klt}:${limit}:${before ?? ''}`
     const cached = cacheGet<KlineResponse>(cacheKey)
     if (cached) return c.json(cached)
 
@@ -805,15 +855,9 @@ export function registerFinanceRoutes(app: Hono): void {
       const boards = await loadThsBoards()
       const platecode = boards ? resolveThsPlatecode(boards, name) : null
       if (!platecode) return c.json({ error: '数据源暂时不可用' }, 502)
-      const fallback = await fetchThsKline(platecode, limit)
+      const fallback = await fetchThsKline(platecode, limit, before)
       if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
-      const result: KlineResponse = {
-        code: fallback.code,
-        name: fallback.name || name,
-        secid,
-        klt,
-        klines: fallback.klines,
-      }
+      const result = withMeta({ ...fallback, name: fallback.name || name }, secid)
       cacheSet(cacheKey, result, 300_000)
       return c.json(result)
     }
@@ -822,15 +866,9 @@ export function registerFinanceRoutes(app: Hono): void {
     const market = secid.slice(0, secid.indexOf('.'))
     if (market === '105' || market === '106' || market === '107') {
       const usCode = code || secid.slice(secid.indexOf('.') + 1)
-      const fallback = await fetchSinaUsKline(usCode, name, limit)
+      const fallback = await fetchSinaUsKline(usCode, name, limit, before)
       if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
-      const result: KlineResponse = {
-        code: fallback.code,
-        name: fallback.name,
-        secid,
-        klt,
-        klines: fallback.klines,
-      }
+      const result = withMeta(fallback, secid)
       cacheSet(cacheKey, result, 300_000)
       return c.json(result)
     }
@@ -838,15 +876,9 @@ export function registerFinanceRoutes(app: Hono): void {
     // 其余走腾讯（A股/ETF/指数/港股/环球指数）
     const symbol = secidToTencentSymbol(secid, code)
     if (!symbol) return c.json({ error: '数据源暂时不可用' }, 502)
-    const fallback = await fetchTencentKline(symbol, limit, klt)
+    const fallback = await fetchTencentKline(symbol, limit, klt, before)
     if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
-    const result: KlineResponse = {
-      code: fallback.code,
-      name: fallback.name,
-      secid,
-      klt,
-      klines: fallback.klines,
-    }
+    const result = withMeta(fallback, secid)
     cacheSet(cacheKey, result, 300_000)
     return c.json(result)
   })
