@@ -189,6 +189,11 @@ function resetReadout() {
   indicatorReadoutVersion.value += 1
 }
 
+function resetReadoutAfterRender() {
+  resetReadout()
+  requestAnimationFrame(resetReadout)
+}
+
 function reload() {
   if (!chart) return
   syncIndicators()
@@ -196,29 +201,28 @@ function reload() {
   chart.setDataLoader({ getBars: ({ callback }) => callback(currentData(), false) })
   chart.setSymbol({ ticker: 'X', pricePrecision: pricePrecision(), volumePrecision: 0 })
   chart.setPeriod({ type: view.value === 'minute' ? 'minute' : period.value, span: 1 })
-  resetReadout()
-  requestAnimationFrame(resetReadout)
+  resetReadoutAfterRender()
 }
 
 function toggleMA() {
   if (view.value === 'minute') return
   showMA.value = !showMA.value
   syncIndicators()
-  resetReadout()
+  resetReadoutAfterRender()
 }
 
 function toggleMAPeriod(period: MAPeriod) {
   if (view.value === 'minute') return
   enabledMA.value[period] = !enabledMA.value[period]
   syncIndicators()
-  resetReadout()
+  resetReadoutAfterRender()
 }
 
 function toggleSub(name: SubIndicator) {
   if (view.value === 'minute') return
   activeSub.value = activeSub.value === name ? null : name
   syncIndicators()
-  resetReadout()
+  resetReadoutAfterRender()
 }
 
 function selectPeriod(key: 'minute' | 'day' | 'week' | 'month') {
