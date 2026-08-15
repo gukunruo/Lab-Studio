@@ -4,7 +4,7 @@ import { marked } from 'marked'
 import { PhMagnifyingGlass, PhPlus, PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
 import { useFinance, itemToSymbol, clampSplitterWidth, type Quote, type WatchItem } from './useFinance'
-import type { SearchItem } from './types'
+import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
 import IndexStrip from './components/IndexStrip.vue'
@@ -33,6 +33,9 @@ const RIGHT_MIN = 280
 const RIGHT_MAX = 480
 const workspaceTab = ref<'ai' | 'boards' | 'settings'>('ai')
 const colorSchemeLabel = ref('中国市场')
+const chartPrefs = ref<ChartPrefs | undefined>(undefined)
+let prefsLoaded = false
+let saveTimer: ReturnType<typeof setTimeout> | null = null
 let controller: AbortController | null = null
 
 const renderedAi = computed(() => marked.parse(aiText.value, { async: false }) as string)
@@ -68,7 +71,47 @@ watch(anyDrawerOpen, (open) => {
 onBeforeUnmount(() => {
   document.body.style.overflow = ''
   window.removeEventListener('keydown', onKeydown)
+  if (saveTimer) clearTimeout(saveTimer)
 })
+
+function currentLayoutPrefs() {
+  return {
+    leftCollapsed: watchlistCollapsed.value,
+    leftWidth: leftWidth.value,
+    rightWidth: rightWidth.value,
+    rightPanel: workspaceTab.value,
+    chartView: chartPrefs.value?.chartView ?? 'candle',
+    candlePeriod: chartPrefs.value?.candlePeriod ?? 'day',
+    interval: chartPrefs.value?.interval ?? '5',
+    showMA: chartPrefs.value?.showMA ?? true,
+    enabledMA: chartPrefs.value?.enabledMA ?? [5, 10, 20, 60],
+    subIndicator: chartPrefs.value?.subIndicator ?? 'VOL',
+  }
+}
+
+function scheduleSave() {
+  if (!prefsLoaded) return
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
+    try {
+      await fetch('/api/finance/preferences', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(currentLayoutPrefs()),
+      })
+    } catch {
+      // 保存失败不阻塞行情或覆盖当前交互
+    }
+  }, 300)
+}
+
+function onChartPrefsChange(prefs: ChartPrefs) {
+  chartPrefs.value = prefs
+  scheduleSave()
+}
+
+watch([watchlistCollapsed, leftWidth, rightWidth, workspaceTab], scheduleSave)
 
 const gridTemplate = computed(() => {
   if (watchlistCollapsed.value) {
@@ -189,6 +232,31 @@ onMounted(async () => {
   void finance.loadBoards()
   void finance.loadBoardRank()
   void finance.loadWatchlist()
+  // 拉取服务端偏好并应用到布局
+  try {
+    const res = await fetch('/api/finance/preferences', { credentials: 'include' })
+    const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
+    if (data) {
+      const leftW = typeof data.leftWidth === 'number' ? data.leftWidth : 210
+      const rightW = typeof data.rightWidth === 'number' ? data.rightWidth : 280
+      leftWidth.value = clampSplitterWidth(leftW, LEFT_MIN, LEFT_MAX)
+      rightWidth.value = clampSplitterWidth(rightW, RIGHT_MIN, RIGHT_MAX)
+      watchlistCollapsed.value = data.leftCollapsed === true
+      const rp = data.rightPanel
+      if (rp === 'ai' || rp === 'boards' || rp === 'settings') workspaceTab.value = rp
+      chartPrefs.value = {
+        chartView: data.chartView === 'minute' ? 'minute' : 'candle',
+        candlePeriod: data.candlePeriod === 'week' ? 'week' : data.candlePeriod === 'month' ? 'month' : 'day',
+        interval: ['1', '5', '15', '30', '60'].includes(data.interval as string) ? (data.interval as string) as ChartPrefs['interval'] : '5',
+        showMA: typeof data.showMA === 'boolean' ? data.showMA : true,
+        enabledMA: Array.isArray(data.enabledMA) ? data.enabledMA.filter((n): n is number => typeof n === 'number') : [5, 10, 20, 60],
+        subIndicator: ['VOL', 'MACD', 'KDJ', 'RSI', 'BOLL'].includes(data.subIndicator as string) ? (data.subIndicator as string) as ChartPrefs['subIndicator'] : 'VOL',
+      }
+    }
+  } catch {
+    // 偏好加载失败不阻塞行情
+  }
+  prefsLoaded = true
   // 自动选中上证指数，让 K 线立即可见
   finance.selectBoard({
     symbol: 'sh000001',
@@ -347,8 +415,10 @@ onMounted(async () => {
               :minute="finance.minutePoints.value"
               :loading-history="finance.loadingHistory.value"
               :has-more-history="finance.hasMoreHistory.value"
+              :chart-prefs="chartPrefs"
               @period-change="finance.setPeriod"
               @load-more-history="finance.loadMoreHistory"
+              @prefs-change="onChartPrefsChange"
             />
             <p v-if="finance.error.value && finance.klines.value.length" class="fin__chart-error">
               {{ finance.error.value }}，当前数据仍可查看

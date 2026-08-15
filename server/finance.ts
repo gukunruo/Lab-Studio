@@ -1,7 +1,7 @@
 import type { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db } from './db/client'
-import { watchlist } from './db/schema'
+import { financePreferences, watchlist } from './db/schema'
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
@@ -841,6 +841,84 @@ async function fetchThsMinute(platecode: string): Promise<MinutePoint[] | null> 
   }
 }
 
+// ---- 偏好归一化 ----
+const PREFERENCE_MA_PERIODS = [5, 10, 20, 30, 60, 120, 250] as const
+const RIGHT_PANELS = ['boards', 'ai', 'settings'] as const
+const SUB_INDICATORS = ['VOL', 'MACD', 'KDJ', 'RSI', 'BOLL'] as const
+const CANDLE_PERIODS = ['day', 'week', 'month'] as const
+const MINUTE_INTERVALS = ['1', '5', '15', '30', '60'] as const
+const CHART_VIEWS = ['minute', 'candle'] as const
+
+export type FinanceRightPanel = (typeof RIGHT_PANELS)[number]
+export type FinanceSubIndicator = (typeof SUB_INDICATORS)[number]
+
+export interface FinancePreferences {
+  leftCollapsed: boolean
+  leftWidth: number
+  rightWidth: number
+  rightPanel: FinanceRightPanel
+  chartView: (typeof CHART_VIEWS)[number]
+  candlePeriod: (typeof CANDLE_PERIODS)[number]
+  interval: (typeof MINUTE_INTERVALS)[number]
+  showMA: boolean
+  enabledMA: number[]
+  subIndicator: FinanceSubIndicator
+}
+
+export const DEFAULT_FINANCE_PREFERENCES: FinancePreferences = {
+  leftCollapsed: false,
+  leftWidth: 260,
+  rightWidth: 360,
+  rightPanel: 'ai',
+  chartView: 'candle',
+  candlePeriod: 'day',
+  interval: '5',
+  showMA: true,
+  enabledMA: [5, 10, 20, 60],
+  subIndicator: 'VOL',
+}
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, Math.round(n)))
+}
+
+function boolOr(value: unknown, fallback: boolean): boolean {
+  if (value === undefined) return fallback
+  return typeof value === 'boolean' ? value : false
+}
+
+export function normalizeFinancePreferences(raw: unknown): FinancePreferences {
+  const obj = (raw ?? {}) as Record<string, unknown>
+  const maSet = new Set<number>()
+  if (Array.isArray(obj.enabledMA)) {
+    for (const m of obj.enabledMA) {
+      const n = typeof m === 'number' ? m : Number(m)
+      if (Number.isFinite(n) && (PREFERENCE_MA_PERIODS as readonly number[]).includes(n)) {
+        maSet.add(n)
+      }
+    }
+  }
+  const enabledMA = PREFERENCE_MA_PERIODS.filter((p) => maSet.has(p))
+  return {
+    leftCollapsed: boolOr(obj.leftCollapsed, DEFAULT_FINANCE_PREFERENCES.leftCollapsed),
+    leftWidth: clampInt(obj.leftWidth, 200, 360, DEFAULT_FINANCE_PREFERENCES.leftWidth),
+    rightWidth: clampInt(obj.rightWidth, 280, 480, DEFAULT_FINANCE_PREFERENCES.rightWidth),
+    rightPanel: oneOf(obj.rightPanel, RIGHT_PANELS, DEFAULT_FINANCE_PREFERENCES.rightPanel),
+    chartView: oneOf(obj.chartView, CHART_VIEWS, DEFAULT_FINANCE_PREFERENCES.chartView),
+    candlePeriod: oneOf(obj.candlePeriod, CANDLE_PERIODS, DEFAULT_FINANCE_PREFERENCES.candlePeriod),
+    interval: oneOf(obj.interval, MINUTE_INTERVALS, DEFAULT_FINANCE_PREFERENCES.interval),
+    showMA: boolOr(obj.showMA, DEFAULT_FINANCE_PREFERENCES.showMA),
+    enabledMA: enabledMA.length ? enabledMA : [...DEFAULT_FINANCE_PREFERENCES.enabledMA],
+    subIndicator: oneOf(obj.subIndicator, SUB_INDICATORS, DEFAULT_FINANCE_PREFERENCES.subIndicator),
+  }
+}
+
 // ---- 路由注册 ----
 export function registerFinanceRoutes(app: Hono): void {
   // 搜索（板块/股票/基金/ETF/指数）
@@ -1141,5 +1219,29 @@ export function registerFinanceRoutes(app: Hono): void {
     if (!Number.isInteger(id) || id < 1) return c.json({ error: 'invalid id' }, 400)
     await db.delete(watchlist).where(eq(watchlist.id, id))
     return c.json({ ok: true })
+  })
+
+  // 终端偏好：GET 返回归一化偏好，PUT upsert 后返回归一化结果。
+  // 服务端固定 admin，忽略客户端提交的 userKey/id/updatedAt。
+  app.get('/finance/preferences', async (c) => {
+    const row = await db
+      .select()
+      .from(financePreferences)
+      .where(eq(financePreferences.userKey, USER_KEY))
+      .get()
+    return c.json(normalizeFinancePreferences(row?.preferences))
+  })
+
+  app.put('/finance/preferences', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const normalized = normalizeFinancePreferences(body)
+    await db
+      .insert(financePreferences)
+      .values({ userKey: USER_KEY, preferences: normalized, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: financePreferences.userKey,
+        set: { preferences: normalized, updatedAt: new Date() },
+      })
+    return c.json(normalized)
   })
 }

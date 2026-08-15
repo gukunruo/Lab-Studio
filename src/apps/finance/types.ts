@@ -1,6 +1,18 @@
 export type CandlePeriod = 'day' | 'week' | 'month'
 export type MinuteInterval = '1' | '5' | '15' | '30' | '60'
 export type ChartPeriod = CandlePeriod | MinuteInterval
+export type ChartView = 'minute' | 'candle'
+export type ChartSelection = 'minute' | CandlePeriod | MinuteInterval
+export type SubIndicator = 'VOL' | 'MACD' | 'KDJ' | 'RSI' | 'BOLL'
+
+export interface ChartPrefs {
+  chartView: ChartView
+  candlePeriod: CandlePeriod
+  interval: MinuteInterval
+  showMA: boolean
+  enabledMA: number[]
+  subIndicator: SubIndicator
+}
 
 export interface Kline {
   date: string

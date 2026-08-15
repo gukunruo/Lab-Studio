@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { dispose, init, type Chart, type Crosshair, type KLineData } from 'klinecharts'
-import type { CandlePeriod, Kline, MinuteInterval, MinutePoint } from '../types'
+import type { CandlePeriod, ChartPrefs, ChartSelection, Kline, MinuteInterval, MinutePoint, SubIndicator } from '../types'
 import { CHART_MA_PERIODS, chartRightOffsetLimit, parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
 
 const props = defineProps<{
@@ -9,15 +9,15 @@ const props = defineProps<{
   minute: MinutePoint[]
   loadingHistory?: boolean
   hasMoreHistory?: boolean
+  chartPrefs?: ChartPrefs
 }>()
 const emit = defineEmits<{
   (e: 'periodChange', period: CandlePeriod | MinuteInterval): void
   (e: 'load-more-history'): void
+  (e: 'prefsChange', prefs: ChartPrefs): void
 }>()
 
 type View = 'minute' | 'candle'
-type ChartSelection = 'minute' | CandlePeriod | MinuteInterval
-type SubIndicator = 'VOL' | 'MACD' | 'KDJ' | 'RSI' | 'BOLL'
 type ChartData = KLineData & { date?: string; change?: number; pct?: number }
 type MAPeriod = typeof CHART_MA_PERIODS[number]
 type IndicatorResult = Record<string, number | undefined>
@@ -54,6 +54,7 @@ let historyRequestLocked = false
 let pendingHistoryDate: string | null = null
 
 const SUB_INDICATORS: SubIndicator[] = ['VOL', 'MACD', 'KDJ', 'RSI', 'BOLL']
+let prefsApplied = false
 const visibleMAPeriods = computed(() =>
   showMA.value ? MA_PERIODS.filter((ma) => enabledMA.value[ma]) : [],
 )
@@ -283,11 +284,45 @@ function finishChartInitialization() {
   historyRequestLocked = false
 }
 
+function emitPrefsChange() {
+  const currentPeriod = period.value
+  const isCandlePeriod = currentPeriod === 'day' || currentPeriod === 'week' || currentPeriod === 'month'
+  emit('prefsChange', {
+    chartView: view.value,
+    candlePeriod: isCandlePeriod ? currentPeriod : (props.chartPrefs?.candlePeriod ?? 'day'),
+    interval: isCandlePeriod
+      ? (props.chartPrefs?.interval ?? '5')
+      : currentPeriod as MinuteInterval,
+    showMA: showMA.value,
+    enabledMA: MA_PERIODS.filter((ma) => enabledMA.value[ma]),
+    subIndicator: activeSub.value ?? 'VOL',
+  })
+}
+
+function applyInitialPrefs() {
+  if (prefsApplied || !props.chartPrefs) return
+  prefsApplied = true
+  const p = props.chartPrefs
+  showMA.value = p.showMA
+  for (const ma of MA_PERIODS) {
+    enabledMA.value[ma] = p.enabledMA.includes(ma)
+  }
+  activeSub.value = p.subIndicator
+  if (p.chartView === 'minute') {
+    view.value = 'minute'
+  } else {
+    view.value = 'candle'
+    period.value = p.candlePeriod
+    emit('periodChange', p.candlePeriod)
+  }
+}
+
 function toggleMA() {
   if (view.value === 'minute') return
   showMA.value = !showMA.value
   syncIndicators()
   resetReadoutAfterRender()
+  emitPrefsChange()
 }
 
 function toggleMAPeriod(period: MAPeriod) {
@@ -295,6 +330,7 @@ function toggleMAPeriod(period: MAPeriod) {
   enabledMA.value[period] = !enabledMA.value[period]
   syncIndicators()
   resetReadoutAfterRender()
+  emitPrefsChange()
 }
 
 function toggleSub(name: SubIndicator) {
@@ -302,6 +338,7 @@ function toggleSub(name: SubIndicator) {
   activeSub.value = activeSub.value === name ? null : name
   syncIndicators()
   resetReadoutAfterRender()
+  emitPrefsChange()
 }
 
 function selectPeriod(key: ChartSelection) {
@@ -309,6 +346,7 @@ function selectPeriod(key: ChartSelection) {
   if (key === 'minute') {
     view.value = 'minute'
     reload()
+    emitPrefsChange()
     return
   }
   const wasMinute = view.value === 'minute'
@@ -318,6 +356,7 @@ function selectPeriod(key: ChartSelection) {
   period.value = key
   if (changed) emit('periodChange', key)
   reload()
+  emitPrefsChange()
 }
 
 function zoom(scale: number) {
@@ -444,6 +483,13 @@ watch(() => props.loadingHistory, (loading) => {
   }
 })
 watch(() => props.minute, () => { if (view.value === 'minute') reload() })
+
+watch(() => props.chartPrefs, (prefs) => {
+  if (prefs && !prefsApplied) {
+    applyInitialPrefs()
+    reload()
+  }
+})
 
 onBeforeUnmount(() => {
   styleObserver?.disconnect()

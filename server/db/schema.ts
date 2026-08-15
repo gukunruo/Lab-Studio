@@ -75,3 +75,11 @@ export const watchlist = sqliteTable('watchlist', {
   market: text('market').notNull().default(''),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
+
+// 金融终端布局偏好（单管理员模式，按 user_key 唯一）。
+export const financePreferences = sqliteTable('finance_preferences', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userKey: text('user_key').notNull().unique(),
+  preferences: text('preferences', { mode: 'json' }).$type<unknown>().notNull().default({}),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
