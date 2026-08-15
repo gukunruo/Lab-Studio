@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { enterFullscreen, exitFullscreen, fullscreenState } from './fullscreen'
 import { marked } from 'marked'
 import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp, PhArrowsOutSimple, PhArrowsInSimple } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
@@ -34,6 +35,9 @@ const RIGHT_MAX = 480
 const workspaceTab = ref<'ai' | 'boards' | 'settings'>('ai')
 const colorSchemeLabel = ref('中国市场')
 const chartPrefs = ref<ChartPrefs | undefined>(undefined)
+const financeWorkspace = ref<HTMLElement | null>(null)
+const isWorkspaceFullscreen = ref(false)
+const fullscreenError = ref('')
 let prefsLoaded = false
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let controller: AbortController | null = null
@@ -88,6 +92,8 @@ onBeforeUnmount(() => {
   closeDrawers(false)
   document.body.style.overflow = ''
   window.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('fullscreenchange', syncWorkspaceFullscreen)
+  document.removeEventListener('webkitfullscreenchange', syncWorkspaceFullscreen)
   if (saveTimer) clearTimeout(saveTimer)
 })
 
@@ -249,7 +255,28 @@ function stopAnalysis() {
   analyzing.value = false
 }
 
+function syncWorkspaceFullscreen() {
+  isWorkspaceFullscreen.value = fullscreenState(document)
+}
+
+async function toggleWorkspaceFullscreen() {
+  const target = financeWorkspace.value
+  if (!target) return
+  fullscreenError.value = ''
+  const success = isWorkspaceFullscreen.value
+    ? await exitFullscreen(document)
+    : await enterFullscreen(target, document)
+  if (!success) {
+    fullscreenError.value = '当前环境不支持全屏或全屏请求被拒绝'
+    return
+  }
+  syncWorkspaceFullscreen()
+}
+
 onMounted(async () => {
+  document.addEventListener('fullscreenchange', syncWorkspaceFullscreen)
+  document.addEventListener('webkitfullscreenchange', syncWorkspaceFullscreen)
+
   void finance.loadMarkets()
   void finance.loadBoardRank()
   void finance.loadWatchlist()
@@ -422,7 +449,7 @@ onMounted(async () => {
       />
 
       <!-- 中栏：标的详情 + K 线 + AI 分析 -->
-      <main class="fin__col fin__col--center">
+      <main ref="financeWorkspace" class="fin__col fin__col--center" :class="{ 'fin__workspace--fullscreen': isWorkspaceFullscreen }">
         <IndexStrip
           class="fin__top-indices"
           :quotes="marketQuotes"
@@ -434,9 +461,16 @@ onMounted(async () => {
             <span class="fin__detail-name">{{ finance.selected.value.name }}</span>
             <span class="fin__detail-code">{{ finance.selected.value.code }}</span>
             <span class="fin__detail-type">{{ finance.selected.value.typeName }}</span>
-            <button class="fin__detail-close" type="button" @click="finance.selected.value = null">
-              <PhX :size="14" />
+            <button
+              class="fin__detail-fullscreen"
+              type="button"
+              :aria-label="isWorkspaceFullscreen ? '退出中央工作区全屏' : '全屏显示中央工作区'"
+              :title="isWorkspaceFullscreen ? '退出全屏' : '全屏显示中央工作区'"
+              @click="toggleWorkspaceFullscreen"
+            >
+              <component :is="isWorkspaceFullscreen ? PhArrowsInSimple : PhArrowsOutSimple" :size="14" />
             </button>
+            <span v-if="fullscreenError" class="fin__fullscreen-error" role="status">{{ fullscreenError }}</span>
           </div>
 
           <QuoteHeader v-if="finance.detail.value" :detail="finance.detail.value" />
@@ -1354,7 +1388,7 @@ onMounted(async () => {
   color: var(--color-text-muted);
 }
 
-.fin__detail-close {
+.fin__detail-fullscreen {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
@@ -1370,9 +1404,31 @@ onMounted(async () => {
   transition: color 0.15s, border-color 0.15s;
 }
 
-.fin__detail-close:hover {
+.fin__detail-fullscreen:hover {
   color: var(--color-accent);
   border-color: var(--color-accent);
+}
+
+.fin__fullscreen-error {
+  margin-left: var(--space-2);
+  color: var(--color-danger);
+  font-size: 0.7rem;
+}
+
+.fin__workspace--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  width: 100vw;
+  height: 100vh;
+  padding: var(--space-3);
+  background: var(--color-bg);
+}
+
+.fin__workspace--fullscreen:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: var(--color-bg);
 }
 
 .fin__chart-wrap {
