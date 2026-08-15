@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { dispose, init, registerIndicator, type Chart, type Crosshair, type KLineData } from 'klinecharts'
 import type { CandlePeriod, ChartPrefs, ChartSelection, Kline, MinuteInterval, MinutePoint, SubIndicator } from '../types'
-import { CHART_MA_PERIODS, chartRightOffsetLimit, parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
+import { candleAxisConfig, CHART_MA_PERIODS, chartRightOffsetLimit, parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
 
 const props = defineProps<{
   klines: Kline[]
@@ -60,11 +60,13 @@ registerIndicator<MinuteIndicatorResult>({
 })
 
 const MINUTE_VOL_PANE_ID = 'minute_vol_pane'
+const CANDLE_PERCENTAGE_AXIS_ID = 'candle_percentage_axis'
 
 const MA_PERIODS = CHART_MA_PERIODS
 const COMMON_MA_PERIODS = MA_PERIODS.slice(0, 5)
 const EXTENDED_MA_PERIODS = MA_PERIODS.slice(5)
 const CANDLE_PANE_ID = 'candle_pane'
+const AXIS_CONFIG = candleAxisConfig()
 
 const container = ref<HTMLDivElement | null>(null)
 const view = ref<View>('candle')
@@ -495,8 +497,9 @@ function directionClass(value: number | undefined): string {
 
 onMounted(() => {
   if (!container.value) return
-  chart = init(container.value, { locale: 'zh-CN' })
+  chart = init(container.value, { locale: 'zh-CN', layout: AXIS_CONFIG.layout })
   if (!chart) return
+  chart.createYAxis({ ...AXIS_CONFIG.percentageAxis, id: CANDLE_PERCENTAGE_AXIS_ID })
   chart.subscribeAction('onCrosshairChange', onCrosshairChange)
   chart.subscribeAction('onScroll', onChartScroll)
   chart.subscribeAction('onVisibleRangeChange', onChartScroll)

@@ -24,6 +24,7 @@ import {
   createRequestSequence,
   financeGridTemplate,
   watchlistLayout,
+  candleAxisConfig,
   parseTencentMinuteRow,
   parseEastmoneyMinuteKlineRow,
   minuteChartLines,
@@ -190,6 +191,18 @@ test('splitter width clamps to allowed range', () => {
 test('collapsed grid keeps a compact watchlist and 12px module spacing', () => {
   assert.equal(financeGridTemplate(true, 280, 360), '96px 12px minmax(520px, 1fr) 12px 360px')
   assert.equal(financeGridTemplate(false, 280, 360), '280px 12px minmax(520px, 1fr) 12px 360px')
+})
+
+test('candle axes keep price on the left and percentage on the right', () => {
+  assert.deepEqual(candleAxisConfig(), {
+    layout: { yAxis: { position: 'left' } },
+    percentageAxis: {
+      id: 'candle_percentage_axis',
+      paneId: 'candle_pane',
+      name: 'percentage',
+      position: 'right',
+    },
+  })
 })
 
 test('watchlist layout stacks compact quote values inside the collapsed rail', () => {

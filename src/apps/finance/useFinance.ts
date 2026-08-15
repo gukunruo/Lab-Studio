@@ -24,6 +24,18 @@ export function watchlistLayout(width: number): 'wide' | 'compact' {
   return width >= 160 ? 'wide' : 'compact'
 }
 
+export function candleAxisConfig() {
+  return {
+    layout: { yAxis: { position: 'left' as const } },
+    percentageAxis: {
+      id: 'candle_percentage_axis',
+      paneId: 'candle_pane',
+      name: 'percentage',
+      position: 'right' as const,
+    },
+  }
+}
+
 export function parseTencentMinuteRow(row: string): MinutePoint {
   const fields = row.trim().split(/\s+/)
   const amount = Number(fields[3] ?? 0)
