@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { marked } from 'marked'
-import { PhMagnifyingGlass, PhPlus, PhX, PhSparkle, PhStop } from '@phosphor-icons/vue'
+import { PhMagnifyingGlass, PhPlus, PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
 import { useFinance, itemToSymbol, type Quote, type WatchItem } from './useFinance'
 import type { SearchItem } from './types'
@@ -20,6 +20,8 @@ const analyzing = ref(false)
 const aiText = ref('')
 const aiError = ref('')
 const aiAvailable = ref(false)
+const aiExpanded = ref(true)
+const watchlistCollapsed = ref(false)
 let controller: AbortController | null = null
 
 const renderedAi = computed(() => marked.parse(aiText.value, { async: false }) as string)
@@ -39,7 +41,6 @@ function fmtPrice(p: number): string {
   return p ? p.toFixed(2) : '-'
 }
 
-// 自选行实时行情
 function quoteOf(item: WatchItem): Quote | null {
   const symbol = itemToSymbol(item)
   return symbol ? (finance.quotes.value[symbol] ?? null) : null
@@ -143,6 +144,22 @@ onMounted(async () => {
   void finance.loadBoards()
   void finance.loadBoardRank()
   void finance.loadWatchlist()
+  // 自动选中上证指数，让 K 线立即可见
+  finance.selectBoard({
+    symbol: 'sh000001',
+    name: '上证指数',
+    code: '000001',
+    price: 0,
+    prevClose: 0,
+    change: 0,
+    pct: 0,
+    open: 0,
+    high: 0,
+    low: 0,
+    volume: 0,
+    amount: 0,
+    time: '',
+  })
   const config = await getAiConfig()
   aiAvailable.value = config.available
 })
@@ -150,168 +167,199 @@ onMounted(async () => {
 
 <template>
   <div class="fin">
-    <!-- 搜索 -->
-    <div class="fin__search">
-      <PhMagnifyingGlass :size="16" class="fin__search-icon" />
-      <input
-        v-model="finance.query.value"
-        class="fin__search-input"
-        type="search"
-        placeholder="搜索股票/基金/板块/ETF（回车选中，点 + 加入自选）"
-        @input="finance.scheduleSearch()"
-        @keydown.down.prevent="moveDown"
-        @keydown.up.prevent="moveUp"
-        @keydown.enter.prevent="confirmSelection"
-        @keydown.esc="finance.suggestions.value = []"
-      />
-      <ul v-if="finance.suggestions.value.length" class="fin__suggest">
-        <li
-          v-for="(s, i) in finance.suggestions.value"
-          :key="s.quoteId + s.code"
-          class="fin__suggest-item"
-          :class="{ 'fin__suggest-item--active': i === activeIndex }"
-          @mouseenter="activeIndex = i"
-          @click="selectItem(s)"
-        >
-          <span class="fin__suggest-name">{{ s.name }}</span>
-          <span class="fin__suggest-code">{{ s.code }}</span>
-          <span class="fin__suggest-type">{{ s.typeName }}</span>
-          <button class="fin__add" type="button" :aria-label="`添加 ${s.name}`" @click.stop="addItem(s)">
-            <PhPlus :size="14" weight="bold" />
-          </button>
-        </li>
-      </ul>
-    </div>
-
-    <!-- 顶部指数条 -->
-    <section class="fin__section">
+    <!-- 顶部：搜索 + 指数条 -->
+    <div class="fin__top">
+      <div class="fin__search">
+        <PhMagnifyingGlass :size="15" class="fin__search-icon" />
+        <input
+          v-model="finance.query.value"
+          class="fin__search-input"
+          type="search"
+          placeholder="搜索股票/基金/板块/ETF"
+          @input="finance.scheduleSearch()"
+          @keydown.down.prevent="moveDown"
+          @keydown.up.prevent="moveUp"
+          @keydown.enter.prevent="confirmSelection"
+          @keydown.esc="finance.suggestions.value = []"
+        />
+        <ul v-if="finance.suggestions.value.length" class="fin__suggest">
+          <li
+            v-for="(s, i) in finance.suggestions.value"
+            :key="s.quoteId + s.code"
+            class="fin__suggest-item"
+            :class="{ 'fin__suggest-item--active': i === activeIndex }"
+            @mouseenter="activeIndex = i"
+            @click="selectItem(s)"
+          >
+            <span class="fin__suggest-name">{{ s.name }}</span>
+            <span class="fin__suggest-code">{{ s.code }}</span>
+            <span class="fin__suggest-type">{{ s.typeName }}</span>
+            <button class="fin__add" type="button" :aria-label="`添加 ${s.name}`" @click.stop="addItem(s)">
+              <PhPlus :size="13" weight="bold" />
+            </button>
+          </li>
+        </ul>
+      </div>
       <IndexStrip
+        class="fin__top-indices"
         :domestic="domesticBoards"
         :overseas="overseasBoards"
         @select="finance.selectBoard"
       />
-    </section>
+    </div>
 
-    <!-- 板块行情（核心区） -->
-    <section class="fin__section">
-      <h2 class="fin__section-title">板块行情</h2>
-      <BoardTable
-        :kind="finance.boardKind.value"
-        :order="finance.boardOrder.value"
-        :rows="finance.boardRows.value"
-        :loading="finance.boardsRankLoading.value"
-        @set-kind="finance.setBoardKind"
-        @set-order="finance.setBoardOrder"
-        @select="finance.selectBoardRow"
-      />
-    </section>
-
-    <!-- 自选 / 关注列表 -->
-    <section class="fin__section">
-      <div class="fin__section-head">
-        <h2 class="fin__section-title">自选 / 关注</h2>
-        <span class="fin__section-hint">搜索后点 + 添加</span>
-      </div>
-      <div v-if="!finance.watchlist.value.length" class="fin__empty">
-        暂无自选。在上方搜索股票 / 基金 / 板块 / ETF，点「+」加入关注列表。
-      </div>
-      <ul v-else class="fin__watch">
-        <li v-for="w in finance.watchlist.value" :key="w.id" class="fin__watch-item">
-          <button class="fin__watch-main" type="button" @click="finance.viewWatch(w)">
-            <span class="fin__watch-name">{{ w.name }}</span>
-            <span class="fin__watch-code">{{ w.code }}</span>
-            <span class="fin__watch-type">{{ w.typeName }}</span>
-          </button>
-          <template v-if="quoteOf(w)">
-            <span class="fin__watch-price" :class="pctClass(quoteOf(w)!.pct)">
-              {{ fmtPrice(quoteOf(w)!.price) }}
-            </span>
-            <span class="fin__watch-pct" :class="pctClass(quoteOf(w)!.pct)">
-              {{ fmtPct(quoteOf(w)!.pct) }}
-            </span>
-          </template>
-          <span v-else class="fin__watch-na">—</span>
-          <button class="fin__remove" type="button" :aria-label="`移除 ${w.name}`" @click="finance.removeWatch(w.id)">
-            <PhX :size="14" />
-          </button>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 选中标的：K 线 + AI 分析 -->
-    <section v-if="finance.selected.value" class="fin__detail">
-      <div class="fin__detail-head">
-        <h2 class="fin__detail-name">{{ finance.selected.value.name }}</h2>
-        <span class="fin__detail-code">{{ finance.selected.value.code }}</span>
-        <span class="fin__detail-type">{{ finance.selected.value.typeName }}</span>
-        <button class="fin__detail-close" type="button" @click="finance.selected.value = null">关闭</button>
-      </div>
-
-      <QuoteHeader v-if="finance.detail.value" :detail="finance.detail.value" />
-
-      <div class="fin__detail-grid">
-        <div class="fin__chart">
-          <div v-if="finance.loading.value && !finance.klines.value.length" class="fin__state">加载中…</div>
-          <div v-else-if="finance.error.value && !finance.klines.value.length" class="fin__state fin__state--error">
-            <p>{{ finance.error.value }}</p>
-            <button class="fin__retry" @click="finance.loadKline()">重试</button>
+    <!-- 三栏主体 -->
+    <div class="fin__grid">
+      <!-- 左栏：自选列表 -->
+      <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed }">
+        <div class="fin__col-head">
+          <span v-if="!watchlistCollapsed">自选</span>
+          <span v-else class="fin__col-collapsed-label">自选</span>
+          <div class="fin__col-head-actions">
+            <span v-if="!watchlistCollapsed" class="fin__col-count">{{ finance.watchlist.value.length }}</span>
+            <button
+              type="button"
+              class="fin__collapse"
+              :aria-label="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
+              :title="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
+              @click="watchlistCollapsed = !watchlistCollapsed"
+            >
+              {{ watchlistCollapsed ? '›' : '‹' }}
+            </button>
           </div>
-          <KlineChart
-            v-else
-            :klines="finance.klines.value"
-            :minute="finance.minutePoints.value"
-            :loading-history="finance.loadingHistory.value"
-            :has-more-history="finance.hasMoreHistory.value"
-            @period-change="finance.setPeriod"
-            @load-more-history="finance.loadMoreHistory"
-          />
-          <p v-if="finance.error.value && finance.klines.value.length" class="fin__chart-error">
-            {{ finance.error.value }}，当前数据仍可查看
-          </p>
         </div>
+        <div v-if="!finance.watchlist.value.length && !watchlistCollapsed" class="fin__empty">
+          搜索后点 + 添加
+        </div>
+        <ul v-else-if="!watchlistCollapsed" class="fin__watch">
+          <li
+            v-for="w in finance.watchlist.value"
+            :key="w.id"
+            class="fin__watch-item"
+            :class="{ 'fin__watch-item--active': finance.selected.value?.code === w.code }"
+            @click="finance.viewWatch(w)"
+          >
+            <div class="fin__watch-info">
+              <span class="fin__watch-name">{{ w.name }}</span>
+              <span class="fin__watch-code">{{ w.code }}</span>
+            </div>
+            <template v-if="quoteOf(w)">
+              <span class="fin__watch-price" :class="pctClass(quoteOf(w)!.pct)">
+                {{ fmtPrice(quoteOf(w)!.price) }}
+              </span>
+              <span class="fin__watch-pct" :class="pctClass(quoteOf(w)!.pct)">
+                {{ fmtPct(quoteOf(w)!.pct) }}
+              </span>
+            </template>
+            <span v-else class="fin__watch-na">—</span>
+            <button
+              class="fin__watch-remove"
+              type="button"
+              :aria-label="`移除 ${w.name}`"
+              @click.stop="finance.removeWatch(w.id)"
+            >
+              <PhX :size="12" />
+            </button>
+          </li>
+        </ul>
+      </aside>
 
-        <aside class="fin__ai">
-          <p class="fin__disclaimer">
-            本分析基于公开历史行情与 AI 研判，仅供研究参考，不构成任何投资建议。
-          </p>
-          <div v-if="!aiAvailable" class="fin__ai-unavailable">未配置 AI，无法进行分析。</div>
-          <template v-else>
-            <div class="fin__ai-actions">
-              <button
-                class="fin__analyze"
-                :disabled="analyzing || !finance.klines.value.length"
-                @click="runAnalysis"
-              >
-                <PhSparkle :size="15" weight="fill" />
-                {{ analyzing ? '生成中…' : '开始分析' }}
-              </button>
-              <button v-if="analyzing" class="fin__stop" @click="stopAnalysis">
-                <PhStop :size="14" weight="fill" />
-                停止
-              </button>
+      <!-- 中栏：标的详情 + K 线 + AI 分析 -->
+      <main class="fin__col fin__col--center">
+        <template v-if="finance.selected.value">
+          <div class="fin__detail-head">
+            <span class="fin__detail-name">{{ finance.selected.value.name }}</span>
+            <span class="fin__detail-code">{{ finance.selected.value.code }}</span>
+            <span class="fin__detail-type">{{ finance.selected.value.typeName }}</span>
+            <button class="fin__detail-close" type="button" @click="finance.selected.value = null">
+              <PhX :size="14" />
+            </button>
+          </div>
+
+          <QuoteHeader v-if="finance.detail.value" :detail="finance.detail.value" />
+
+          <div class="fin__chart-wrap">
+            <div v-if="finance.loading.value && !finance.klines.value.length" class="fin__state">加载中…</div>
+            <div v-else-if="finance.error.value && !finance.klines.value.length" class="fin__state fin__state--error">
+              <p>{{ finance.error.value }}</p>
+              <button class="fin__retry" @click="finance.loadKline()">重试</button>
             </div>
-            <div v-if="aiError" class="fin__ai-error">{{ aiError }}</div>
-            <div v-if="aiText" class="fin__ai-body markdown" v-html="renderedAi" />
-            <div v-else-if="!analyzing" class="fin__ai-empty">
-              点击「开始分析」，AI 将基于当前 K 线与技术指标给出走势研判、量价关系与推演。
+            <KlineChart
+              v-else
+              :klines="finance.klines.value"
+              :minute="finance.minutePoints.value"
+              :loading-history="finance.loadingHistory.value"
+              :has-more-history="finance.hasMoreHistory.value"
+              @period-change="finance.setPeriod"
+              @load-more-history="finance.loadMoreHistory"
+            />
+            <p v-if="finance.error.value && finance.klines.value.length" class="fin__chart-error">
+              {{ finance.error.value }}，当前数据仍可查看
+            </p>
+          </div>
+
+          <!-- AI 分析面板（可折叠） -->
+          <div v-if="aiAvailable" class="fin__ai">
+            <button class="fin__ai-toggle" type="button" @click="aiExpanded = !aiExpanded">
+              <component :is="aiExpanded ? PhCaretDown : PhCaretUp" :size="14" />
+              <span>AI 分析</span>
+              <span v-if="!aiExpanded && aiText" class="fin__ai-preview">已生成</span>
+            </button>
+            <div v-if="aiExpanded" class="fin__ai-body-wrap">
+              <p class="fin__disclaimer">
+                基于公开历史行情与 AI 研判，仅供研究参考，不构成投资建议。
+              </p>
+              <div class="fin__ai-actions">
+                <button
+                  class="fin__analyze"
+                  :disabled="analyzing || !finance.klines.value.length"
+                  @click="runAnalysis"
+                >
+                  <PhSparkle :size="14" weight="fill" />
+                  {{ analyzing ? '生成中…' : '开始分析' }}
+                </button>
+                <button v-if="analyzing" class="fin__stop" @click="stopAnalysis">
+                  <PhStop :size="13" weight="fill" />
+                  停止
+                </button>
+              </div>
+              <div v-if="aiError" class="fin__ai-error">{{ aiError }}</div>
+              <div v-if="aiText" class="fin__ai-body markdown" v-html="renderedAi" />
+              <div v-else-if="!analyzing" class="fin__ai-empty">
+                点击「开始分析」，AI 将基于当前 K 线与技术指标给出走势研判。
+              </div>
             </div>
-          </template>
-        </aside>
-      </div>
-    </section>
+          </div>
+        </template>
+        <div v-else class="fin__placeholder">
+          <p>点击左侧自选、顶部指数或右侧板块以查看 K 线</p>
+        </div>
+      </main>
+
+      <!-- 右栏：板块行情 -->
+      <aside class="fin__col fin__col--right">
+        <BoardTable
+          :kind="finance.boardKind.value"
+          :order="finance.boardOrder.value"
+          :rows="finance.boardRows.value"
+          :loading="finance.boardsRankLoading.value"
+          @set-kind="finance.setBoardKind"
+          @set-order="finance.setBoardOrder"
+          @select="finance.selectBoardRow"
+        />
+      </aside>
+    </div>
   </div>
 </template>
 
 <style scoped lang="scss">
 .fin {
   height: 100%;
-  overflow-y: auto;
-  padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  max-width: 1100px;
-  margin: 0 auto;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  min-height: 0;
 }
 
 .fin__up {
@@ -322,14 +370,23 @@ onMounted(async () => {
   color: var(--fin-down);
 }
 
-// 搜索
+// 顶部：搜索 + 指数条并排
+.fin__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
 .fin__search {
   position: relative;
+  width: 260px;
+  flex-shrink: 0;
 }
 
 .fin__search-icon {
   position: absolute;
-  left: 0.85rem;
+  left: 0.75rem;
   top: 50%;
   transform: translateY(-50%);
   color: var(--color-text-muted);
@@ -338,9 +395,9 @@ onMounted(async () => {
 
 .fin__search-input {
   width: 100%;
-  padding: 0.7rem 0.9rem 0.7rem 2.4rem;
+  padding: 0.5rem 0.8rem 0.5rem 2.1rem;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -351,29 +408,29 @@ onMounted(async () => {
 
 .fin__search-input:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 4px rgba(var(--color-accent-rgb), 0.16);
+  box-shadow: 0 0 0 3px rgba(var(--color-accent-rgb), 0.16);
 }
 
 .fin__suggest {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 20;
+  z-index: 50;
   margin: 0;
-  padding: var(--space-2);
+  padding: var(--space-1);
   list-style: none;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.35);
 }
 
 .fin__suggest-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0.5rem 0.75rem;
+  gap: var(--space-2);
+  padding: 0.4rem 0.6rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
@@ -384,18 +441,20 @@ onMounted(async () => {
 
 .fin__suggest-name {
   font-weight: 600;
+  font-size: 0.85rem;
 }
 
 .fin__suggest-code {
   font-family: var(--font-mono);
+  font-size: 0.76rem;
   color: var(--color-text-muted);
 }
 
 .fin__suggest-type {
   margin-left: auto;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-family: var(--font-mono);
-  padding: 0.1rem 0.5rem;
+  padding: 0.05rem 0.4rem;
   border-radius: var(--radius-full);
   background: var(--color-accent-soft);
   color: var(--color-accent-strong);
@@ -405,8 +464,8 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   color: var(--color-accent);
   background: var(--color-accent-soft);
@@ -417,171 +476,246 @@ onMounted(async () => {
 }
 
 .fin__add:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.1);
 }
 
-// 区块
-.fin__section {
+.fin__top-indices {
+  flex: 1;
+  min-width: 0;
+}
+
+// 三栏网格
+.fin__grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(3.25rem, 210px) minmax(520px, 1fr) minmax(240px, 280px);
+  gap: var(--space-3);
+}
+
+.fin__col {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  min-height: 0;
+  gap: var(--space-2);
 }
 
-.fin__section-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-.fin__section-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--color-text);
-}
-
-.fin__section-hint {
-  font-size: 0.76rem;
-  color: var(--color-text-muted);
-}
-
-// 自选
-.fin__empty {
-  padding: var(--space-6);
-  border: 1px dashed var(--color-border);
+.fin__col--left,
+.fin__col--right {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.fin__col--left {
+  overflow-y: auto;
+}
+
+.fin__col--right {
+  overflow: hidden;
+}
+
+// 左栏：自选
+.fin__col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  z-index: 1;
+}
+
+.fin__col-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.fin__collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fin__collapse:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.fin__col-collapsed-label {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.15em;
+}
+
+.fin__col-count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.fin__col--collapsed {
+  width: 3.25rem;
+}
+
+.fin__col--collapsed .fin__col-head {
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem 0.35rem;
+}
+
+.fin__empty {
+  padding: var(--space-6) var(--space-3);
   text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
 }
 
 .fin__watch {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
 }
 
 .fin__watch-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0.6rem var(--space-4);
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
   border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.12s;
 }
 
-.fin__watch-item:last-child {
-  border-bottom: none;
+.fin__watch-item:hover {
+  background: var(--color-surface-2);
 }
 
-.fin__watch-main {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
+.fin__watch-item--active {
+  background: var(--color-accent-soft);
+}
+
+.fin__watch-info {
   flex: 1;
   min-width: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .fin__watch-name {
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fin__watch-code {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.68rem;
   color: var(--color-text-muted);
-}
-
-.fin__watch-type {
-  font-size: 0.72rem;
-  font-family: var(--font-mono);
-  padding: 0.1rem 0.5rem;
-  border-radius: var(--radius-full);
-  background: var(--color-accent-soft);
-  color: var(--color-accent-strong);
 }
 
 .fin__watch-price {
   font-family: var(--font-mono);
+  font-size: 0.8rem;
   font-weight: 600;
-  color: var(--color-text);
 }
 
 .fin__watch-pct {
   font-family: var(--font-mono);
-  font-size: 0.85rem;
-  min-width: 5.5rem;
+  font-size: 0.74rem;
+  min-width: 4rem;
   text-align: right;
 }
 
 .fin__watch-na {
+  font-size: 0.78rem;
   color: var(--color-text-muted);
 }
 
-.fin__remove {
+.fin__watch-remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   color: var(--color-text-muted);
   background: transparent;
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
 }
 
-.fin__remove:hover {
+.fin__watch-item:hover .fin__watch-remove {
+  opacity: 1;
+}
+
+.fin__watch-remove:hover {
   color: var(--color-danger);
-  background: var(--color-surface-2);
 }
 
-// 详情
-.fin__detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding-top: var(--space-2);
+// 中栏：详情 + K 线
+.fin__col--center {
+  gap: var(--space-2);
 }
 
 .fin__detail-head {
   display: flex;
   align-items: baseline;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: 0 var(--space-1);
 }
 
 .fin__detail-name {
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .fin__detail-code,
 .fin__detail-type {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   color: var(--color-text-muted);
 }
 
 .fin__detail-close {
   margin-left: auto;
-  padding: 0.3rem 0.8rem;
-  font-size: 0.8rem;
-  font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   color: var(--color-text-muted);
   background: transparent;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
+  border-radius: 50%;
   cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
 }
 
 .fin__detail-close:hover {
@@ -589,42 +723,43 @@ onMounted(async () => {
   border-color: var(--color-accent);
 }
 
-.fin__detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: var(--space-5);
-  align-items: start;
-}
-
-.fin__chart {
+.fin__chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  padding: var(--space-4);
-  min-width: 0;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
 }
 
 .fin__chart-error {
-  margin-top: var(--space-1);
+  flex: 0 0 auto;
+  margin: var(--space-1) var(--space-2) 0;
   color: var(--color-danger);
   font-size: 0.72rem;
 }
 
 .fin__state {
-  padding: var(--space-12) var(--space-4);
-  text-align: center;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .fin__state--error p {
   color: var(--color-danger);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .fin__retry {
-  padding: 0.4rem 0.9rem;
-  font-size: 0.82rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.78rem;
   color: var(--color-accent);
   background: transparent;
   border: 1px solid var(--color-accent);
@@ -632,26 +767,58 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+.fin__placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+// AI 分析面板
 .fin__ai {
+  flex-shrink: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  padding: var(--space-4);
+  overflow: hidden;
+}
+
+.fin__ai-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.fin__ai-preview {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.fin__ai-body-wrap {
+  padding: 0 var(--space-3) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
+  gap: var(--space-2);
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .fin__disclaimer {
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   color: var(--color-text-muted);
   line-height: 1.5;
-}
-
-.fin__ai-unavailable {
-  font-size: 0.82rem;
-  color: var(--color-text-muted);
 }
 
 .fin__ai-actions {
@@ -663,8 +830,9 @@ onMounted(async () => {
 .fin__analyze {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.6rem 1rem;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--color-on-accent);
   background: var(--color-accent);
@@ -686,8 +854,9 @@ onMounted(async () => {
 .fin__stop {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.6rem 1rem;
+  gap: 0.3rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
   color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -696,44 +865,73 @@ onMounted(async () => {
 }
 
 .fin__ai-error {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--color-danger);
 }
 
 .fin__ai-empty {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--color-text-muted);
   line-height: 1.6;
 }
 
 .fin__ai-body {
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
 
 .fin__ai-body :deep(p) {
-  margin: 0 0 0.6em;
+  margin: 0 0 0.5em;
 }
 
 .fin__ai-body :deep(h2) {
-  font-size: 0.95rem;
-  margin: 0.8em 0 0.4em;
+  font-size: 0.9rem;
+  margin: 0.6em 0 0.3em;
 }
 
 .fin__ai-body :deep(ul),
 .fin__ai-body :deep(ol) {
   padding-left: 1.1rem;
-  margin: 0.4rem 0;
+  margin: 0.3rem 0;
+}
+
+// 响应式
+@media (max-width: 1023px) {
+  .fin__grid {
+    grid-template-columns: 180px 1fr;
+  }
+
+  .fin__col--right {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
-  .fin__detail-grid {
+  .fin {
+    padding: var(--space-3);
+  }
+
+  .fin__top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fin__search {
+    width: 100%;
+  }
+
+  .fin__grid {
     grid-template-columns: 1fr;
   }
 
-  .fin {
-    padding: var(--space-4);
+  .fin__col--left {
+    max-height: 200px;
+  }
+
+  .fin__col--right {
+    display: flex;
+    max-height: 300px;
   }
 }
 </style>

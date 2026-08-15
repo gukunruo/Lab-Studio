@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { BoardRow } from '../types'
 
 const props = defineProps<{
@@ -14,8 +13,6 @@ const emit = defineEmits<{
   (e: 'select', row: BoardRow): void
 }>()
 
-const showLeader = computed(() => props.kind === 'industry')
-
 function pctClass(pct: number): string {
   if (pct > 0) return 'bt__up'
   if (pct < 0) return 'bt__down'
@@ -26,20 +23,13 @@ function fmtPct(pct: number): string {
   const sign = pct > 0 ? '+' : ''
   return `${sign}${pct.toFixed(2)}%`
 }
-
-function fmtNetInflow(v: number): string {
-  if (!v) return '-'
-  const sign = v > 0 ? '+' : ''
-  const abs = Math.abs(v)
-  if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(1)}万亿`
-  if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(1)}亿`
-  if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(1)}万`
-  return `${sign}${abs.toFixed(1)}`
-}
 </script>
 
 <template>
   <div class="bt">
+    <div class="bt__head">
+      <span class="bt__title">板块行情</span>
+    </div>
     <div class="bt__tabs">
       <button
         type="button"
@@ -47,7 +37,7 @@ function fmtNetInflow(v: number): string {
         :class="{ 'bt__tab--active': kind === 'industry' }"
         @click="emit('setKind', 'industry')"
       >
-        行业板块
+        行业
       </button>
       <button
         type="button"
@@ -55,7 +45,7 @@ function fmtNetInflow(v: number): string {
         :class="{ 'bt__tab--active': kind === 'concept' }"
         @click="emit('setKind', 'concept')"
       >
-        概念板块
+        概念
       </button>
       <span class="bt__spacer" />
       <button
@@ -64,7 +54,7 @@ function fmtNetInflow(v: number): string {
         :class="{ 'bt__order--active': order === 'up' }"
         @click="emit('setOrder', 'up')"
       >
-        涨幅榜
+        涨幅
       </button>
       <button
         type="button"
@@ -72,53 +62,24 @@ function fmtNetInflow(v: number): string {
         :class="{ 'bt__order--active': order === 'down' }"
         @click="emit('setOrder', 'down')"
       >
-        跌幅榜
+        跌幅
       </button>
     </div>
 
-    <div class="bt__table-wrap">
-      <table class="bt__table">
-        <thead>
-          <tr>
-            <th class="bt__th bt__th--num">#</th>
-            <th class="bt__th">板块</th>
-            <th class="bt__th bt__th--num">涨跌幅</th>
-            <th v-if="showLeader" class="bt__th">领涨股</th>
-            <th class="bt__th bt__th--num">涨/跌家数</th>
-            <th class="bt__th bt__th--num">主力净流入</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(r, i) in rows"
-            :key="r.code"
-            class="bt__tr"
-            @click="emit('select', r)"
-          >
-            <td class="bt__td bt__td--num bt__td--muted">{{ i + 1 }}</td>
-            <td class="bt__td bt__td--name">{{ r.name }}</td>
-            <td class="bt__td bt__td--num" :class="pctClass(r.pct)">{{ fmtPct(r.pct) }}</td>
-            <td v-if="showLeader" class="bt__td">
-              <span class="bt__leader-name">{{ r.leaderName || '—' }}</span>
-              <span v-if="r.leaderName" class="bt__leader-pct" :class="pctClass(r.leaderPct)">
-                {{ fmtPct(r.leaderPct) }}
-              </span>
-            </td>
-            <td class="bt__td bt__td--num bt__td--muted">
-              <span class="bt__up">{{ r.upCount }}</span>
-              <span class="bt__slash">/</span>
-              <span class="bt__down">{{ r.downCount }}</span>
-            </td>
-            <td class="bt__td bt__td--num" :class="pctClass(r.netInflow)">{{ fmtNetInflow(r.netInflow) }}</td>
-          </tr>
-          <tr v-if="!rows.length && !loading">
-            <td class="bt__td bt__empty" :colspan="showLeader ? 6 : 5">暂无板块数据</td>
-          </tr>
-          <tr v-if="!rows.length && loading">
-            <td class="bt__td bt__empty" :colspan="showLeader ? 6 : 5">加载中…</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="bt__list">
+      <button
+        v-for="(r, i) in rows"
+        :key="r.code"
+        type="button"
+        class="bt__row"
+        @click="emit('select', r)"
+      >
+        <span class="bt__rank">{{ i + 1 }}</span>
+        <span class="bt__name">{{ r.name }}</span>
+        <span class="bt__pct" :class="pctClass(r.pct)">{{ fmtPct(r.pct) }}</span>
+      </button>
+      <div v-if="!rows.length && !loading" class="bt__empty">暂无板块数据</div>
+      <div v-if="!rows.length && loading" class="bt__empty">加载中…</div>
     </div>
   </div>
 </template>
@@ -127,24 +88,40 @@ function fmtNetInflow(v: number): string {
 .bt {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  height: 100%;
+  min-height: 0;
+}
+
+.bt__head {
+  padding: 0.6rem 0.75rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.bt__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
 }
 
 .bt__tabs {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 4px;
+  padding: 0.4rem 0.6rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .bt__tab,
 .bt__order {
-  padding: 0.35rem 0.85rem;
-  font-size: 0.82rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.76rem;
   font-weight: 600;
   color: var(--color-text-muted);
   background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
@@ -163,76 +140,60 @@ function fmtNetInflow(v: number): string {
 .bt__order--active {
   color: var(--color-accent);
   background: var(--color-accent-soft);
-  border-color: transparent;
 }
 
 .bt__spacer {
   flex: 1;
 }
 
-.bt__table-wrap {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: auto;
+.bt__list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
-.bt__table {
+.bt__row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.84rem;
-}
-
-.bt__th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 0.55rem var(--space-3);
-  font-size: 0.74rem;
-  font-weight: 600;
+  padding: 0.4rem 0.75rem;
   text-align: left;
-  color: var(--color-text-muted);
-  background: var(--color-surface);
+  background: transparent;
+  border: none;
   border-bottom: 1px solid var(--color-border);
-  white-space: nowrap;
-}
-
-.bt__th--num,
-.bt__td--num {
-  text-align: right;
-}
-
-.bt__td {
-  padding: 0.5rem var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  white-space: nowrap;
-}
-
-.bt__tr {
   cursor: pointer;
   transition: background 0.12s;
 }
 
-.bt__tr:hover {
+.bt__row:hover {
   background: var(--color-surface-2);
 }
 
-.bt__td--muted {
+.bt__rank {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   color: var(--color-text-muted);
+  min-width: 1.2rem;
 }
 
-.bt__td--name {
+.bt__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.bt__leader-name {
-  color: var(--color-text);
-}
-
-.bt__leader-pct {
-  margin-left: 0.5rem;
+.bt__pct {
   font-family: var(--font-mono);
   font-size: 0.78rem;
+  font-weight: 600;
+  min-width: 4rem;
+  text-align: right;
 }
 
 .bt__up {
@@ -243,14 +204,10 @@ function fmtNetInflow(v: number): string {
   color: var(--fin-down);
 }
 
-.bt__slash {
-  color: var(--color-text-muted);
-  margin: 0 2px;
-}
-
 .bt__empty {
-  padding: var(--space-8);
+  padding: var(--space-6);
   text-align: center;
   color: var(--color-text-muted);
+  font-size: 0.8rem;
 }
 </style>
