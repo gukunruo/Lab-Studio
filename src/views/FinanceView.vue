@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { restoreSearchSelection, searchErrorMessage, searchSelectionIndex } from '@/apps/finance/useFinance'
 import { RouterLink } from 'vue-router'
 import { PhArrowLeft, PhChartLine, PhMagnifyingGlass, PhPlus } from '@phosphor-icons/vue'
 import FinanceApp from '@/apps/finance/index.vue'
-import IndexStrip from '@/apps/finance/components/IndexStrip.vue'
 import { useFinance } from '@/apps/finance/useFinance'
 import type { SearchItem } from '@/apps/finance/types'
 import { useLocaleStore } from '@/stores/locale'
@@ -12,9 +11,6 @@ import { useLocaleStore } from '@/stores/locale'
 const i18n = useLocaleStore()
 const finance = useFinance()
 const activeIndex = ref(-1)
-
-const domesticBoards = computed(() => finance.boards.value?.domestic ?? [])
-const overseasBoards = computed(() => finance.boards.value?.overseas ?? [])
 
 function moveDown() {
   if (!finance.suggestions.value.length) return
@@ -128,12 +124,6 @@ function toggleScheme() {
           </li>
         </ul>
       </div>
-      <IndexStrip
-        class="fin-full__indices"
-        :domestic="domesticBoards"
-        :overseas="overseasBoards"
-        @select="finance.selectBoard"
-      />
       <button
         class="fin-full__color"
         type="button"
@@ -160,18 +150,43 @@ function toggleScheme() {
 }
 
 .fin-full__bar {
+  position: relative;
   flex-shrink: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 420px) minmax(0, 1fr);
   align-items: center;
   gap: var(--space-4);
   height: 56px;
   padding: 0 var(--space-6);
+
+  .fin-full__back,
+  .fin-full__title {
+    position: absolute;
+  }
+
+  .fin-full__back {
+    left: var(--space-6);
+  }
+
+  .fin-full__title {
+    left: calc(var(--space-6) + 2.5rem);
+  }
+
+  .fin-full__search {
+    grid-column: 2;
+  }
+
+  .fin-full__color {
+    grid-column: 3;
+    justify-self: end;
+  }
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-bg) 92%, transparent);
   backdrop-filter: blur(16px);
 }
 
 .fin-full__back {
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -192,8 +207,9 @@ function toggleScheme() {
 
 .fin-full__search {
   position: relative;
-  width: min(340px, 28vw);
-  flex-shrink: 0;
+  justify-self: center;
+  width: min(420px, 100%);
+  min-width: 0;
 }
 
 .fin-full__search-icon {
@@ -373,24 +389,40 @@ function toggleScheme() {
 
 @media (max-width: 1023px) {
   .fin-full__bar {
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 1fr) minmax(0, 1fr);
     gap: var(--space-2);
     padding: 0 var(--space-4);
   }
 
-  .fin-full__search {
-    flex: 1;
-    width: auto;
-    min-width: 0;
+  .fin-full__back {
+    left: var(--space-4);
   }
 
-  .fin-full__indices {
-    display: none;
+  .fin-full__title {
+    left: calc(var(--space-4) + 2.5rem);
+  }
+
+  .fin-full__search {
+    width: 100%;
   }
 }
 
 @media (max-width: 640px) {
   .fin-full__bar {
+    grid-template-columns: 2rem minmax(0, 1fr) 2rem;
     padding: 0 var(--space-3);
+  }
+
+  .fin-full__back {
+    left: var(--space-3);
+  }
+
+  .fin-full__title {
+    display: none;
+  }
+
+  .fin-full__search {
+    grid-column: 2;
   }
 
   .fin-full__title span {
