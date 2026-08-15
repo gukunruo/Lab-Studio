@@ -92,7 +92,7 @@ export function parseBeforeDate(value: string | undefined): string | null {
 
 export function filterKlinesBefore(klines: Kline[], before: string | null, today: string): Kline[] {
   return klines
-    .filter((item) => item.date < today && (before === null || item.date < before))
+    .filter((item) => item.date <= today && (before === null || item.date < before))
     .sort((a, b) => a.date.localeCompare(b.date))
 }
 
@@ -102,13 +102,53 @@ export function mergeKlines(existing: Kline[], incoming: Kline[]): Kline[] {
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
 
-function klineMeta(klines: Kline[], limit: number): Pick<KlineResponse, 'hasMore' | 'oldest' | 'latest'> {
+function klineMeta(klines: Kline[], hasMore: boolean): Pick<KlineResponse, 'hasMore' | 'oldest' | 'latest'> {
   return {
-    hasMore: klines.length >= limit,
+    hasMore,
     oldest: klines[0]?.date ?? null,
     latest: klines.at(-1)?.date ?? null,
   }
 }
+
+function finalizeKlineWindow(
+  fallback: { klines: Kline[]; hasMore: boolean },
+  before: string | null,
+  today: string,
+  limit: number,
+): { klines: Kline[]; hasMore: boolean } {
+  const filtered = filterKlinesBefore(fallback.klines, before, today)
+  return {
+    klines: filtered.slice(-limit),
+    hasMore: fallback.hasMore || filtered.length > limit,
+  }
+}
+
+function makeKlineResponse(
+  fallback: { code: string; name: string; klines: Kline[]; hasMore: boolean },
+  secid: string,
+  klt: string,
+  limit: number,
+  before: string | null,
+): KlineResponse {
+  const window = finalizeKlineWindow(fallback, before, todayUtc(), limit)
+  return {
+    code: fallback.code,
+    name: fallback.name,
+    secid,
+    klt,
+    ...window,
+    ...klineMeta(window.klines, window.hasMore),
+  }
+}
+
+function sourceWindow<T extends { klines: Kline[] }>(source: T, limit: number): T & { hasMore: boolean } {
+  return {
+    ...source,
+    klines: source.klines.slice(-limit - 1),
+    hasMore: source.klines.length > limit,
+  }
+}
+
 
 export interface FundNavPoint {
   date: string
@@ -323,11 +363,11 @@ async function fetchTencentKline(
   limit: number,
   klt = '101',
   before: string | null = null,
-): Promise<{ code: string; name: string; klines: Kline[] } | null> {
+): Promise<{ code: string; name: string; klines: Kline[]; hasMore: boolean } | null> {
   // klt：101=日 102=周 103=月。周期参数：day/week/month。
   const period = klt === '102' ? 'week' : klt === '103' ? 'month' : 'day'
   // 腾讯接口的 end-date 位于第三、四参数之间；cursor 请求只取 before 之前的窗口。
-  const range = `,,${before ?? ''},${limit}`
+  const range = `,,${before ?? ''},${limit + 1}`
   // 带点的美股指数 code（us.DJI）走 kline/kline 接口（仅日线），其余走 fqkline
   const url = symbol.includes('.')
     ? `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${symbol},${period}${range}`
@@ -385,7 +425,7 @@ async function fetchTencentKline(
     const qt = bucket.qt?.[symbol]
     const name = qt?.[1] ?? ''
     const code = qt?.[2] ?? symbol.slice(2)
-    return { code, name, klines }
+    return { ...sourceWindow({ code, name, klines }, limit) }
   } catch {
     return null
   }
@@ -398,7 +438,7 @@ async function fetchSinaUsKline(
   name: string,
   limit: number,
   before: string | null = null,
-): Promise<{ code: string; name: string; klines: Kline[] } | null> {
+): Promise<{ code: string; name: string; klines: Kline[]; hasMore: boolean } | null> {
   const url = `https://stock.finance.sina.com.cn/usstock/api/jsonp.php/var%20_x=/US_MinKService.getDailyK?symbol=${encodeURIComponent(code)}`
   try {
     const text = await fetchText(url, 'https://stock.finance.sina.com.cn/')
@@ -407,8 +447,9 @@ async function fetchSinaUsKline(
     if (!m || m[1] === 'null') return null
     const rows = JSON.parse(m[1]!) as Array<{ d: string; o: string; h: string; l: string; c: string; v: string }>
     if (!rows.length) return null
-    const klines: Kline[] = rows
-      .filter((r) => !before || (r.d ?? '') < before)
+    const filteredRows = rows.filter((r) => !before || (r.d ?? '') < before)
+    const hasMore = filteredRows.length > limit
+    const klines: Kline[] = filteredRows
       .slice(-limit)
       .map((r) => {
         const open = Number(r.o ?? 0)
@@ -431,7 +472,7 @@ async function fetchSinaUsKline(
           turnover: 0,
         }
       })
-    return { code: code.toUpperCase(), name: name || code.toUpperCase(), klines }
+    return { code: code.toUpperCase(), name: name || code.toUpperCase(), klines, hasMore }
   } catch {
     return null
   }
@@ -500,7 +541,7 @@ async function fetchThsKline(
   platecode: string,
   limit: number,
   before: string | null = null,
-): Promise<{ code: string; name: string; klines: Kline[] } | null> {
+): Promise<{ code: string; name: string; klines: Kline[]; hasMore: boolean } | null> {
   const url = `http://d.10jqka.com.cn/v6/line/bk_${platecode}/01/all.js`
   try {
     const text = await fetchText(url, 'http://q.10jqka.com.cn/')
@@ -557,7 +598,8 @@ async function fetchThsKline(
     }
     if (!klines.length) return null
     const filtered = klines.filter((item) => !before || item.date < before)
-    return { code: platecode, name: obj.name ?? '', klines: filtered.slice(-limit) }
+    const hasMore = filtered.length > limit
+    return { code: platecode, name: obj.name ?? '', klines: filtered.slice(-limit), hasMore }
   } catch {
     return null
   }
@@ -825,10 +867,8 @@ export function registerFinanceRoutes(app: Hono): void {
     if (!Number.isInteger(limit) || limit < 1 || limit > 500) return c.json({ error: 'invalid limit' }, 400)
     if (beforeValue !== undefined && !before) return c.json({ error: 'invalid before' }, 400)
     const today = todayUtc()
-    const withMeta = (fallback: { code: string; name: string; klines: Kline[] }, responseSecid: string): KlineResponse => {
-      const klines = filterKlinesBefore(mergeKlines([], fallback.klines), before, today)
-      return { code: fallback.code, name: fallback.name, secid: responseSecid, klt, klines, ...klineMeta(klines, limit) }
-    }
+    const withMeta = (fallback: { code: string; name: string; klines: Kline[]; hasMore: boolean }, responseSecid: string): KlineResponse =>
+      makeKlineResponse(fallback, responseSecid, klt, limit, before)
 
     // 重点板块：有 symbol 参数时直接按 symbol 抓腾讯 K 线
     if (symbolParam) {

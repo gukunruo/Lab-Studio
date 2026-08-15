@@ -13,9 +13,13 @@ test('parseBeforeDate accepts date and rejects future or malformed values', () =
   assert.equal(parseBeforeDate('not-a-date'), null)
 })
 
-test('filterKlinesBefore removes bars at and after cursor and future bars', () => {
-  const result = filterKlinesBefore([bar('2026-08-01', 3), bar('2026-08-02', 4)], '2026-08-02', '2026-08-01')
-  assert.deepEqual(result.map((item) => item.date), [])
+test('filterKlinesBefore keeps today, removes cursor and future bars', () => {
+  const result = filterKlinesBefore([
+    bar('2026-08-01', 3),
+    bar('2026-08-02', 4),
+    bar('2026-08-03', 5),
+  ], '2026-08-03', '2026-08-02')
+  assert.deepEqual(result.map((item) => item.date), ['2026-08-01', '2026-08-02'])
 })
 
 test('mergeKlines deduplicates by date and sorts ascending', () => {
