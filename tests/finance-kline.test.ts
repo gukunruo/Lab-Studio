@@ -10,6 +10,8 @@ import {
 } from '../server/finance'
 import {
   buildKlineParams,
+  CHART_MA_PERIODS,
+  chartRightOffsetLimit,
   klineErrorMessage,
   parseTencentKlineTimestamp,
   createHistoryRequestState,
@@ -155,4 +157,12 @@ test('K-line errors retain the server-provided unsupported reason', () => {
 test('Tencent local minute timestamps use the exchange offset', () => {
   assert.equal(parseTencentKlineTimestamp('2026-08-15 10:00'), Date.parse('2026-08-15T10:00:00+08:00'))
   assert.equal(parseTencentKlineTimestamp('2026-08-15'), Date.parse('2026-08-15T00:00:00Z'))
+})
+
+test('chart MA periods include common short and long windows', () => {
+  assert.deepEqual(CHART_MA_PERIODS, [5, 10, 20, 30, 60, 120, 250])
+})
+
+test('chart disallows right-side offset beyond the latest data', () => {
+  assert.equal(chartRightOffsetLimit(), 0)
 })

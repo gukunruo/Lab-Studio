@@ -1,7 +1,6 @@
 export type CandlePeriod = 'day' | 'week' | 'month'
 export type MinuteInterval = '1' | '5' | '15' | '30' | '60'
 export type ChartPeriod = CandlePeriod | MinuteInterval
-export type ChartMode = 'minute' | 'five-day' | 'candle'
 
 export interface Kline {
   date: string

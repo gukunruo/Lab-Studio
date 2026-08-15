@@ -1,6 +1,12 @@
 import { ref } from 'vue'
 import type { BoardRow, CandlePeriod, Kline, KlinePage, MinuteInterval, MinutePoint, QuoteDetail, SearchItem } from './types'
 
+export const CHART_MA_PERIODS = [5, 10, 20, 30, 60, 120, 250] as const
+
+export function chartRightOffsetLimit(): number {
+  return 0
+}
+
 export function oldestKlineDate(items: Kline[]): string | null {
   return items.reduce<string | null>((oldest, item) => {
     if (!item.date) return oldest

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { dispose, init, type Chart, type Crosshair, type KLineData } from 'klinecharts'
 import type { CandlePeriod, Kline, MinuteInterval, MinutePoint } from '../types'
-import { parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
+import { CHART_MA_PERIODS, chartRightOffsetLimit, parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
 
 const props = defineProps<{
   klines: Kline[]
@@ -16,22 +16,31 @@ const emit = defineEmits<{
 }>()
 
 type View = 'minute' | 'candle'
-type ChartSelection = 'minute' | 'five-day' | CandlePeriod | MinuteInterval
+type ChartSelection = 'minute' | CandlePeriod | MinuteInterval
 type SubIndicator = 'VOL' | 'MACD' | 'KDJ' | 'RSI' | 'BOLL'
 type ChartData = KLineData & { date?: string; change?: number; pct?: number }
-type MAPeriod = 5 | 10 | 20 | 60
+type MAPeriod = typeof CHART_MA_PERIODS[number]
 type IndicatorResult = Record<string, number | undefined>
 type IndicatorReading = { label: string; value: number; compact?: boolean }
 
-const MA_PERIODS: MAPeriod[] = [5, 10, 20, 60]
+const MA_PERIODS = CHART_MA_PERIODS
+const COMMON_MA_PERIODS = MA_PERIODS.slice(0, 5)
+const EXTENDED_MA_PERIODS = MA_PERIODS.slice(5)
 const CANDLE_PANE_ID = 'candle_pane'
 
 const container = ref<HTMLDivElement | null>(null)
 const view = ref<View>('candle')
 const period = ref<CandlePeriod | MinuteInterval>('day')
-const unavailableNotice = ref('')
 const showMA = ref(true)
-const enabledMA = ref<Record<MAPeriod, boolean>>({ 5: true, 10: true, 20: true, 60: true })
+const enabledMA = ref<Record<MAPeriod, boolean>>({
+  5: true,
+  10: true,
+  20: true,
+  30: false,
+  60: true,
+  120: false,
+  250: false,
+})
 const activeSub = ref<SubIndicator | null>('VOL')
 const hoveredData = ref<ChartData | null>(null)
 const hoveredIndex = ref<number | null>(null)
@@ -50,7 +59,6 @@ const visibleMAPeriods = computed(() =>
 )
 const VIEWS: Array<{ key: ChartSelection; label: string }> = [
   { key: 'minute', label: '分时' },
-  { key: 'five-day', label: '五日' },
   { key: 'day', label: '日K' },
   { key: 'week', label: '周K' },
   { key: 'month', label: '月K' },
@@ -228,7 +236,7 @@ function reload(keepViewport = false) {
       : { type: 'minute' as const, span: Number(period.value) }
   chart.setPeriod(chartPeriod)
   chart.setLeftMinVisibleBarCount(1)
-  chart.setRightMinVisibleBarCount(1)
+  chart.setMaxOffsetRightDistance(chartRightOffsetLimit())
   if (keepViewport && pendingHistoryDate) {
     const index = (chart.getDataList() as ChartData[]).findIndex((item) => item.date === pendingHistoryDate)
     if (index >= 0) chart.scrollToDataIndex(index)
@@ -298,11 +306,6 @@ function toggleSub(name: SubIndicator) {
 
 function selectPeriod(key: ChartSelection) {
   resetHistoryState()
-  unavailableNotice.value = ''
-  if (key === 'five-day') {
-    unavailableNotice.value = '五日分时暂不可用：当前数据源未提供可验证的跨交易日原始分时数据。'
-    return
-  }
   if (key === 'minute') {
     view.value = 'minute'
     reload()
@@ -483,19 +486,19 @@ onBeforeUnmount(() => {
             :key="item.key"
             type="button"
             class="kchart__button"
-            :class="{ 'kchart__button--active': item.key === 'minute' ? view === 'minute' : item.key !== 'five-day' && view === 'candle' && period === item.key }"
-            :aria-pressed="item.key === 'minute' ? view === 'minute' : item.key !== 'five-day' && view === 'candle' && period === item.key"
+            :class="{ 'kchart__button--active': item.key === 'minute' ? view === 'minute' : view === 'candle' && period === item.key }"
+            :aria-pressed="item.key === 'minute' ? view === 'minute' : view === 'candle' && period === item.key"
             @click="selectPeriod(item.key)"
           >
             {{ item.label }}
           </button>
         </div>
         <div class="kchart__group" aria-label="主图指标">
-          <button type="button" class="kchart__button" :class="{ 'kchart__button--active': view === 'candle' && showMA }" :disabled="view === 'minute'" title="MA5、MA10、MA20、MA60" @click="toggleMA">
+          <button type="button" class="kchart__button" :class="{ 'kchart__button--active': view === 'candle' && showMA }" :disabled="view === 'minute'" title="MA 按当前图表周期计算" @click="toggleMA">
             MA
           </button>
           <button
-            v-for="ma in MA_PERIODS"
+            v-for="ma in COMMON_MA_PERIODS"
             :key="ma"
             type="button"
             class="kchart__ma-toggle"
@@ -506,6 +509,23 @@ onBeforeUnmount(() => {
           >
             {{ ma }}
           </button>
+          <details class="kchart__ma-more">
+            <summary class="kchart__ma-toggle" :class="{ 'kchart__ma-toggle--active': showMA && EXTENDED_MA_PERIODS.some((ma) => enabledMA[ma]) }">更多</summary>
+            <div class="kchart__ma-menu">
+              <button
+                v-for="ma in EXTENDED_MA_PERIODS"
+                :key="ma"
+                type="button"
+                class="kchart__ma-menu-item"
+                :class="{ 'kchart__ma-menu-item--active': enabledMA[ma] }"
+                :disabled="view === 'minute' || !showMA"
+                :aria-pressed="enabledMA[ma]"
+                @click="toggleMAPeriod(ma)"
+              >
+                MA{{ ma }}
+              </button>
+            </div>
+          </details>
         </div>
         <div class="kchart__group" aria-label="技术指标">
           <button
@@ -528,7 +548,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <p v-if="unavailableNotice" class="kchart__notice" role="status">{{ unavailableNotice }}</p>
     <div v-if="klines.length || minute.length" ref="container" class="kchart__canvas" />
     <div v-else class="kchart__empty">暂无数据</div>
   </div>
@@ -679,6 +698,55 @@ onBeforeUnmount(() => {
   opacity: 0.4;
 }
 
+.kchart__ma-more {
+  position: relative;
+}
+
+.kchart__ma-more summary {
+  list-style: none;
+}
+
+.kchart__ma-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.kchart__ma-menu {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  display: grid;
+  min-width: 4.5rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.kchart__ma-menu-item {
+  min-height: 1.65rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kchart__ma-menu-item:hover:not(:disabled),
+.kchart__ma-menu-item--active {
+  color: var(--color-accent);
+  background: var(--color-surface-2);
+}
+
+.kchart__ma-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .kchart__reading--ma b {
   color: var(--color-accent);
 }
@@ -707,15 +775,6 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 320px;
   flex: 1;
-}
-
-.kchart__notice {
-  margin: 0;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  font-size: 0.72rem;
 }
 
 .kchart__empty {
