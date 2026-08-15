@@ -22,6 +22,8 @@ const aiError = ref('')
 const aiAvailable = ref(false)
 const aiExpanded = ref(true)
 const watchlistCollapsed = ref(false)
+const workspaceTab = ref<'ai' | 'boards' | 'settings'>('ai')
+const colorSchemeLabel = ref('中国市场')
 let controller: AbortController | null = null
 
 const renderedAi = computed(() => marked.parse(aiText.value, { async: false }) as string)
@@ -162,6 +164,7 @@ onMounted(async () => {
   })
   const config = await getAiConfig()
   aiAvailable.value = config.available
+  colorSchemeLabel.value = document.documentElement.style.getPropertyValue('--fin-up') ? '国际' : '中国市场'
 })
 </script>
 
@@ -298,55 +301,69 @@ onMounted(async () => {
             </p>
           </div>
 
-          <!-- AI 分析面板（可折叠） -->
-          <div v-if="aiAvailable" class="fin__ai">
+        </template>
+        <div v-else class="fin__placeholder">
+          <p>点击左侧自选、顶部指数或右侧工作区以查看 K 线</p>
+        </div>
+      </main>
+
+      <aside class="fin__col fin__col--right">
+        <nav class="fin__workspace-tabs" aria-label="右侧工作区">
+          <button type="button" :class="{ 'fin__workspace-tab--active': workspaceTab === 'ai' }" @click="workspaceTab = 'ai'">
+            AI 分析
+          </button>
+          <button type="button" :class="{ 'fin__workspace-tab--active': workspaceTab === 'boards' }" @click="workspaceTab = 'boards'">
+            板块
+          </button>
+          <button type="button" :class="{ 'fin__workspace-tab--active': workspaceTab === 'settings' }" @click="workspaceTab = 'settings'">
+            设置
+          </button>
+        </nav>
+
+        <div v-if="workspaceTab === 'ai'" class="fin__workspace-panel">
+          <div v-if="!aiAvailable" class="fin__ai-unavailable">未配置 AI，无法进行分析。</div>
+          <template v-else>
             <button class="fin__ai-toggle" type="button" @click="aiExpanded = !aiExpanded">
               <component :is="aiExpanded ? PhCaretDown : PhCaretUp" :size="14" />
-              <span>AI 分析</span>
+              <span>当前标的分析</span>
               <span v-if="!aiExpanded && aiText" class="fin__ai-preview">已生成</span>
             </button>
             <div v-if="aiExpanded" class="fin__ai-body-wrap">
-              <p class="fin__disclaimer">
-                基于公开历史行情与 AI 研判，仅供研究参考，不构成投资建议。
-              </p>
+              <p class="fin__disclaimer">基于公开历史行情与 AI 研判，仅供研究参考，不构成投资建议。</p>
               <div class="fin__ai-actions">
-                <button
-                  class="fin__analyze"
-                  :disabled="analyzing || !finance.klines.value.length"
-                  @click="runAnalysis"
-                >
+                <button class="fin__analyze" :disabled="analyzing || !finance.klines.value.length" @click="runAnalysis">
                   <PhSparkle :size="14" weight="fill" />
                   {{ analyzing ? '生成中…' : '开始分析' }}
                 </button>
                 <button v-if="analyzing" class="fin__stop" @click="stopAnalysis">
-                  <PhStop :size="13" weight="fill" />
-                  停止
+                  <PhStop :size="13" weight="fill" />停止
                 </button>
               </div>
               <div v-if="aiError" class="fin__ai-error">{{ aiError }}</div>
               <div v-if="aiText" class="fin__ai-body markdown" v-html="renderedAi" />
-              <div v-else-if="!analyzing" class="fin__ai-empty">
-                点击「开始分析」，AI 将基于当前 K 线与技术指标给出走势研判。
-              </div>
+              <div v-else-if="!analyzing" class="fin__ai-empty">点击「开始分析」，AI 将基于当前 K 线与技术指标给出走势研判。</div>
             </div>
-          </div>
-        </template>
-        <div v-else class="fin__placeholder">
-          <p>点击左侧自选、顶部指数或右侧板块以查看 K 线</p>
+          </template>
         </div>
-      </main>
 
-      <!-- 右栏：板块行情 -->
-      <aside class="fin__col fin__col--right">
-        <BoardTable
-          :kind="finance.boardKind.value"
-          :order="finance.boardOrder.value"
-          :rows="finance.boardRows.value"
-          :loading="finance.boardsRankLoading.value"
-          @set-kind="finance.setBoardKind"
-          @set-order="finance.setBoardOrder"
-          @select="finance.selectBoardRow"
-        />
+        <div v-else-if="workspaceTab === 'boards'" class="fin__workspace-panel fin__workspace-panel--boards">
+          <BoardTable
+            :kind="finance.boardKind.value"
+            :order="finance.boardOrder.value"
+            :rows="finance.boardRows.value"
+            :loading="finance.boardsRankLoading.value"
+            @set-kind="finance.setBoardKind"
+            @set-order="finance.setBoardOrder"
+            @select="finance.selectBoardRow"
+          />
+        </div>
+
+        <div v-else class="fin__workspace-panel fin__workspace-panel--settings">
+          <h2>工作区设置</h2>
+          <p>当前布局：三栏终端</p>
+          <p>涨跌配色：{{ colorSchemeLabel }}</p>
+          <p>左侧自选栏：{{ watchlistCollapsed ? '已收起' : '已展开' }}</p>
+        </div>
       </aside>
     </div>
   </div>
@@ -514,6 +531,57 @@ onMounted(async () => {
 
 .fin__col--right {
   overflow: hidden;
+}
+
+.fin__workspace-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.2rem;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.fin__workspace-tabs button {
+  padding: 0.4rem 0.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.fin__workspace-tabs button:hover,
+.fin__workspace-tab--active {
+  background: var(--color-accent-soft) !important;
+  color: var(--color-accent) !important;
+}
+
+.fin__workspace-panel {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.fin__workspace-panel--boards {
+  padding: 0.5rem;
+}
+
+.fin__workspace-panel--settings {
+  padding: 0.9rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.fin__workspace-panel--settings h2 {
+  margin: 0 0 0.8rem;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.fin__workspace-panel--settings p {
+  margin: 0.55rem 0;
 }
 
 // 左栏：自选
