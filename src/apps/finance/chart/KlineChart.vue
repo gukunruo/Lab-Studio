@@ -140,6 +140,7 @@ function applyStyles() {
       },
       area: { lineColor: areaColor, backgroundColor: `${areaColor}20` },
       priceMark: { last: { upColor: s.up, downColor: s.down, noChangeColor: s.noChange } },
+      tooltip: { showRule: 'none' },
     },
     indicator: {
       ohlc: { upColor: s.up, downColor: s.down, noChangeColor: s.noChange },
@@ -150,6 +151,7 @@ function applyStyles() {
         { color: '#a78bfa', size: 1 },
         { color: '#f472b6', size: 1 },
       ],
+      tooltip: { showRule: 'none' },
     },
     xAxis: { axisLine: { color: s.border }, tickText: { color: s.muted } },
     yAxis: { axisLine: { color: s.border }, tickText: { color: s.muted } },
@@ -201,6 +203,8 @@ function reload() {
   chart.setDataLoader({ getBars: ({ callback }) => callback(currentData(), false) })
   chart.setSymbol({ ticker: 'X', pricePrecision: pricePrecision(), volumePrecision: 0 })
   chart.setPeriod({ type: view.value === 'minute' ? 'minute' : period.value, span: 1 })
+  chart.setLeftMinVisibleBarCount(1)
+  chart.setRightMinVisibleBarCount(1)
   resetReadoutAfterRender()
 }
 
