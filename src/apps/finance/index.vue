@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { marked } from 'marked'
 import { PhMagnifyingGlass, PhPlus, PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
@@ -23,6 +23,8 @@ const aiError = ref('')
 const aiAvailable = ref(false)
 const aiExpanded = ref(true)
 const watchlistCollapsed = ref(false)
+const leftDrawerOpen = ref(false)
+const rightDrawerOpen = ref(false)
 const leftWidth = ref(210)
 const rightWidth = ref(280)
 const LEFT_MIN = 200
@@ -47,6 +49,26 @@ function onLeftResize(w: number) {
 function onRightResize(w: number) {
   rightWidth.value = clampSplitterWidth(w, RIGHT_MIN, RIGHT_MAX)
 }
+
+const anyDrawerOpen = computed(() => leftDrawerOpen.value || rightDrawerOpen.value)
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    leftDrawerOpen.value = false
+    rightDrawerOpen.value = false
+  }
+}
+
+watch(anyDrawerOpen, (open) => {
+  document.body.style.overflow = open ? 'hidden' : ''
+  if (open) window.addEventListener('keydown', onKeydown)
+  else window.removeEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = ''
+  window.removeEventListener('keydown', onKeydown)
+})
 
 const gridTemplate = computed(() => {
   if (watchlistCollapsed.value) {
@@ -193,6 +215,7 @@ onMounted(async () => {
   <div class="fin">
     <!-- 顶部：搜索 + 指数条 -->
     <div class="fin__top">
+      <button class="fin__drawer-btn fin__drawer-btn--left" type="button" aria-label="打开自选" @click="leftDrawerOpen = true">自选</button>
       <div class="fin__search">
         <PhMagnifyingGlass :size="15" class="fin__search-icon" />
         <input
@@ -230,12 +253,13 @@ onMounted(async () => {
         :overseas="overseasBoards"
         @select="finance.selectBoard"
       />
+      <button class="fin__drawer-btn fin__drawer-btn--right" type="button" aria-label="打开工作区" @click="rightDrawerOpen = true">工作区</button>
     </div>
 
     <!-- 三栏主体 -->
     <div class="fin__grid" :style="{ gridTemplateColumns: gridTemplate }">
       <!-- 左栏：自选列表 -->
-      <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed }">
+      <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed, 'fin__drawer--open': leftDrawerOpen }">
         <div class="fin__col-head">
           <span v-if="!watchlistCollapsed">自选</span>
           <span v-else class="fin__col-collapsed-label">自选</span>
@@ -346,7 +370,7 @@ onMounted(async () => {
         @resize="onRightResize"
       />
 
-      <aside class="fin__col fin__col--right">
+      <aside class="fin__col fin__col--right" :class="{ 'fin__drawer--open': rightDrawerOpen }">
         <nav class="fin__workspace-tabs" aria-label="右侧工作区">
           <button type="button" :class="{ 'fin__workspace-tab--active': workspaceTab === 'ai' }" @click="workspaceTab = 'ai'">
             AI 分析
@@ -405,6 +429,8 @@ onMounted(async () => {
         </div>
       </aside>
     </div>
+
+    <div v-if="anyDrawerOpen" class="fin__scrim" @click="leftDrawerOpen = false; rightDrawerOpen = false" />
   </div>
 </template>
 
@@ -432,6 +458,26 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
+}
+
+.fin__drawer-btn {
+  display: none;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.76rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.fin__scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .fin__search {
@@ -1002,7 +1048,7 @@ onMounted(async () => {
   margin: 0.3rem 0;
 }
 
-// 响应式：移动端禁用 splitter，改为单列
+// 响应式：移动端使用 overlay drawer，中央图表始终占据视口
 @media (max-width: 1023px) {
   .fin__grid {
     display: flex;
@@ -1013,12 +1059,46 @@ onMounted(async () => {
     display: none;
   }
 
+  .fin__drawer-btn {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .fin__scrim {
+    display: block;
+  }
+
+  .fin__col--left,
+  .fin__col--right {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    max-height: none;
+    width: 80vw;
+    max-width: 320px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    border-radius: 0;
+  }
+
   .fin__col--left {
-    max-height: 200px;
+    left: 0;
+    padding-top: env(safe-area-inset-top, 0);
   }
 
   .fin__col--right {
-    max-height: 300px;
+    right: 0;
+    transform: translateX(100%);
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  .fin__drawer--open.fin__col--left {
+    transform: translateX(0);
+  }
+
+  .fin__drawer--open.fin__col--right {
+    transform: translateX(0);
   }
 }
 
@@ -1028,12 +1108,16 @@ onMounted(async () => {
   }
 
   .fin__top {
-    flex-direction: column;
-    align-items: stretch;
+    gap: var(--space-2);
   }
 
   .fin__search {
     width: 100%;
+    flex: 1;
+  }
+
+  .fin__top-indices {
+    display: none;
   }
 }
 </style>
