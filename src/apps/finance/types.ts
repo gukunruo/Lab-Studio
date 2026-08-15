@@ -85,4 +85,6 @@ export interface MinutePoint {
   time: string
   price: number
   avg: number
+  volume: number
+  amount: number
 }

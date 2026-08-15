@@ -22,6 +22,16 @@ import {
   shouldShowBlockingKlineError,
   shouldContinueHistory,
   createRequestSequence,
+  financeGridTemplate,
+  parseTencentMinuteRow,
+  parseEastmoneyMinuteKlineRow,
+  minuteChartLines,
+  searchSelectionIndex,
+  nextDrawerState,
+  isPrimaryPointer,
+  splitterAriaValue,
+  restoreSearchSelection,
+  searchErrorMessage,
 } from '../src/apps/finance/useFinance'
 
 const bar = (date: string, close: number) => ({
@@ -174,4 +184,86 @@ test('splitter width clamps to allowed range', () => {
   assert.equal(clampSplitterWidth(500, 200, 360), 360)
   assert.equal(clampSplitterWidth(300, 280, 480), 300)
   assert.equal(clampSplitterWidth(200, 280, 480), 280)
+})
+
+test('collapsed grid keeps center and right columns in their own tracks', () => {
+  assert.equal(financeGridTemplate(true, 280, 360), '52px minmax(520px, 1fr) 8px 360px')
+  assert.equal(financeGridTemplate(false, 280, 360), '280px 8px minmax(520px, 1fr) 8px 360px')
+})
+
+test('Tencent minute rows preserve average price and cumulative values', () => {
+  assert.deepEqual(parseTencentMinuteRow('0930 3930.02 100 123456.00'), {
+    time: '0930',
+    price: 3930.02,
+    avg: 1234.56,
+    volume: 100,
+    amount: 123456,
+  })
+})
+
+test('Eastmoney minute K rows map to real OHLC and turnover data', () => {
+  assert.deepEqual(parseEastmoneyMinuteKlineRow('2026-08-15 09:35,10,10.2,10.3,9.9,1000,20000,3,2,0.2,1.5'), {
+    date: '2026-08-15 09:35',
+    open: 10,
+    close: 10.2,
+    high: 10.3,
+    low: 9.9,
+    volume: 1000,
+    amount: 20000,
+    amplitude: 4.040404040404043,
+    pct: 2,
+    change: 0.2,
+    turnover: 1.5,
+  })
+})
+
+test('minute chart lines keep price, average, and volume as separate series', () => {
+  assert.deepEqual(minuteChartLines([
+    { time: '0930', price: 10, avg: 9.9, volume: 100, amount: 1000 },
+    { time: '0931', price: 10.2, avg: 10, volume: 150, amount: 1500 },
+  ], 9.8), {
+    price: [10, 10.2],
+    average: [9.9, 10],
+    volume: [100, 150],
+    baseline: [9.8, 9.8],
+  })
+})
+
+test('minute chart points retain data source failure separately from empty data', () => {
+  assert.equal(parseEastmoneyMinuteKlineRow(''), null)
+})
+
+test('search selection falls back to the first suggestion', () => {
+  assert.equal(searchSelectionIndex(-1, 3), 0)
+  assert.equal(searchSelectionIndex(1, 3), 1)
+  assert.equal(searchSelectionIndex(3, 3), 0)
+  assert.equal(searchSelectionIndex(-1, 0), -1)
+})
+
+test('drawer state keeps only one mobile drawer open', () => {
+  assert.deepEqual(nextDrawerState('left', true), { left: true, right: false })
+  assert.deepEqual(nextDrawerState('right', true), { left: false, right: true })
+  assert.deepEqual(nextDrawerState('left', false), { left: false, right: false })
+})
+
+test('splitter only accepts the primary pointer', () => {
+  assert.equal(isPrimaryPointer({ button: 0 }), true)
+  assert.equal(isPrimaryPointer({ button: 2 }), false)
+})
+
+test('splitter aria value stays inside its configured range', () => {
+  assert.equal(splitterAriaValue(180, 200, 360), 200)
+  assert.equal(splitterAriaValue(300, 200, 360), 300)
+  assert.equal(splitterAriaValue(420, 200, 360), 360)
+})
+
+test('search selection resets when suggestions disappear or shrink', () => {
+  assert.equal(restoreSearchSelection(2, 3), 2)
+  assert.equal(restoreSearchSelection(2, 2), -1)
+  assert.equal(restoreSearchSelection(0, 0), -1)
+})
+
+test('search errors expose a user-facing retry message', () => {
+  assert.equal(searchErrorMessage(new Error('网络不可用')), '网络不可用')
+  assert.equal(searchErrorMessage(new Error()), '搜索失败，请稍后重试')
 })

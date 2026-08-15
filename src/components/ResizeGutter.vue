@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { isPrimaryPointer, splitterAriaValue } from '@/apps/finance/useFinance'
 
 defineOptions({ name: 'ResizeGutter' })
 
@@ -12,10 +13,12 @@ const props = defineProps<{
 const emit = defineEmits<{ resize: [number]; dragstart: []; dragend: [] }>()
 
 const dragging = ref(false)
+const ariaValue = computed(() => splitterAriaValue(props.value, props.min, props.max))
 let startX = 0
 let startW = 0
 
 function onDown(e: PointerEvent) {
+  if (!isPrimaryPointer(e)) return
   dragging.value = true
   startX = e.clientX
   startW = props.value
@@ -52,6 +55,9 @@ function onKeydown(e: KeyboardEvent) {
     :class="{ 'gutter--drag': dragging }"
     role="separator"
     aria-orientation="vertical"
+    :aria-valuenow="ariaValue"
+    :aria-valuemin="props.min"
+    :aria-valuemax="props.max"
     tabindex="0"
     @pointerdown="onDown"
     @pointermove="onMove"
@@ -66,7 +72,7 @@ function onKeydown(e: KeyboardEvent) {
 <style scoped lang="scss">
 .gutter {
   position: relative;
-  width: 6px;
+  width: 8px;
   height: 100%;
   cursor: col-resize;
   user-select: none;

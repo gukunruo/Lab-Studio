@@ -210,6 +210,8 @@ export interface MinutePoint {
   time: string
   price: number
   avg: number
+  volume: number
+  amount: number
 }
 
 export interface QuoteDetail {
@@ -495,6 +497,76 @@ async function fetchTencentMinuteKline(
   } catch {
     return null
   }
+}
+
+function eastmoneySecid(symbol: string): string | null {
+  const match = symbol.match(/^(sh|sz|hk)([A-Za-z0-9]+)$/i)
+  if (!match) return null
+  const market = match[1]!.toLowerCase() === 'sh' ? '1' : match[1]!.toLowerCase() === 'sz' ? '0' : '116'
+  return `${market}.${match[2]!.toUpperCase()}`
+}
+
+async function fetchEastmoneyMinuteKline(
+  symbol: string,
+  interval: string,
+  limit: number,
+): Promise<{ code: string; name: string; klines: Kline[]; hasMore: boolean } | null> {
+  const secid = eastmoneySecid(symbol)
+  if (!secid) return null
+  const query = new URLSearchParams({
+    secid,
+    klt: interval,
+    fqt: '1',
+    beg: '0',
+    end: '20500101',
+    lmt: String(Math.min(limit, 320)),
+    fields1: 'f1,f2,f3,f4,f5,f6',
+    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
+  })
+  try {
+    const data = (await fetchJson(`https://push2his.eastmoney.com/api/qt/stock/kline/get?${query}`, 'https://quote.eastmoney.com/')) as {
+      data?: { code?: string; name?: string; klines?: string[] }
+    }
+    const klines = (data.data?.klines ?? []).map((row) => {
+      const fields = row.split(',')
+      if (fields.length < 7 || !fields[0]) return null
+      const open = Number(fields[1] ?? 0)
+      const close = Number(fields[2] ?? 0)
+      const high = Number(fields[3] ?? 0)
+      const low = Number(fields[4] ?? 0)
+      const change = close - open
+      return {
+        date: fields[0],
+        open,
+        close,
+        high,
+        low,
+        volume: Number(fields[5] ?? 0),
+        amount: Number(fields[6] ?? 0),
+        amplitude: low ? ((high - low) / low) * 100 : 0,
+        pct: open ? Number(((change / open) * 100).toFixed(2)) : 0,
+        change: Number(change.toFixed(2)),
+        turnover: Number(fields[10] ?? 0),
+      }
+    }).filter((item): item is Kline => item !== null)
+    if (!klines.length) return null
+    return {
+      code: data.data?.code ?? symbol.slice(2),
+      name: data.data?.name ?? '',
+      klines: klines.slice(-limit),
+      hasMore: false,
+    }
+  } catch {
+    return null
+  }
+}
+
+async function fetchMinuteKline(
+  symbol: string,
+  interval: string,
+  limit: number,
+): Promise<{ code: string; name: string; klines: Kline[]; hasMore: boolean } | null> {
+  return await fetchTencentMinuteKline(symbol, interval, limit) ?? fetchEastmoneyMinuteKline(symbol, interval, limit)
 }
 
 // ---- 新浪美股个股 K 线（腾讯美股 fqkline 数据不完整，此处兜底）----
@@ -811,8 +883,15 @@ async function fetchTencentMinute(symbol: string): Promise<MinutePoint[] | null>
     const rows = data.data?.[symbol]?.data?.data
     if (!rows?.length) return null
     return rows.map((r) => {
-      const f = r.split(' ')
-      return { time: f[0] ?? '', price: Number(f[1] ?? 0), avg: 0 }
+      const f = r.trim().split(/\s+/)
+      const amount = Number(f[3] ?? 0)
+      return {
+        time: f[0] ?? '',
+        price: Number(f[1] ?? 0),
+        avg: amount / 100,
+        volume: Number(f[2] ?? 0),
+        amount,
+      }
     })
   } catch {
     return null
@@ -834,7 +913,13 @@ async function fetchThsMinute(platecode: string): Promise<MinutePoint[] | null> 
     if (!raw) return null
     return raw.split(';').filter(Boolean).map((r) => {
       const f = r.split(',')
-      return { time: f[0] ?? '', price: Number(f[1] ?? 0), avg: Number(f[3] ?? 0) }
+      return {
+        time: f[0] ?? '',
+        price: Number(f[1] ?? 0),
+        avg: Number(f[3] ?? 0),
+        volume: Number(f[2] ?? 0),
+        amount: Number(f[4] ?? 0),
+      }
     })
   } catch {
     return null
@@ -1036,7 +1121,7 @@ export function registerFinanceRoutes(app: Hono): void {
         return c.json({ error: '该标的不支持分钟 K 线' }, 422)
       }
       const fallback = minuteInterval
-        ? await fetchTencentMinuteKline(symbol, minuteInterval, limit)
+        ? await fetchMinuteKline(symbol, minuteInterval, limit)
         : await fetchTencentKline(symbol, limit, klt, before)
       if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
       const result = minuteInterval
@@ -1088,7 +1173,7 @@ export function registerFinanceRoutes(app: Hono): void {
       return c.json({ error: '该标的不支持分钟 K 线' }, 422)
     }
     const fallback = minuteInterval
-      ? await fetchTencentMinuteKline(symbol, minuteInterval, limit)
+      ? await fetchMinuteKline(symbol, minuteInterval, limit)
       : await fetchTencentKline(symbol, limit, klt, before)
     if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
     const result = minuteInterval ? minuteResponse(fallback, secid) : withMeta(fallback, secid)

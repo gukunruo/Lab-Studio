@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { dispose, init, type Chart, type Crosshair, type KLineData } from 'klinecharts'
+import { dispose, init, registerIndicator, type Chart, type Crosshair, type KLineData } from 'klinecharts'
 import type { CandlePeriod, ChartPrefs, ChartSelection, Kline, MinuteInterval, MinutePoint, SubIndicator } from '../types'
 import { CHART_MA_PERIODS, chartRightOffsetLimit, parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
 
 const props = defineProps<{
   klines: Kline[]
   minute: MinutePoint[]
+  minuteBaseline?: number
+  loading?: boolean
   loadingHistory?: boolean
   hasMoreHistory?: boolean
   chartPrefs?: ChartPrefs
@@ -18,10 +20,46 @@ const emit = defineEmits<{
 }>()
 
 type View = 'minute' | 'candle'
-type ChartData = KLineData & { date?: string; change?: number; pct?: number }
+type ChartData = KLineData & { date?: string; change?: number; pct?: number; average?: number }
 type MAPeriod = typeof CHART_MA_PERIODS[number]
 type IndicatorResult = Record<string, number | undefined>
 type IndicatorReading = { label: string; value: number; compact?: boolean }
+
+type MinuteIndicatorResult = { price?: number; average?: number; baseline?: number; volume?: number }
+
+registerIndicator<MinuteIndicatorResult>({
+  name: 'MINUTE_AVG',
+  shortName: '分时',
+  series: 'price',
+  calc: (dataList) => {
+    const baseline = props.minuteBaseline ?? dataList[0]?.close
+    return dataList.map((item) => ({
+      price: item.close,
+      average: (item as ChartData).average,
+      baseline,
+    }))
+  },
+  figures: [
+    { key: 'price', title: '价格: ', type: 'line' },
+    { key: 'average', title: '均价: ', type: 'line' },
+    { key: 'baseline', title: '昨收: ', type: 'line' },
+  ],
+  regenerateFigures: () => [
+    { key: 'price', title: '价格: ', type: 'line' },
+    { key: 'average', title: '均价: ', type: 'line' },
+    { key: 'baseline', title: '昨收: ', type: 'line' },
+  ],
+})
+
+registerIndicator<MinuteIndicatorResult>({
+  name: 'MINUTE_VOL',
+  shortName: '成交量',
+  series: 'volume',
+  calc: (dataList) => dataList.map((item) => ({ volume: item.volume })),
+  figures: [{ key: 'volume', title: '成交量: ', type: 'bar' }],
+})
+
+const MINUTE_VOL_PANE_ID = 'minute_vol_pane'
 
 const MA_PERIODS = CHART_MA_PERIODS
 const COMMON_MA_PERIODS = MA_PERIODS.slice(0, 5)
@@ -101,13 +139,14 @@ function minuteToKLineData(points: MinutePoint[]): ChartData[] {
   const first = points[0]?.price ?? 0
   return points.map((p) => ({
     timestamp: Date.UTC(y, mo, day, Number(p.time.slice(0, 2)) || 0, Number(p.time.slice(2, 4)) || 0),
-    date: p.time,
+    date: `${y}-${String(mo + 1).padStart(2, '0')}-${String(day).padStart(2, '0')} ${p.time.slice(0, 2)}:${p.time.slice(2, 4)}`,
     open: p.price,
     high: p.price,
     low: p.price,
     close: p.price,
-    volume: 0,
-    turnover: 0,
+    volume: p.volume,
+    turnover: p.amount,
+    average: p.avg,
     change: p.price - first,
     pct: first ? ((p.price - first) / first) * 100 : 0,
   }))
@@ -161,7 +200,7 @@ function applyStyles() {
         downWickColor: s.down,
         noChangeWickColor: s.noChange,
       },
-      area: { lineColor: areaColor, backgroundColor: `${areaColor}20` },
+      area: { lineColor: areaColor, backgroundColor: `${areaColor}14` },
       priceMark: { last: { upColor: s.up, downColor: s.down, noChangeColor: s.noChange } },
       tooltip: { showRule: 'none' },
     },
@@ -190,11 +229,16 @@ function syncIndicators() {
   if (!chart) return
   indicatorReadoutVersion.value += 1
   for (const indicator of chart.getIndicators()) {
-    if (indicator.name === 'MA' || SUB_INDICATORS.includes(indicator.name as SubIndicator)) {
+    if (indicator.name === 'MA' || SUB_INDICATORS.includes(indicator.name as SubIndicator) || indicator.name === 'MINUTE_AVG' || indicator.name === 'MINUTE_VOL') {
       chart.removeIndicator({ id: indicator.id })
     }
   }
-  if (view.value === 'minute') return
+  if (view.value === 'minute') {
+    chart.createIndicator({ name: 'MINUTE_AVG', paneId: CANDLE_PANE_ID })
+    chart.createIndicator({ name: 'MINUTE_VOL', paneId: MINUTE_VOL_PANE_ID })
+    chart.setPaneOptions({ id: MINUTE_VOL_PANE_ID, height: 90, minHeight: 70 })
+    return
+  }
   if (visibleMAPeriods.value.length) {
     chart.createIndicator({
       name: 'MA',
@@ -342,6 +386,7 @@ function toggleSub(name: SubIndicator) {
 }
 
 function selectPeriod(key: ChartSelection) {
+  if (props.loading || props.loadingHistory) return
   resetHistoryState()
   if (key === 'minute') {
     view.value = 'minute'
@@ -482,7 +527,7 @@ watch(() => props.loadingHistory, (loading) => {
     restoreHistoryViewport()
   }
 })
-watch(() => props.minute, () => { if (view.value === 'minute') reload() })
+watch(() => [props.minute, props.minuteBaseline], () => { if (view.value === 'minute') reload() })
 
 watch(() => props.chartPrefs, (prefs) => {
   if (prefs && !prefsApplied) {
@@ -534,6 +579,7 @@ onBeforeUnmount(() => {
             class="kchart__button"
             :class="{ 'kchart__button--active': item.key === 'minute' ? view === 'minute' : view === 'candle' && period === item.key }"
             :aria-pressed="item.key === 'minute' ? view === 'minute' : view === 'candle' && period === item.key"
+            :disabled="loading || loadingHistory"
             @click="selectPeriod(item.key)"
           >
             {{ item.label }}

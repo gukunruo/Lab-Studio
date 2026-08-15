@@ -11,6 +11,90 @@ export function clampSplitterWidth(value: number, min: number, max: number): num
   return Math.min(max, Math.max(min, value))
 }
 
+export function financeGridTemplate(collapsed: boolean, leftWidth: number, rightWidth: number): string {
+  return collapsed
+    ? `52px minmax(520px, 1fr) 8px ${rightWidth}px`
+    : `${leftWidth}px 8px minmax(520px, 1fr) 8px ${rightWidth}px`
+}
+
+export function parseTencentMinuteRow(row: string): MinutePoint {
+  const fields = row.trim().split(/\s+/)
+  const amount = Number(fields[3] ?? 0)
+  return {
+    time: fields[0] ?? '',
+    price: Number(fields[1] ?? 0),
+    avg: amount / 100,
+    volume: Number(fields[2] ?? 0),
+    amount,
+  }
+}
+
+export function parseEastmoneyMinuteKlineRow(row: string): Kline | null {
+  const fields = row.split(',')
+  if (fields.length < 7 || !fields[0]) return null
+  const open = Number(fields[1] ?? 0)
+  const close = Number(fields[2] ?? 0)
+  const high = Number(fields[3] ?? 0)
+  const low = Number(fields[4] ?? 0)
+  const volume = Number(fields[5] ?? 0)
+  const amount = Number(fields[6] ?? 0)
+  const change = close - open
+  return {
+    date: fields[0],
+    open,
+    close,
+    high,
+    low,
+    volume,
+    amount,
+    amplitude: low ? ((high - low) / low) * 100 : 0,
+    pct: open ? Number(((change / open) * 100).toFixed(2)) : 0,
+    change: Number(change.toFixed(2)),
+    turnover: Number(fields[10] ?? 0),
+  }
+}
+
+export function parseTencentMinuteRows(rows: string[]): MinutePoint[] {
+  return rows.map(parseTencentMinuteRow).filter((point) => point.time && Number.isFinite(point.price))
+}
+
+export function minuteChartLines(points: MinutePoint[], baseline = points[0]?.price ?? 0): { price: number[]; average: number[]; volume: number[]; baseline: number[] } {
+  return {
+    price: points.map((point) => point.price),
+    average: points.map((point) => point.avg),
+    volume: points.map((point) => point.volume),
+    baseline: points.map(() => baseline),
+  }
+}
+
+export function searchSelectionIndex(activeIndex: number, itemCount: number): number {
+  if (itemCount <= 0) return -1
+  return activeIndex >= 0 && activeIndex < itemCount ? activeIndex : 0
+}
+
+export function splitterAriaValue(value: number, min: number, max: number): number {
+  return clampSplitterWidth(value, min, max)
+}
+
+export function nextDrawerState(
+  drawer: 'left' | 'right',
+  open: boolean,
+): { left: boolean; right: boolean } {
+  return drawer === 'left' ? { left: open, right: false } : { left: false, right: open }
+}
+
+export function isPrimaryPointer(event: { button: number }): boolean {
+  return event.button === 0
+}
+
+export function restoreSearchSelection(activeIndex: number, itemCount: number): number {
+  return itemCount > 0 && activeIndex < itemCount ? activeIndex : -1
+}
+
+export function searchErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : '搜索失败，请稍后重试'
+}
+
 export function oldestKlineDate(items: Kline[]): string | null {
   return items.reduce<string | null>((oldest, item) => {
     if (!item.date) return oldest
@@ -201,6 +285,7 @@ export function useFinance() {
   const query = ref('')
   const suggestions = ref<SearchItem[]>([])
   const searching = ref(false)
+  const searchError = ref('')
 
   // 重点板块（指数条）
   const boards = ref<BoardsData | null>(null)
@@ -232,8 +317,10 @@ export function useFinance() {
   const selectedSymbol = ref<string | null>(null)
   const selectedPlatecode = ref<string | null>(null)
   const minutePoints = ref<MinutePoint[]>([])
+  const minuteError = ref('')
 
   let debounce: ReturnType<typeof setTimeout> | null = null
+  let searchSeq = 0
   let loadSeq = 0
   let historyLoadSeq = 0
   const detailRequest = createRequestSequence()
@@ -286,20 +373,27 @@ export function useFinance() {
 
   async function search() {
     const q = query.value.trim()
+    const seq = ++searchSeq
     if (!q) {
       suggestions.value = []
+      searchError.value = ''
+      searching.value = false
       return
     }
     searching.value = true
+    searchError.value = ''
     try {
       const res = await fetch(`/api/finance/search?q=${encodeURIComponent(q)}`, { credentials: 'include' })
       const data = (await res.json().catch(() => null)) as { items?: SearchItem[]; error?: string } | null
       if (!res.ok) throw new Error(data?.error ?? '搜索失败')
+      if (seq !== searchSeq) return
       suggestions.value = data?.items ?? []
-    } catch {
+    } catch (e) {
+      if (seq !== searchSeq) return
       suggestions.value = []
+      searchError.value = searchErrorMessage(e)
     } finally {
-      searching.value = false
+      if (seq === searchSeq) searching.value = false
     }
   }
 
@@ -547,9 +641,13 @@ export function useFinance() {
   async function loadMinute() {
     const sequence = minuteRequest.begin()
     const item = selected.value
+    if (minuteRequest.isCurrent(sequence)) minuteError.value = ''
     if (!item) return
     if (item.type === 'OTCFUND') {
-      if (minuteRequest.isCurrent(sequence)) minutePoints.value = []
+      if (minuteRequest.isCurrent(sequence)) {
+        minutePoints.value = []
+        minuteError.value = '该标的不支持分时数据'
+      }
       return
     }
     const params = new URLSearchParams()
@@ -560,7 +658,10 @@ export function useFinance() {
     } else {
       const symbol = itemToSymbol(item)
       if (!symbol) {
-        if (minuteRequest.isCurrent(sequence)) minutePoints.value = []
+        if (minuteRequest.isCurrent(sequence)) {
+          minutePoints.value = []
+          minuteError.value = '该标的不支持分时数据'
+        }
         return
       }
       params.set('symbol', symbol)
@@ -570,8 +671,11 @@ export function useFinance() {
       const data = (await res.json().catch(() => null)) as { points?: MinutePoint[]; error?: string } | null
       if (!res.ok) throw new Error(data?.error ?? '加载失败')
       if (minuteRequest.isCurrent(sequence)) minutePoints.value = data?.points ?? []
-    } catch {
-      if (minuteRequest.isCurrent(sequence)) minutePoints.value = []
+    } catch (e) {
+      if (minuteRequest.isCurrent(sequence)) {
+        minutePoints.value = []
+        minuteError.value = e instanceof Error ? e.message : '分时数据加载失败'
+      }
     }
   }
 
@@ -627,6 +731,7 @@ export function useFinance() {
     query,
     suggestions,
     searching,
+    searchError,
     boards,
     boardsLoading,
     boardKind,
@@ -639,6 +744,7 @@ export function useFinance() {
     klines,
     detail,
     minutePoints,
+    minuteError,
     loading,
     loadingHistory,
     hasMoreHistory,

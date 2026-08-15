@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { marked } from 'marked'
-import { PhMagnifyingGlass, PhPlus, PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
+import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { useFinance, itemToSymbol, clampSplitterWidth, type Quote, type WatchItem } from './useFinance'
+import { useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
@@ -11,10 +11,8 @@ import IndexStrip from './components/IndexStrip.vue'
 import BoardTable from './components/BoardTable.vue'
 import ResizeGutter from '@/components/ResizeGutter.vue'
 
-const finance = useFinance()
-
-const domesticBoards = computed(() => finance.boards.value?.domestic ?? [])
-const overseasBoards = computed(() => finance.boards.value?.overseas ?? [])
+const props = defineProps<{ finance?: ReturnType<typeof useFinance> }>()
+const finance = props.finance ?? useFinance()
 
 const activeIndex = ref(-1)
 const analyzing = ref(false)
@@ -25,6 +23,8 @@ const aiExpanded = ref(true)
 const watchlistCollapsed = ref(false)
 const leftDrawerOpen = ref(false)
 const rightDrawerOpen = ref(false)
+const leftDrawerTrigger = ref<HTMLButtonElement | null>(null)
+const rightDrawerTrigger = ref<HTMLButtonElement | null>(null)
 const leftWidth = ref(210)
 const rightWidth = ref(280)
 const LEFT_MIN = 200
@@ -55,11 +55,27 @@ function onRightResize(w: number) {
 
 const anyDrawerOpen = computed(() => leftDrawerOpen.value || rightDrawerOpen.value)
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    leftDrawerOpen.value = false
-    rightDrawerOpen.value = false
+function openDrawer(drawer: 'left' | 'right') {
+  const next = nextDrawerState(drawer, true)
+  leftDrawerOpen.value = next.left
+  rightDrawerOpen.value = next.right
+}
+
+function closeDrawers(restoreFocus = true) {
+  const wasLeftOpen = leftDrawerOpen.value
+  const wasRightOpen = rightDrawerOpen.value
+  leftDrawerOpen.value = false
+  rightDrawerOpen.value = false
+  if (restoreFocus && (wasLeftOpen || wasRightOpen)) {
+    requestAnimationFrame(() => {
+      const trigger = wasLeftOpen ? leftDrawerTrigger.value : rightDrawerTrigger.value
+      trigger?.focus()
+    })
   }
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeDrawers()
 }
 
 watch(anyDrawerOpen, (open) => {
@@ -69,6 +85,7 @@ watch(anyDrawerOpen, (open) => {
 })
 
 onBeforeUnmount(() => {
+  closeDrawers(false)
   document.body.style.overflow = ''
   window.removeEventListener('keydown', onKeydown)
   if (saveTimer) clearTimeout(saveTimer)
@@ -113,12 +130,9 @@ function onChartPrefsChange(prefs: ChartPrefs) {
 
 watch([watchlistCollapsed, leftWidth, rightWidth, workspaceTab], scheduleSave)
 
-const gridTemplate = computed(() => {
-  if (watchlistCollapsed.value) {
-    return `3.25rem 6px minmax(520px, 1fr) 6px ${rightWidth.value}px`
-  }
-  return `${leftWidth.value}px 6px minmax(520px, 1fr) 6px ${rightWidth.value}px`
-})
+const gridTemplate = computed(() =>
+  financeGridTemplate(watchlistCollapsed.value, leftWidth.value, rightWidth.value),
+)
 
 function fmtPct(pct: number): string {
   const sign = pct > 0 ? '+' : ''
@@ -281,68 +295,42 @@ onMounted(async () => {
 
 <template>
   <div class="fin">
-    <!-- 顶部：搜索 + 指数条 -->
-    <div class="fin__top">
-      <button class="fin__drawer-btn fin__drawer-btn--left" type="button" aria-label="打开自选" @click="leftDrawerOpen = true">自选</button>
-      <div class="fin__search">
-        <PhMagnifyingGlass :size="15" class="fin__search-icon" />
-        <input
-          v-model="finance.query.value"
-          class="fin__search-input"
-          type="search"
-          placeholder="搜索股票/基金/板块/ETF"
-          @input="finance.scheduleSearch()"
-          @keydown.down.prevent="moveDown"
-          @keydown.up.prevent="moveUp"
-          @keydown.enter.prevent="confirmSelection"
-          @keydown.esc="finance.suggestions.value = []"
-        />
-        <ul v-if="finance.suggestions.value.length" class="fin__suggest">
-          <li
-            v-for="(s, i) in finance.suggestions.value"
-            :key="s.quoteId + s.code"
-            class="fin__suggest-item"
-            :class="{ 'fin__suggest-item--active': i === activeIndex }"
-            @mouseenter="activeIndex = i"
-            @click="selectItem(s)"
-          >
-            <span class="fin__suggest-name">{{ s.name }}</span>
-            <span class="fin__suggest-code">{{ s.code }}</span>
-            <span class="fin__suggest-type">{{ s.typeName }}</span>
-            <button class="fin__add" type="button" :aria-label="`添加 ${s.name}`" @click.stop="addItem(s)">
-              <PhPlus :size="13" weight="bold" />
-            </button>
-          </li>
-        </ul>
-      </div>
-      <IndexStrip
-        class="fin__top-indices"
-        :domestic="domesticBoards"
-        :overseas="overseasBoards"
-        @select="finance.selectBoard"
-      />
-      <button class="fin__drawer-btn fin__drawer-btn--right" type="button" aria-label="打开工作区" @click="rightDrawerOpen = true">工作区</button>
+    <div class="fin__mobile-actions" aria-label="移动端工作区">
+      <button ref="leftDrawerTrigger" type="button" class="fin__drawer-btn" @click="openDrawer('left')">自选</button>
+      <button ref="rightDrawerTrigger" type="button" class="fin__drawer-btn" @click="openDrawer('right')">工作区</button>
     </div>
-
     <!-- 三栏主体 -->
     <div class="fin__grid" :style="{ gridTemplateColumns: gridTemplate }">
       <!-- 左栏：自选列表 -->
       <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed, 'fin__drawer--open': leftDrawerOpen }">
         <div class="fin__col-head">
-          <span v-if="!watchlistCollapsed">自选</span>
-          <span v-else class="fin__col-collapsed-label">自选</span>
-          <div class="fin__col-head-actions">
-            <span v-if="!watchlistCollapsed" class="fin__col-count">{{ finance.watchlist.value.length }}</span>
+          <template v-if="watchlistCollapsed">
+            <span class="fin__col-collapsed-label">自选</span>
             <button
               type="button"
-              class="fin__collapse"
-              :aria-label="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
-              :title="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
-              @click="watchlistCollapsed = !watchlistCollapsed"
+              class="fin__collapse fin__collapse--collapsed"
+              aria-label="展开自选栏"
+              title="展开自选栏"
+              @click="watchlistCollapsed = false"
             >
-              {{ watchlistCollapsed ? '›' : '‹' }}
+              <span aria-hidden="true">›</span>
             </button>
-          </div>
+          </template>
+          <template v-else>
+            <span>自选</span>
+            <div class="fin__col-head-actions">
+              <span class="fin__col-count">{{ finance.watchlist.value.length }}</span>
+              <button
+                type="button"
+                class="fin__collapse"
+                aria-label="收起自选栏"
+                title="收起自选栏"
+                @click="watchlistCollapsed = true"
+              >
+                <span aria-hidden="true">‹</span>
+              </button>
+            </div>
+          </template>
         </div>
         <div v-if="!finance.watchlist.value.length && !watchlistCollapsed" class="fin__empty">
           搜索后点 + 添加
@@ -413,6 +401,8 @@ onMounted(async () => {
               v-else
               :klines="finance.klines.value"
               :minute="finance.minutePoints.value"
+              :minute-baseline="finance.detail.value?.prevClose"
+              :loading="finance.loading.value"
               :loading-history="finance.loadingHistory.value"
               :has-more-history="finance.hasMoreHistory.value"
               :chart-prefs="chartPrefs"
@@ -420,6 +410,9 @@ onMounted(async () => {
               @load-more-history="finance.loadMoreHistory"
               @prefs-change="onChartPrefsChange"
             />
+            <p v-if="finance.minuteError.value" class="fin__chart-error">
+              {{ finance.minuteError.value }}
+            </p>
             <p v-if="finance.error.value && finance.klines.value.length" class="fin__chart-error">
               {{ finance.error.value }}，当前数据仍可查看
             </p>
@@ -441,19 +434,43 @@ onMounted(async () => {
       />
 
       <aside class="fin__col fin__col--right" :class="{ 'fin__drawer--open': rightDrawerOpen }">
-        <nav class="fin__workspace-tabs" aria-label="右侧工作区">
-          <button type="button" :class="{ 'fin__workspace-tab--active': workspaceTab === 'ai' }" @click="workspaceTab = 'ai'">
+        <nav class="fin__workspace-tabs" aria-label="右侧工作区" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-controls="finance-workspace-ai"
+            :aria-selected="workspaceTab === 'ai'"
+            :tabindex="workspaceTab === 'ai' ? 0 : -1"
+            :class="{ 'fin__workspace-tab--active': workspaceTab === 'ai' }"
+            @click="workspaceTab = 'ai'"
+          >
             AI 分析
           </button>
-          <button type="button" :class="{ 'fin__workspace-tab--active': workspaceTab === 'boards' }" @click="workspaceTab = 'boards'">
+          <button
+            type="button"
+            role="tab"
+            aria-controls="finance-workspace-boards"
+            :aria-selected="workspaceTab === 'boards'"
+            :tabindex="workspaceTab === 'boards' ? 0 : -1"
+            :class="{ 'fin__workspace-tab--active': workspaceTab === 'boards' }"
+            @click="workspaceTab = 'boards'"
+          >
             板块
           </button>
-          <button type="button" :class="{ 'fin__workspace-tab--active': workspaceTab === 'settings' }" @click="workspaceTab = 'settings'">
+          <button
+            type="button"
+            role="tab"
+            aria-controls="finance-workspace-settings"
+            :aria-selected="workspaceTab === 'settings'"
+            :tabindex="workspaceTab === 'settings' ? 0 : -1"
+            :class="{ 'fin__workspace-tab--active': workspaceTab === 'settings' }"
+            @click="workspaceTab = 'settings'"
+          >
             设置
           </button>
         </nav>
 
-        <div v-if="workspaceTab === 'ai'" class="fin__workspace-panel">
+        <div v-if="workspaceTab === 'ai'" id="finance-workspace-ai" class="fin__workspace-panel" role="tabpanel">
           <div v-if="!aiAvailable" class="fin__ai-unavailable">未配置 AI，无法进行分析。</div>
           <template v-else>
             <button class="fin__ai-toggle" type="button" @click="aiExpanded = !aiExpanded">
@@ -479,7 +496,7 @@ onMounted(async () => {
           </template>
         </div>
 
-        <div v-else-if="workspaceTab === 'boards'" class="fin__workspace-panel fin__workspace-panel--boards">
+        <div v-else-if="workspaceTab === 'boards'" id="finance-workspace-boards" class="fin__workspace-panel fin__workspace-panel--boards" role="tabpanel">
           <BoardTable
             :kind="finance.boardKind.value"
             :order="finance.boardOrder.value"
@@ -491,7 +508,7 @@ onMounted(async () => {
           />
         </div>
 
-        <div v-else class="fin__workspace-panel fin__workspace-panel--settings">
+        <div v-else id="finance-workspace-settings" class="fin__workspace-panel fin__workspace-panel--settings" role="tabpanel">
           <h2>工作区设置</h2>
           <p>当前布局：三栏终端</p>
           <p>涨跌配色：{{ colorSchemeLabel }}</p>
@@ -500,7 +517,7 @@ onMounted(async () => {
       </aside>
     </div>
 
-    <div v-if="anyDrawerOpen" class="fin__scrim" @click="leftDrawerOpen = false; rightDrawerOpen = false" />
+    <div v-if="anyDrawerOpen" class="fin__scrim" aria-hidden="true" @click="closeDrawers()" />
   </div>
 </template>
 
@@ -528,6 +545,10 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
+}
+
+.fin__mobile-actions {
+  display: none;
 }
 
 .fin__drawer-btn {
@@ -1129,9 +1150,19 @@ onMounted(async () => {
     display: none;
   }
 
+  .fin__mobile-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
   .fin__drawer-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-height: 2.5rem;
+    padding-inline: 0.9rem;
   }
 
   .fin__scrim {
@@ -1145,8 +1176,7 @@ onMounted(async () => {
     bottom: 0;
     z-index: 50;
     max-height: none;
-    width: 80vw;
-    max-width: 320px;
+    width: min(80vw, 320px) !important;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     border-radius: 0;
@@ -1170,7 +1200,14 @@ onMounted(async () => {
   .fin__drawer--open.fin__col--right {
     transform: translateX(0);
   }
+
+  .fin__watch-remove {
+    width: 2.5rem;
+    height: 2.5rem;
+    opacity: 1;
+  }
 }
+
 
 @media (max-width: 720px) {
   .fin {
