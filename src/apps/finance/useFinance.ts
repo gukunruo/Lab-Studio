@@ -280,6 +280,23 @@ export interface BoardsData {
   industries: Array<{ name: string; pct: number }>
 }
 
+export interface MarketBoardGroup {
+  key: 'domestic' | 'overseas'
+  label: string
+  quotes: Quote[]
+}
+
+export function marketBoardGroups(
+  boards: Pick<BoardsData, 'domestic' | 'overseas'> | null,
+): MarketBoardGroup[] {
+  if (!boards) return []
+  const groups: MarketBoardGroup[] = [
+    { key: 'domestic', label: '国内指数', quotes: boards.domestic },
+    { key: 'overseas', label: '海外指数', quotes: boards.overseas },
+  ]
+  return groups.filter((group) => group.quotes.length > 0)
+}
+
 // 把自选项映射成腾讯 symbol，用于批量实时行情刷新。
 export function itemToSymbol(item: SearchItem | WatchItem): string | null {
   const code = item.code

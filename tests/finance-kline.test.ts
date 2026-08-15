@@ -34,6 +34,8 @@ import {
   splitterAriaValue,
   restoreSearchSelection,
   searchErrorMessage,
+  marketBoardGroups,
+  type Quote,
 } from '../src/apps/finance/useFinance'
 
 const bar = (date: string, close: number) => ({
@@ -203,6 +205,15 @@ test('candle axes keep price on the left and percentage on the right', () => {
       position: 'right',
     },
   })
+})
+
+test('market board groups keep domestic indexes before overseas indexes', () => {
+  const domestic = [{ symbol: 'sh000001', name: '上证指数' }] as Quote[]
+  const overseas = [{ symbol: 'usDJI', name: '道琼斯' }] as Quote[]
+  assert.deepEqual(marketBoardGroups({ domestic, overseas }), [
+    { key: 'domestic', label: '国内指数', quotes: domestic },
+    { key: 'overseas', label: '海外指数', quotes: overseas },
+  ])
 })
 
 test('watchlist layout stacks compact quote values inside the collapsed rail', () => {

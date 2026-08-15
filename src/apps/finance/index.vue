@@ -3,7 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { marked } from 'marked'
 import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, watchlistLayout, type Quote, type WatchItem } from './useFinance'
+import { useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, marketBoardGroups, nextDrawerState, watchlistLayout, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
@@ -137,6 +137,8 @@ const gridTemplate = computed(() =>
 const watchlistMode = computed(() =>
   leftDrawerOpen.value ? 'wide' : watchlistLayout(watchlistCollapsed.value ? 96 : leftWidth.value),
 )
+const leftTab = ref<'watchlist' | 'market'>('watchlist')
+const marketGroups = computed(() => marketBoardGroups(finance.boards.value))
 
 function fmtPct(pct: number): string {
   const sign = pct > 0 ? '+' : ''
@@ -305,28 +307,39 @@ onMounted(async () => {
     </div>
     <!-- 三栏主体 -->
     <div class="fin__grid" :style="{ gridTemplateColumns: gridTemplate }">
-      <!-- 左栏：自选列表 -->
+      <!-- 左栏：自选与市场指数 -->
       <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed, 'fin__drawer--open': leftDrawerOpen }">
-        <div class="fin__col-head">
-          <span class="fin__col-title">自选</span>
-          <div class="fin__col-head-actions">
-            <span class="fin__col-count">{{ finance.watchlist.value.length }}</span>
-            <button
-              type="button"
-              class="fin__collapse"
-              :aria-label="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
-              :title="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
-              @click="watchlistCollapsed = !watchlistCollapsed"
-            >
-              <span aria-hidden="true">{{ watchlistCollapsed ? '›' : '‹' }}</span>
-            </button>
+        <nav class="fin__left-tabs" aria-label="行情导航" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="leftTab === 'watchlist'"
+            :class="{ 'fin__left-tab--active': leftTab === 'watchlist' }"
+            @click="leftTab = 'watchlist'"
+          >自选<span class="fin__left-tab-count">{{ finance.watchlist.value.length }}</span></button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="leftTab === 'market'"
+            :class="{ 'fin__left-tab--active': leftTab === 'market' }"
+            @click="leftTab = 'market'"
+          >市场</button>
+          <button
+            type="button"
+            class="fin__collapse"
+            :aria-label="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
+            :title="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
+            @click="watchlistCollapsed = !watchlistCollapsed"
+          >
+            <span aria-hidden="true">{{ watchlistCollapsed ? '›' : '‹' }}</span>
+          </button>
+        </nav>
+        <template v-if="leftTab === 'watchlist'">
+          <div v-if="!finance.watchlist.value.length" class="fin__empty">
+            <span class="fin__empty-full">搜索后点 + 添加</span>
+            <span class="fin__empty-compact">暂无</span>
           </div>
-        </div>
-        <div v-if="!finance.watchlist.value.length" class="fin__empty">
-          <span class="fin__empty-full">搜索后点 + 添加</span>
-          <span class="fin__empty-compact">暂无</span>
-        </div>
-        <ul v-else class="fin__watch" :class="`fin__watch--${watchlistMode}`">
+          <ul v-else class="fin__watch" :class="`fin__watch--${watchlistMode}`">
           <li
             v-for="w in finance.watchlist.value"
             :key="w.id"
@@ -356,7 +369,32 @@ onMounted(async () => {
               <PhX :size="12" />
             </button>
           </li>
-        </ul>
+          </ul>
+        </template>
+        <div v-else class="fin__market-list">
+          <div v-if="!marketGroups.length" class="fin__empty">
+            <span>{{ finance.boardsLoading.value ? '加载中…' : '暂无指数数据' }}</span>
+          </div>
+          <section v-for="group in marketGroups" :key="group.key" class="fin__market-group">
+            <h2 class="fin__market-group-title">{{ group.label }}</h2>
+            <button
+              v-for="q in group.quotes"
+              :key="q.symbol"
+              type="button"
+              class="fin__market-item"
+              @click="finance.selectBoard(q)"
+            >
+              <span class="fin__market-info">
+                <span class="fin__market-name">{{ q.name }}</span>
+                <span class="fin__market-code">{{ q.code }}</span>
+              </span>
+              <span class="fin__market-values">
+                <span class="fin__market-price">{{ fmtPrice(q.price) }}</span>
+                <span class="fin__market-pct" :class="pctClass(q.pct)">{{ fmtPct(q.pct) }}</span>
+              </span>
+            </button>
+          </section>
+        </div>
       </aside>
 
       <ResizeGutter
@@ -370,6 +408,12 @@ onMounted(async () => {
 
       <!-- 中栏：标的详情 + K 线 + AI 分析 -->
       <main class="fin__col fin__col--center">
+        <IndexStrip
+          class="fin__top-indices"
+          :domestic="finance.boards.value?.domestic ?? []"
+          :overseas="finance.boards.value?.overseas ?? []"
+          @select="finance.selectBoard"
+        />
         <template v-if="finance.selected.value">
           <div class="fin__detail-head">
             <span class="fin__detail-name">{{ finance.selected.value.name }}</span>
@@ -820,6 +864,197 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.fin__left-tabs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.35rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.fin__left-tabs > button[role='tab'] {
+  min-width: 0;
+  padding: 0.4rem 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.fin__left-tabs > button[role='tab']:hover,
+.fin__left-tab--active {
+  color: var(--color-accent) !important;
+  background: var(--color-accent-soft) !important;
+}
+
+.fin__left-tab-count {
+  margin-left: 0.2rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+}
+
+.fin__left-tabs .fin__collapse {
+  margin-inline: 0.1rem;
+}
+
+.fin__market-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fin__market-group-title {
+  margin: 0;
+  padding: 0.55rem 0.75rem 0.3rem;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.fin__market-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.fin__market-item:hover {
+  background: var(--color-surface-2);
+}
+
+.fin__market-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.fin__market-name,
+.fin__market-code,
+.fin__market-price,
+.fin__market-pct {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fin__market-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.fin__market-code {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+}
+
+.fin__market-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 1px;
+}
+
+.fin__market-price,
+.fin__market-pct {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.fin__market-pct {
+  color: var(--color-text-muted);
+}
+
+.fin__col--collapsed .fin__left-tabs {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.fin__col--collapsed .fin__left-tabs > button[role='tab'] {
+  padding-inline: 0.1rem;
+  font-size: 0.66rem;
+}
+
+.fin__col--collapsed .fin__left-tabs > button[role='tab']:first-child {
+  grid-column: 1 / -1;
+}
+
+.fin__col--collapsed .fin__left-tab-count,
+.fin__col--collapsed .fin__market-group-title {
+  display: none;
+}
+
+.fin__col--collapsed .fin__market-item {
+  display: block;
+  padding: 0.45rem;
+}
+
+.fin__col--collapsed .fin__market-values {
+  align-items: flex-start;
+  margin-top: 0.2rem;
+}
+
+.fin__col--collapsed .fin__market-name {
+  font-size: 0.68rem;
+}
+
+.fin__col--collapsed .fin__market-code,
+.fin__col--collapsed .fin__market-price,
+.fin__col--collapsed .fin__market-pct {
+  font-size: 0.62rem;
+}
+
+.fin__drawer--open.fin__col--left .fin__left-tabs {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.fin__drawer--open.fin__col--left .fin__left-tabs > button[role='tab'] {
+  font-size: 0.72rem;
+}
+
+.fin__drawer--open.fin__col--left .fin__left-tab-count {
+  display: inline;
+}
+
+.fin__drawer--open.fin__col--left .fin__market-item {
+  display: flex;
+  padding-inline: 0.75rem;
+}
+
+.fin__drawer--open.fin__col--left .fin__market-values {
+  align-items: flex-end;
+  margin-top: 0;
+}
+
+.fin__drawer--open.fin__col--left .fin__market-name {
+  font-size: 0.8rem;
+}
+
+.fin__drawer--open.fin__col--left .fin__market-code,
+.fin__drawer--open.fin__col--left .fin__market-price,
+.fin__drawer--open.fin__col--left .fin__market-pct {
+  font-size: 0.72rem;
 }
 
 .fin__collapse {
