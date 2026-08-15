@@ -1,10 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { dispose, init, type Chart, type Crosshair, type KLineData } from 'klinecharts'
-import type { Kline, MinutePoint } from '../types'
+import type { CandlePeriod, Kline, MinutePoint } from '../types'
+import { shouldLoadMoreHistory } from '../useFinance'
 
-const props = defineProps<{ klines: Kline[]; minute: MinutePoint[] }>()
-const emit = defineEmits<{ (e: 'periodChange', period: 'day' | 'week' | 'month'): void }>()
+const props = defineProps<{
+  klines: Kline[]
+  minute: MinutePoint[]
+  loadingHistory?: boolean
+  hasMoreHistory?: boolean
+}>()
+const emit = defineEmits<{
+  (e: 'periodChange', period: CandlePeriod): void
+  (e: 'load-more-history'): void
+}>()
 
 type View = 'minute' | 'candle'
 type SubIndicator = 'VOL' | 'MACD' | 'KDJ' | 'RSI' | 'BOLL'
@@ -29,6 +38,9 @@ const indicatorReadoutVersion = ref(0)
 let chart: Chart | null = null
 let styleObserver: MutationObserver | null = null
 let resizeObserver: ResizeObserver | null = null
+let chartInitialized = false
+let historyRequestLocked = false
+let pendingHistoryDate: string | null = null
 
 const SUB_INDICATORS: SubIndicator[] = ['VOL', 'MACD', 'KDJ', 'RSI', 'BOLL']
 const visibleMAPeriods = computed(() =>
@@ -196,8 +208,13 @@ function resetReadoutAfterRender() {
   requestAnimationFrame(resetReadout)
 }
 
-function reload() {
+function reload(keepViewport = false) {
   if (!chart) return
+  chartInitialized = false
+  if (!keepViewport) {
+    historyRequestLocked = false
+    pendingHistoryDate = null
+  }
   syncIndicators()
   applyStyles()
   chart.setDataLoader({ getBars: ({ callback }) => callback(currentData(), false) })
@@ -205,7 +222,50 @@ function reload() {
   chart.setPeriod({ type: view.value === 'minute' ? 'minute' : period.value, span: 1 })
   chart.setLeftMinVisibleBarCount(1)
   chart.setRightMinVisibleBarCount(1)
+  if (keepViewport && pendingHistoryDate) {
+    const index = (chart.getDataList() as ChartData[]).findIndex((item) => item.date === pendingHistoryDate)
+    if (index >= 0) chart.scrollToDataIndex(index)
+    pendingHistoryDate = null
+  } else {
+    chart.scrollToRealTime()
+  }
   resetReadoutAfterRender()
+  chartInitialized = true
+}
+
+function onVisibleRangeChange() {
+  if (!chart || view.value !== 'candle' || props.loadingHistory) return
+  const range = chart.getVisibleRange()
+  if (!shouldLoadMoreHistory(range, chartInitialized, historyRequestLocked, props.hasMoreHistory !== false)) return
+  const data = chart.getDataList() as ChartData[]
+  const anchor = data[range.realFrom]?.date ?? null
+  if (!anchor) return
+  historyRequestLocked = true
+  pendingHistoryDate = anchor
+  emit('load-more-history')
+}
+
+function resetHistoryState() {
+  historyRequestLocked = false
+  pendingHistoryDate = null
+  chartInitialized = false
+}
+
+function restoreHistoryViewport() {
+  if (!chart || !pendingHistoryDate) return
+  const index = (chart.getDataList() as ChartData[]).findIndex((item) => item.date === pendingHistoryDate)
+  if (index >= 0) chart.scrollToDataIndex(index)
+  pendingHistoryDate = null
+  historyRequestLocked = false
+}
+
+function onChartScroll() {
+  onVisibleRangeChange()
+}
+
+function finishChartInitialization() {
+  chartInitialized = true
+  historyRequestLocked = false
 }
 
 function toggleMA() {
@@ -230,6 +290,7 @@ function toggleSub(name: SubIndicator) {
 }
 
 function selectPeriod(key: 'minute' | 'day' | 'week' | 'month') {
+  resetHistoryState()
   if (key === 'minute') {
     view.value = 'minute'
     reload()
@@ -338,14 +399,35 @@ onMounted(() => {
   chart = init(container.value, { locale: 'zh-CN' })
   if (!chart) return
   chart.subscribeAction('onCrosshairChange', onCrosshairChange)
+  chart.subscribeAction('onScroll', onChartScroll)
+  chart.subscribeAction('onVisibleRangeChange', onChartScroll)
   reload()
+  finishChartInitialization()
   styleObserver = new MutationObserver(applyStyles)
   styleObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-theme'] })
   resizeObserver = new ResizeObserver(() => chart?.resize())
   resizeObserver.observe(container.value)
 })
 
-watch(() => props.klines, () => { if (view.value === 'candle') reload() })
+let previousKlines: Kline[] = props.klines
+
+watch(() => props.klines, (next) => {
+  if (view.value !== 'candle') return
+  const isPrepend = previousKlines.length > 0 && next.length > previousKlines.length
+  if (isPrepend && pendingHistoryDate) {
+    reload(true)
+    restoreHistoryViewport()
+  } else {
+    reload()
+  }
+  previousKlines = next
+})
+watch(() => props.loadingHistory, (loading) => {
+  if (!loading) {
+    historyRequestLocked = false
+    restoreHistoryViewport()
+  }
+})
 watch(() => props.minute, () => { if (view.value === 'minute') reload() })
 
 onBeforeUnmount(() => {
@@ -353,6 +435,8 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   if (chart) {
     chart.unsubscribeAction('onCrosshairChange', onCrosshairChange)
+    chart.unsubscribeAction('onScroll', onChartScroll)
+    chart.unsubscribeAction('onVisibleRangeChange', onChartScroll)
     dispose(container.value!)
     chart = null
   }

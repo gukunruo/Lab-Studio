@@ -1,5 +1,109 @@
 import { ref } from 'vue'
-import type { BoardRow, Kline, MinutePoint, QuoteDetail, SearchItem } from './types'
+import type { BoardRow, Kline, KlinePage, MinutePoint, QuoteDetail, SearchItem } from './types'
+
+export function oldestKlineDate(items: Kline[]): string | null {
+  return items.reduce<string | null>((oldest, item) => {
+    if (!item.date) return oldest
+    return oldest === null || item.date < oldest ? item.date : oldest
+  }, null)
+}
+
+export function mergeKlines(existing: Kline[], incoming: Kline[]): Kline[] {
+  const byDate = new Map(existing.map((item) => [item.date, item]))
+  for (const item of incoming) byDate.set(item.date, item)
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export function buildKlineParams(
+  item: Pick<SearchItem, 'quoteId' | 'code' | 'name'>,
+  selectedSymbol?: string,
+  before?: string,
+  klt = '101',
+): URLSearchParams {
+  const params = new URLSearchParams({
+    secid: selectedSymbol ?? (item.quoteId || `0.${item.code}`),
+    name: item.name,
+    klt,
+    limit: '500',
+  })
+  if (item.code) params.set('code', item.code)
+  if (selectedSymbol) params.set('symbol', selectedSymbol)
+  if (before) params.set('before', before)
+  return params
+}
+
+export function calculatePrependCompensation(
+  nextDates: string[],
+  oldVisibleDate: string | null,
+  barSpace: number,
+): number {
+  if (!oldVisibleDate) return 0
+  const oldIndex = nextDates.indexOf(oldVisibleDate)
+  return oldIndex > 0 ? oldIndex * barSpace : 0
+}
+
+export function shouldLoadMoreHistory(
+  range: { realFrom: number; realTo: number },
+  chartInitialized: boolean,
+  requestLocked: boolean,
+  hasMore: boolean,
+  threshold = 8,
+): boolean {
+  return chartInitialized && !requestLocked && hasMore && range.realFrom <= threshold
+}
+
+export function shouldShowBlockingKlineError(hasError: boolean, hasKlines: boolean): boolean {
+  return hasError && !hasKlines
+}
+
+export function shouldContinueHistory(hasMore: boolean, pageLength: number): boolean {
+  return hasMore && pageLength > 0
+}
+
+export function createHistoryRequestState() {
+  let sequence = 0
+  let locked = false
+  let pending = 0
+  return {
+    begin(): number | null {
+      if (locked) return null
+      locked = true
+      return ++sequence
+    },
+    isCurrent(seq: number): boolean {
+      return locked && seq === sequence
+    },
+    finish(seq: number): void {
+      if (seq === sequence) locked = false
+    },
+    invalidate(): void {
+      sequence += 1
+      locked = false
+      pending = 0
+    },
+    reset(): void {
+      sequence += 1
+      locked = false
+      pending = 0
+    },
+    setPendingCompensation(value: number): void { pending = value },
+    pendingCompensation(): number { return pending },
+    isLocked(): boolean { return locked },
+  }
+}
+
+export function pageFromResponse(data: Partial<KlinePage> | null): KlinePage {
+  return {
+    klines: data?.klines ?? [],
+    hasMore: data?.hasMore ?? false,
+    oldest: data?.oldest ?? null,
+    latest: data?.latest ?? null,
+  }
+}
+
+export function klineRequestParams(item: Pick<SearchItem, 'quoteId' | 'code' | 'name'>, symbol?: string, before?: string, klt = '101') {
+  return buildKlineParams(item, symbol, before, klt)
+}
 
 export interface Quote {
   symbol: string
@@ -79,6 +183,8 @@ export function useFinance() {
   const selected = ref<SearchItem | null>(null)
   const klines = ref<Kline[]>([])
   const loading = ref(false)
+  const loadingHistory = ref(false)
+  const hasMoreHistory = ref(true)
   const error = ref('')
   const detail = ref<QuoteDetail | null>(null)
 
@@ -91,6 +197,52 @@ export function useFinance() {
 
   let debounce: ReturnType<typeof setTimeout> | null = null
   let loadSeq = 0
+  let historyLoadSeq = 0
+  const historyState = createHistoryRequestState()
+
+  function resetKlineState() {
+    loadSeq += 1
+    historyLoadSeq += 1
+    historyState.reset()
+    loadingHistory.value = false
+    hasMoreHistory.value = true
+  }
+
+  async function fetchKlinePage(item: SearchItem, symbol?: string, before?: string): Promise<KlinePage> {
+    const res = await fetch(`/api/finance/kline?${klineRequestParams(item, symbol, before, klt.value).toString()}`, {
+      credentials: 'include',
+    })
+    const data = pageFromResponse((await res.json().catch(() => null)) as Partial<KlinePage> | null)
+    if (!res.ok) throw new Error('加载失败')
+    return data
+  }
+
+  async function loadKlinePage(item: SearchItem, symbol?: string, before?: string): Promise<void> {
+    const isHistory = Boolean(before)
+    const seq = isHistory ? historyLoadSeq : ++loadSeq
+    if (isHistory) loadingHistory.value = true
+    else {
+      loading.value = true
+      error.value = ''
+      klines.value = []
+    }
+    try {
+      const page = await fetchKlinePage(item, symbol, before)
+      if (isHistory ? seq !== historyLoadSeq : seq !== loadSeq) return
+      klines.value = isHistory ? mergeKlines(klines.value, page.klines) : page.klines
+      hasMoreHistory.value = shouldContinueHistory(page.hasMore, page.klines.length)
+      if (isHistory && page.klines.length > 0) error.value = ''
+    } catch (e) {
+      if (isHistory ? seq !== historyLoadSeq : seq !== loadSeq) return
+      error.value = e instanceof Error ? e.message : '加载失败'
+      if (!isHistory) klines.value = []
+    } finally {
+      if (isHistory ? seq === historyLoadSeq : seq === loadSeq) {
+        if (isHistory) loadingHistory.value = false
+        else loading.value = false
+      }
+    }
+  }
 
   async function search() {
     const q = query.value.trim()
@@ -302,57 +454,37 @@ export function useFinance() {
   async function loadKline() {
     const item = selected.value
     if (!item) return
+    resetKlineState()
     if (item.type === 'OTCFUND') {
       await loadFundNav(item)
       return
     }
-    const seq = ++loadSeq
-    loading.value = true
-    error.value = ''
+    await loadKlinePage(item, selectedSymbol.value ?? undefined)
+  }
+
+  async function loadKlineForSymbol(symbol: string, item: SearchItem) {
+    resetKlineState()
+    await loadKlinePage(item, symbol)
+  }
+
+  async function loadMoreHistory() {
+    const item = selected.value
+    const before = oldestKlineDate(klines.value)
+    if (!item || !before || item.type === 'OTCFUND' || !hasMoreHistory.value) return
+    const seq = historyState.begin()
+    if (seq === null) return
     try {
-      // 附带 code（美股/港股映射需要）与 symbol（重点板块直传）
-      const params = new URLSearchParams({
-        secid: item.quoteId || `0.${item.code}`,
-        name: item.name,
-        klt: klt.value,
-        limit: String(KLINE_HISTORY_LIMIT),
-      })
-      if (item.code) params.set('code', item.code)
-      const res = await fetch(`/api/finance/kline?${params.toString()}`, { credentials: 'include' })
-      const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
-      if (!res.ok) throw new Error(data?.error ?? '加载失败')
-      if (seq !== loadSeq) return
-      klines.value = data?.klines ?? []
-    } catch (e) {
-      if (seq !== loadSeq) return
-      error.value = e instanceof Error ? e.message : '加载失败'
-      klines.value = []
+      await loadKlinePage(item, selectedSymbol.value ?? undefined, before)
     } finally {
-      if (seq === loadSeq) loading.value = false
+      historyState.finish(seq)
     }
   }
 
-  // 重点板块 K 线：直接传 symbol（如 us.DJI/hkHSI/sh000001），secid 用 symbol 占位
-  async function loadKlineForSymbol(symbol: string, item: SearchItem) {
-    const seq = ++loadSeq
-    loading.value = true
-    error.value = ''
-    try {
-      const res = await fetch(
-        `/api/finance/kline?secid=${encodeURIComponent(symbol)}&name=${encodeURIComponent(item.name)}&symbol=${encodeURIComponent(symbol)}&klt=${klt.value}&limit=${KLINE_HISTORY_LIMIT}`,
-        { credentials: 'include' },
-      )
-      const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
-      if (!res.ok) throw new Error(data?.error ?? '加载失败')
-      if (seq !== loadSeq) return
-      klines.value = data?.klines ?? []
-    } catch (e) {
-      if (seq !== loadSeq) return
-      error.value = e instanceof Error ? e.message : '加载失败'
-      klines.value = []
-    } finally {
-      if (seq === loadSeq) loading.value = false
-    }
+  function clearHistoryState() {
+    historyState.reset()
+    historyLoadSeq += 1
+    loadingHistory.value = false
+    hasMoreHistory.value = true
   }
 
   // K 线周期切换（日/周/月），按当前选中标的重载
@@ -466,6 +598,8 @@ export function useFinance() {
     detail,
     minutePoints,
     loading,
+    loadingHistory,
+    hasMoreHistory,
     error,
     search,
     scheduleSearch,
@@ -480,6 +614,7 @@ export function useFinance() {
     select,
     selectBoard,
     loadKline,
+    loadMoreHistory,
     setPeriod,
     viewWatch,
   }

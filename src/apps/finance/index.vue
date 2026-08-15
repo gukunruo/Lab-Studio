@@ -252,7 +252,7 @@ onMounted(async () => {
       <div class="fin__detail-grid">
         <div class="fin__chart">
           <div v-if="finance.loading.value && !finance.klines.value.length" class="fin__state">加载中…</div>
-          <div v-else-if="finance.error.value" class="fin__state fin__state--error">
+          <div v-else-if="finance.error.value && !finance.klines.value.length" class="fin__state fin__state--error">
             <p>{{ finance.error.value }}</p>
             <button class="fin__retry" @click="finance.loadKline()">重试</button>
           </div>
@@ -260,8 +260,14 @@ onMounted(async () => {
             v-else
             :klines="finance.klines.value"
             :minute="finance.minutePoints.value"
+            :loading-history="finance.loadingHistory.value"
+            :has-more-history="finance.hasMoreHistory.value"
             @period-change="finance.setPeriod"
+            @load-more-history="finance.loadMoreHistory"
           />
+          <p v-if="finance.error.value && finance.klines.value.length" class="fin__chart-error">
+            {{ finance.error.value }}，当前数据仍可查看
+          </p>
         </div>
 
         <aside class="fin__ai">
@@ -596,6 +602,12 @@ onMounted(async () => {
   background: var(--color-surface);
   padding: var(--space-4);
   min-width: 0;
+}
+
+.fin__chart-error {
+  margin-top: var(--space-1);
+  color: var(--color-danger);
+  font-size: 0.72rem;
 }
 
 .fin__state {
