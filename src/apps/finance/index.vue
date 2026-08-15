@@ -134,7 +134,9 @@ const gridTemplate = computed(() =>
   financeGridTemplate(watchlistCollapsed.value, leftWidth.value, rightWidth.value),
 )
 
-const watchlistMode = computed(() => watchlistLayout(watchlistCollapsed.value ? 96 : leftWidth.value))
+const watchlistMode = computed(() =>
+  leftDrawerOpen.value ? 'wide' : watchlistLayout(watchlistCollapsed.value ? 96 : leftWidth.value),
+)
 
 function fmtPct(pct: number): string {
   const sign = pct > 0 ? '+' : ''
@@ -358,8 +360,8 @@ onMounted(async () => {
       </aside>
 
       <ResizeGutter
-        v-if="!watchlistCollapsed"
         class="fin__gutter fin__gutter--left"
+        :class="{ 'fin__gutter--collapsed': watchlistCollapsed }"
         :min="LEFT_MIN"
         :max="LEFT_MAX"
         :value="leftWidth"
@@ -683,6 +685,44 @@ onMounted(async () => {
 
 .fin__grid > .fin__gutter .gutter__line {
   left: 50%;
+}
+
+.fin__gutter--collapsed {
+  pointer-events: none;
+}
+
+.fin__gutter--collapsed .gutter__line {
+  opacity: 0;
+}
+
+.fin__gutter--collapsed::before {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .fin__gutter--collapsed {
+    display: none;
+  }
+}
+
+.fin__col--left {
+  grid-column: 1;
+}
+
+.fin__gutter--left {
+  grid-column: 2;
+}
+
+.fin__col--center {
+  grid-column: 3;
+}
+
+.fin__gutter--right {
+  grid-column: 4;
+}
+
+.fin__col--right {
+  grid-column: 5;
 }
 
 .fin__col {
