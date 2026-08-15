@@ -764,23 +764,125 @@ async function fetchFundNav(code: string, limit: number): Promise<FundNavPoint[]
   }
 }
 
-// ---- 重点板块定义 ----
-// 国内：上证指数/深证成指/沪深300/科创50/创业板指（腾讯 symbol）
-// 国外：道琼斯/纳斯达克/标普500/恒生指数
-const DOMESTIC_INDICES = [
-  { symbol: 'sh000001', name: '上证指数' },
-  { symbol: 'sz399001', name: '深证成指' },
-  { symbol: 'sh000300', name: '沪深300' },
-  { symbol: 'sh000688', name: '科创50' },
-  { symbol: 'sz399006', name: '创业板指' },
+// ---- 重点指数定义 ----
+export type MarketKey = 'cn' | 'global' | 'hk' | 'us'
+
+export interface MarketQuote extends Quote {
+  provider: 'tencent'
+  source: 'qt.gtimg.cn'
+  fetchedAt: string
+}
+
+export interface MarketGroup {
+  key: MarketKey
+  label: string
+  provider: 'tencent'
+  source: 'qt.gtimg.cn'
+  status: 'ok' | 'unavailable'
+  quotes: MarketQuote[]
+  error?: string
+}
+
+export interface MarketsResponse {
+  fetchedAt: string
+  markets: MarketGroup[]
+}
+
+type MarketCatalogItem = { symbol: string; name: string }
+
+export const MARKET_KEYS: MarketKey[] = ['cn', 'global', 'hk', 'us']
+
+export const MARKET_CATALOG: Record<MarketKey, MarketCatalogItem[]> = {
+  cn: [
+    { symbol: 'sh000001', name: '上证指数' },
+    { symbol: 'sz399001', name: '深证成指' },
+    { symbol: 'sh000300', name: '沪深300' },
+    { symbol: 'sh000016', name: '上证50' },
+    { symbol: 'sh000905', name: '中证500' },
+    { symbol: 'sh000852', name: '中证1000' },
+    { symbol: 'sh000688', name: '科创50' },
+    { symbol: 'sz399006', name: '创业板指' },
+  ],
+  global: [
+    { symbol: 'usDJI', name: '道琼斯' },
+    { symbol: 'usIXIC', name: '纳斯达克' },
+    { symbol: 'usINX', name: '标普500' },
+    { symbol: 'usN225', name: '日经225' },
+    { symbol: 'usDAX', name: '德国DAX' },
+  ],
+  hk: [
+    { symbol: 'hkHSI', name: '恒生指数' },
+    { symbol: 'hkHSTECH', name: '恒生科技' },
+    { symbol: 'hkHSCEI', name: '国企指数' },
+  ],
+  us: [
+    { symbol: 'usDJI', name: '道琼斯' },
+    { symbol: 'usIXIC', name: '纳斯达克' },
+    { symbol: 'usINX', name: '标普500' },
+    { symbol: 'usNDX', name: '纳斯达克100' },
+  ],
+}
+
+export function normalizeMarketQuotes(
+  quotes: Quote[],
+  catalog: MarketCatalogItem[],
+  fetchedAt: string,
+): MarketQuote[] {
+  const numericFields: Array<keyof Quote> = ['price', 'prevClose', 'change', 'pct', 'open', 'high', 'low']
+  const bySymbol = new Map<string, Quote>()
+  for (const quote of quotes) {
+    if (bySymbol.has(quote.symbol)) continue
+    if (numericFields.some((field) => !Number.isFinite(quote[field]))) continue
+    bySymbol.set(quote.symbol, quote)
+  }
+  return catalog.flatMap((item) => {
+    const quote = bySymbol.get(item.symbol)
+    if (!quote) return []
+    return [{ ...quote, name: item.name, provider: 'tencent', source: 'qt.gtimg.cn', fetchedAt }]
+  })
+}
+
+export function buildMarketGroups(
+  quotesByMarket: Record<MarketKey, MarketQuote[]>,
+  fetchedAt: string,
+): MarketGroup[] {
+  return buildMarketsResponse(quotesByMarket, fetchedAt).markets
+}
+
+const LEGACY_DOMESTIC_INDICES = MARKET_CATALOG.cn
+const LEGACY_OVERSEAS_INDICES = [
+  ...MARKET_CATALOG.global.slice(0, 3),
+  ...MARKET_CATALOG.hk.slice(0, 1),
 ]
 
-const OVERSEAS_INDICES = [
-  { symbol: 'usDJI', name: '道琼斯' },
-  { symbol: 'usIXIC', name: '纳斯达克' },
-  { symbol: 'usINX', name: '标普500' },
-  { symbol: 'hkHSI', name: '恒生指数' },
-]
+const MARKET_LABELS: Record<MarketKey, string> = {
+  cn: '大A',
+  global: '全球',
+  hk: '港股',
+  us: '美股',
+}
+
+function marketGroup(key: MarketKey, quotes: MarketQuote[]): MarketGroup {
+  return {
+    key,
+    label: MARKET_LABELS[key],
+    provider: 'tencent',
+    source: 'qt.gtimg.cn',
+    status: quotes.length ? 'ok' : 'unavailable',
+    quotes,
+    ...(quotes.length ? {} : { error: 'provider returned no usable quotes' }),
+  }
+}
+
+function buildMarketsResponse(
+  quotesByMarket: Record<MarketKey, MarketQuote[]>,
+  fetchedAt: string,
+): MarketsResponse {
+  return {
+    fetchedAt,
+    markets: MARKET_KEYS.map((key) => marketGroup(key, quotesByMarket[key] ?? [])),
+  }
+}
 
 // ---- 同花顺板块排行 ----
 // 行业板块：q.10jqka.com.cn/thshy 表格，列序（td）：0 序号 / 1 板块(含 platecode) /
@@ -1022,27 +1124,49 @@ export function registerFinanceRoutes(app: Hono): void {
     }
   })
 
-  // 指数条实时行情（国内 + 国外重点指数）
+  // 兼容旧指数条接口；板块排行仍由 /finance/boards/:kind 提供。
   app.get('/finance/boards', async (c) => {
     const cacheKey = 'boards:indices'
     const cached = cacheGet<{ domestic: Quote[]; overseas: Quote[] }>(cacheKey)
     if (cached) return c.json(cached)
+    const fetchedAt = new Date().toISOString()
     try {
-      const domesticSymbols = DOMESTIC_INDICES.map((i) => i.symbol)
-      const overseasSymbols = OVERSEAS_INDICES.map((i) => i.symbol)
       const [domestic, overseas] = await Promise.all([
-        fetchTencentQuotes(domesticSymbols),
-        fetchTencentQuotes(overseasSymbols),
+        fetchTencentQuotes(LEGACY_DOMESTIC_INDICES.map((item) => item.symbol)),
+        fetchTencentQuotes(LEGACY_OVERSEAS_INDICES.map((item) => item.symbol)),
       ])
-      const domesticNamed = domestic.map((q) => ({
-        ...q,
-        name: DOMESTIC_INDICES.find((i) => i.symbol === q.symbol)?.name ?? q.name,
-      }))
-      const overseasNamed = overseas.map((q) => ({
-        ...q,
-        name: OVERSEAS_INDICES.find((i) => i.symbol === q.symbol)?.name ?? q.name,
-      }))
-      const result = { domestic: domesticNamed, overseas: overseasNamed }
+      const result = {
+        domestic: normalizeMarketQuotes(domestic, LEGACY_DOMESTIC_INDICES, fetchedAt),
+        overseas: normalizeMarketQuotes(overseas, LEGACY_OVERSEAS_INDICES, fetchedAt),
+      }
+      cacheSet(cacheKey, result, 30_000)
+      return c.json(result)
+    } catch {
+      return c.json({ error: '数据源暂时不可用' }, 502)
+    }
+  })
+
+  app.get('/finance/markets', async (c) => {
+    const cacheKey = 'markets:indices'
+    const cached = cacheGet<MarketsResponse>(cacheKey)
+    if (cached) return c.json(cached)
+    const fetchedAt = new Date().toISOString()
+    try {
+      const quotesBySymbol = new Map<string, Quote>()
+      const symbols = [...new Set(MARKET_KEYS.flatMap((key) => MARKET_CATALOG[key].map((item) => item.symbol)))]
+      const quotes = await fetchTencentQuotes(symbols)
+      for (const quote of quotes) quotesBySymbol.set(quote.symbol, quote)
+      const quotesByMarket = Object.fromEntries(
+        MARKET_KEYS.map((key) => [
+          key,
+          normalizeMarketQuotes(
+            MARKET_CATALOG[key].map((item) => quotesBySymbol.get(item.symbol)).filter((quote): quote is Quote => quote != null),
+            MARKET_CATALOG[key],
+            fetchedAt,
+          ),
+        ]),
+      ) as Record<MarketKey, MarketQuote[]>
+      const result = buildMarketsResponse(quotesByMarket, fetchedAt)
       cacheSet(cacheKey, result, 30_000)
       return c.json(result)
     } catch {

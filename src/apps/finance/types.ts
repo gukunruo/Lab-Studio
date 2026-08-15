@@ -51,6 +51,29 @@ export interface FundNavPoint {
   pct: number
 }
 
+export type MarketKey = 'cn' | 'global' | 'hk' | 'us'
+
+export interface MarketQuote extends QuoteDetail {
+  provider: 'tencent'
+  source: 'qt.gtimg.cn'
+  fetchedAt: string
+}
+
+export interface MarketGroup {
+  key: MarketKey
+  label: string
+  provider: 'tencent'
+  source: 'qt.gtimg.cn'
+  status: 'ok' | 'unavailable'
+  quotes: MarketQuote[]
+  error?: string
+}
+
+export interface MarketsResponse {
+  fetchedAt: string
+  markets: MarketGroup[]
+}
+
 export interface QuoteDetail {
   symbol: string
   name: string
