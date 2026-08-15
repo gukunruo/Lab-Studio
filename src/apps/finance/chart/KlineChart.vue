@@ -197,6 +197,7 @@ function reload() {
   chart.setSymbol({ ticker: 'X', pricePrecision: pricePrecision(), volumePrecision: 0 })
   chart.setPeriod({ type: view.value === 'minute' ? 'minute' : period.value, span: 1 })
   resetReadout()
+  requestAnimationFrame(resetReadout)
 }
 
 function toggleMA() {
