@@ -20,6 +20,10 @@ export function financeGridTemplate(collapsed: boolean, leftWidth: number, right
     : `${leftWidth}px ${GRID_GAP}px minmax(${CENTER_MIN}px, 1fr) ${GRID_GAP}px ${rightWidth}px`
 }
 
+export function watchlistLayout(width: number): 'wide' | 'compact' {
+  return width >= 160 ? 'wide' : 'compact'
+}
+
 export function parseTencentMinuteRow(row: string): MinutePoint {
   const fields = row.trim().split(/\s+/)
   const amount = Number(fields[3] ?? 0)

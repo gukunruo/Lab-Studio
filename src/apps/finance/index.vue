@@ -3,7 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { marked } from 'marked'
 import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, type Quote, type WatchItem } from './useFinance'
+import { useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, watchlistLayout, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
@@ -133,6 +133,8 @@ watch([watchlistCollapsed, leftWidth, rightWidth, workspaceTab], scheduleSave)
 const gridTemplate = computed(() =>
   financeGridTemplate(watchlistCollapsed.value, leftWidth.value, rightWidth.value),
 )
+
+const watchlistMode = computed(() => watchlistLayout(watchlistCollapsed.value ? 96 : leftWidth.value))
 
 function fmtPct(pct: number): string {
   const sign = pct > 0 ? '+' : ''
@@ -304,38 +306,25 @@ onMounted(async () => {
       <!-- 左栏：自选列表 -->
       <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed, 'fin__drawer--open': leftDrawerOpen }">
         <div class="fin__col-head">
-          <template v-if="watchlistCollapsed">
-            <span class="fin__col-collapsed-label">自选</span>
+          <span class="fin__col-title">自选</span>
+          <div class="fin__col-head-actions">
+            <span class="fin__col-count">{{ finance.watchlist.value.length }}</span>
             <button
               type="button"
-              class="fin__collapse fin__collapse--collapsed"
-              aria-label="展开自选栏"
-              title="展开自选栏"
-              @click="watchlistCollapsed = false"
+              class="fin__collapse"
+              :aria-label="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
+              :title="watchlistCollapsed ? '展开自选栏' : '收起自选栏'"
+              @click="watchlistCollapsed = !watchlistCollapsed"
             >
-              <span aria-hidden="true">›</span>
+              <span aria-hidden="true">{{ watchlistCollapsed ? '›' : '‹' }}</span>
             </button>
-          </template>
-          <template v-else>
-            <span>自选</span>
-            <div class="fin__col-head-actions">
-              <span class="fin__col-count">{{ finance.watchlist.value.length }}</span>
-              <button
-                type="button"
-                class="fin__collapse"
-                aria-label="收起自选栏"
-                title="收起自选栏"
-                @click="watchlistCollapsed = true"
-              >
-                <span aria-hidden="true">‹</span>
-              </button>
-            </div>
-          </template>
+          </div>
         </div>
-        <div v-if="!finance.watchlist.value.length && !watchlistCollapsed" class="fin__empty">
-          搜索后点 + 添加
+        <div v-if="!finance.watchlist.value.length" class="fin__empty">
+          <span class="fin__empty-full">搜索后点 + 添加</span>
+          <span class="fin__empty-compact">暂无</span>
         </div>
-        <ul v-else-if="!watchlistCollapsed" class="fin__watch">
+        <ul v-else class="fin__watch" :class="`fin__watch--${watchlistMode}`">
           <li
             v-for="w in finance.watchlist.value"
             :key="w.id"
@@ -814,9 +803,10 @@ onMounted(async () => {
   border-color: var(--color-accent);
 }
 
-.fin__col-collapsed-label {
-  writing-mode: vertical-rl;
-  letter-spacing: 0.15em;
+.fin__col-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fin__col-count {
@@ -825,14 +815,96 @@ onMounted(async () => {
   color: var(--color-text-muted);
 }
 
-.fin__col--collapsed {
-  width: 3.25rem;
+.fin__col--collapsed .fin__col-head {
+  padding-inline: 0.5rem;
 }
 
-.fin__col--collapsed .fin__col-head {
-  flex-direction: column;
-  gap: 0.65rem;
-  padding: 0.75rem 0.35rem;
+.fin__col--collapsed .fin__col-title {
+  font-size: 0.72rem;
+}
+
+.fin__col--collapsed .fin__col-count {
+  display: none;
+}
+
+.fin__col--collapsed .fin__watch-remove {
+  display: none;
+}
+
+.fin__empty-compact {
+  display: none;
+}
+
+.fin__col--collapsed .fin__empty-full {
+  display: none;
+}
+
+.fin__col--collapsed .fin__empty-compact {
+  display: inline;
+}
+
+.fin__col--collapsed .fin__watch {
+  overflow-y: auto;
+}
+
+.fin__col--collapsed .fin__watch-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.2rem;
+  padding: 0.55rem 0.45rem;
+}
+
+.fin__col--collapsed .fin__watch-info {
+  gap: 0;
+}
+
+.fin__col--collapsed .fin__watch-name {
+  font-size: 0.7rem;
+}
+
+.fin__col--collapsed .fin__watch-code {
+  font-size: 0.62rem;
+}
+
+.fin__col--collapsed .fin__watch-price,
+.fin__col--collapsed .fin__watch-pct {
+  min-width: 0;
+  text-align: left;
+  font-size: 0.68rem;
+}
+
+.fin__col--collapsed .fin__watch-na {
+  font-size: 0.68rem;
+}
+
+.fin__drawer--open.fin__col--left .fin__col-title {
+  font-size: 0.8rem;
+}
+
+.fin__drawer--open.fin__col--left .fin__col-count,
+.fin__drawer--open.fin__col--left .fin__watch-remove {
+  display: inline-flex;
+}
+
+.fin__drawer--open.fin__col--left .fin__watch-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.fin__drawer--open.fin__col--left .fin__watch-price,
+.fin__drawer--open.fin__col--left .fin__watch-pct {
+  text-align: right;
+}
+
+.fin__drawer--open.fin__col--left .fin__empty-full {
+  display: inline;
+}
+
+.fin__drawer--open.fin__col--left .fin__empty-compact {
+  display: none;
 }
 
 .fin__empty {

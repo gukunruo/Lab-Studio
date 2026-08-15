@@ -23,6 +23,7 @@ import {
   shouldContinueHistory,
   createRequestSequence,
   financeGridTemplate,
+  watchlistLayout,
   parseTencentMinuteRow,
   parseEastmoneyMinuteKlineRow,
   minuteChartLines,
@@ -189,6 +190,12 @@ test('splitter width clamps to allowed range', () => {
 test('collapsed grid keeps a compact watchlist and 12px module spacing', () => {
   assert.equal(financeGridTemplate(true, 280, 360), '96px 12px minmax(520px, 1fr) 12px 360px')
   assert.equal(financeGridTemplate(false, 280, 360), '280px 12px minmax(520px, 1fr) 12px 360px')
+})
+
+test('watchlist layout stacks compact quote values inside the collapsed rail', () => {
+  assert.equal(watchlistLayout(280), 'wide')
+  assert.equal(watchlistLayout(96), 'compact')
+  assert.equal(watchlistLayout(120), 'compact')
 })
 
 test('Tencent minute rows preserve average price and cumulative values', () => {
