@@ -9,19 +9,31 @@ const emit = defineEmits<{ (e: 'periodChange', period: 'day' | 'week' | 'month')
 type View = 'minute' | 'candle'
 type SubIndicator = 'VOL' | 'MACD' | 'KDJ' | 'RSI' | 'BOLL'
 type ChartData = KLineData & { date?: string; change?: number; pct?: number }
+type MAPeriod = 5 | 10 | 20 | 60
+type IndicatorResult = Record<string, number | undefined>
+type IndicatorReading = { label: string; value: number; compact?: boolean }
+
+const MA_PERIODS: MAPeriod[] = [5, 10, 20, 60]
+const CANDLE_PANE_ID = 'candle_pane'
 
 const container = ref<HTMLDivElement | null>(null)
 const view = ref<View>('candle')
 const period = ref<'day' | 'week' | 'month'>('day')
 const showMA = ref(true)
+const enabledMA = ref<Record<MAPeriod, boolean>>({ 5: true, 10: true, 20: true, 60: true })
 const activeSub = ref<SubIndicator | null>('VOL')
 const hoveredData = ref<ChartData | null>(null)
+const hoveredIndex = ref<number | null>(null)
+const indicatorReadoutVersion = ref(0)
 
 let chart: Chart | null = null
 let styleObserver: MutationObserver | null = null
 let resizeObserver: ResizeObserver | null = null
 
 const SUB_INDICATORS: SubIndicator[] = ['VOL', 'MACD', 'KDJ', 'RSI', 'BOLL']
+const visibleMAPeriods = computed(() =>
+  showMA.value ? MA_PERIODS.filter((ma) => enabledMA.value[ma]) : [],
+)
 const VIEWS = [
   { key: 'minute', label: '分时' },
   { key: 'day', label: '日K' },
@@ -132,6 +144,12 @@ function applyStyles() {
     indicator: {
       ohlc: { upColor: s.up, downColor: s.down, noChangeColor: s.noChange },
       bars: [{ upColor: s.up, downColor: s.down, noChangeColor: s.noChange }],
+      lines: [
+        { color: '#f59e0b', size: 1 },
+        { color: '#60a5fa', size: 1 },
+        { color: '#a78bfa', size: 1 },
+        { color: '#f472b6', size: 1 },
+      ],
     },
     xAxis: { axisLine: { color: s.border }, tickText: { color: s.muted } },
     yAxis: { axisLine: { color: s.border }, tickText: { color: s.muted } },
@@ -145,14 +163,20 @@ function applyStyles() {
 
 function syncIndicators() {
   if (!chart) return
-  const existing = chart.getIndicators()
-  for (const indicator of existing) {
+  indicatorReadoutVersion.value += 1
+  for (const indicator of chart.getIndicators()) {
     if (indicator.name === 'MA' || SUB_INDICATORS.includes(indicator.name as SubIndicator)) {
       chart.removeIndicator({ id: indicator.id })
     }
   }
   if (view.value === 'minute') return
-  if (showMA.value) chart.createIndicator({ name: 'MA', calcParams: [5, 10, 20, 60] })
+  if (visibleMAPeriods.value.length) {
+    chart.createIndicator({
+      name: 'MA',
+      paneId: CANDLE_PANE_ID,
+      calcParams: visibleMAPeriods.value,
+    })
+  }
   if (!activeSub.value) return
   chart.createIndicator(activeSub.value)
   const indicator = chart.getIndicators().find((item) => item.name === activeSub.value)
@@ -161,6 +185,8 @@ function syncIndicators() {
 
 function resetReadout() {
   hoveredData.value = latestData()
+  hoveredIndex.value = chart ? chart.getDataList().length - 1 : null
+  indicatorReadoutVersion.value += 1
 }
 
 function reload() {
@@ -177,12 +203,21 @@ function toggleMA() {
   if (view.value === 'minute') return
   showMA.value = !showMA.value
   syncIndicators()
+  resetReadout()
+}
+
+function toggleMAPeriod(period: MAPeriod) {
+  if (view.value === 'minute') return
+  enabledMA.value[period] = !enabledMA.value[period]
+  syncIndicators()
+  resetReadout()
 }
 
 function toggleSub(name: SubIndicator) {
   if (view.value === 'minute') return
   activeSub.value = activeSub.value === name ? null : name
   syncIndicators()
+  resetReadout()
 }
 
 function selectPeriod(key: 'minute' | 'day' | 'week' | 'month') {
@@ -211,14 +246,61 @@ function resetView() {
 
 function onCrosshairChange(data?: unknown) {
   const crosshair = data as Crosshair | undefined
-  let selected = crosshair?.kLineData as ChartData | undefined
-  if (!selected && chart && typeof crosshair?.x === 'number') {
+  let index = crosshair?.realDataIndex ?? crosshair?.dataIndex
+  if (typeof index !== 'number' && chart && typeof crosshair?.x === 'number') {
     const [point] = chart.convertFromPixel([{ x: crosshair.x }]) as Array<{ dataIndex?: number }>
-    const index = point?.dataIndex
-    if (typeof index === 'number') selected = chart.getDataList()[index] as ChartData | undefined
+    index = point?.dataIndex
   }
-  hoveredData.value = selected ?? latestData()
+  if (typeof index === 'number' && chart) {
+    hoveredIndex.value = index
+    hoveredData.value = (chart.getDataList()[index] as ChartData | undefined) ?? latestData()
+    indicatorReadoutVersion.value += 1
+    return
+  }
+  resetReadout()
 }
+
+function currentDataIndex(): number | null {
+  if (!chart) return null
+  const index = hoveredIndex.value ?? chart.getDataList().length - 1
+  return index >= 0 ? index : null
+}
+
+function resultFor(name: string): IndicatorResult | null {
+  const index = currentDataIndex()
+  if (index === null) return null
+  const indicator = chart?.getIndicators().find((item) => item.name === name)
+  return indicator?.result[index] as IndicatorResult | undefined ?? null
+}
+
+const maReadings = computed<IndicatorReading[]>(() => {
+  indicatorReadoutVersion.value
+  if (view.value === 'minute') return []
+  const result = resultFor('MA')
+  if (!result) return []
+  return visibleMAPeriods.value.flatMap((period, index) => {
+    const value = result[`ma${index + 1}`]
+    return typeof value === 'number' ? [{ label: `MA${period}`, value }] : []
+  })
+})
+
+const subReadings = computed<IndicatorReading[]>(() => {
+  indicatorReadoutVersion.value
+  if (view.value === 'minute' || !activeSub.value) return []
+  const result = resultFor(activeSub.value)
+  if (!result) return []
+  const definitions: Record<SubIndicator, Array<[string, string, boolean?]>> = {
+    VOL: [['VOL', 'volume', true]],
+    MACD: [['DIF', 'dif'], ['DEA', 'dea'], ['MACD', 'macd']],
+    KDJ: [['K', 'k'], ['D', 'd'], ['J', 'j']],
+    RSI: [['RSI6', 'rsi1'], ['RSI12', 'rsi2'], ['RSI24', 'rsi3']],
+    BOLL: [['UP', 'up'], ['MID', 'mid'], ['DN', 'dn']],
+  }
+  return definitions[activeSub.value].flatMap(([label, key, compact]) => {
+    const value = result[key]
+    return typeof value === 'number' ? [{ label, value, compact }] : []
+  })
+})
 
 function formatNumber(value: number | undefined, digits = 2): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '--'
@@ -280,6 +362,12 @@ onBeforeUnmount(() => {
       <span>涨幅 <b :class="directionClass(displayData?.pct)">{{ displayData?.pct ? `${displayData.pct > 0 ? '+' : ''}${formatNumber(displayData.pct)}%` : '0.00%' }}</b></span>
       <span>量 <b>{{ formatCompact(displayData?.volume) }}</b></span>
       <span>额 <b>{{ formatCompact(displayData?.turnover) }}</b></span>
+      <span v-for="item in maReadings" :key="item.label" class="kchart__reading kchart__reading--ma">
+        {{ item.label }} <b>{{ formatNumber(item.value) }}</b>
+      </span>
+      <span v-for="item in subReadings" :key="item.label" class="kchart__reading kchart__reading--indicator">
+        {{ item.label }} <b>{{ item.compact ? formatCompact(item.value) : formatNumber(item.value) }}</b>
+      </span>
     </div>
 
     <div class="kchart__toolbar">
@@ -300,7 +388,18 @@ onBeforeUnmount(() => {
           <button type="button" class="kchart__button" :class="{ 'kchart__button--active': view === 'candle' && showMA }" :disabled="view === 'minute'" title="MA5、MA10、MA20、MA60" @click="toggleMA">
             MA
           </button>
-          <span v-if="showMA && view === 'candle'" class="kchart__ma-label">5 10 20 60</span>
+          <button
+            v-for="ma in MA_PERIODS"
+            :key="ma"
+            type="button"
+            class="kchart__ma-toggle"
+            :class="{ 'kchart__ma-toggle--active': showMA && enabledMA[ma] }"
+            :disabled="view === 'minute' || !showMA"
+            :aria-pressed="enabledMA[ma]"
+            @click="toggleMAPeriod(ma)"
+          >
+            {{ ma }}
+          </button>
         </div>
         <div class="kchart__group" aria-label="技术指标">
           <button
@@ -445,11 +544,40 @@ onBeforeUnmount(() => {
   opacity: 0.4;
 }
 
-.kchart__ma-label {
-  padding-left: 0.15rem;
+.kchart__ma-toggle {
+  min-width: 1.45rem;
+  min-height: 1.45rem;
+  padding: 0.16rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: 0.62rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kchart__ma-toggle:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.kchart__ma-toggle--active {
+  color: var(--color-accent);
+}
+
+.kchart__ma-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.kchart__reading--ma b {
+  color: var(--color-accent);
+}
+
+.kchart__reading--indicator b {
+  color: var(--color-text);
 }
 
 .kchart__actions {
