@@ -84,6 +84,7 @@ export function useFinance() {
 
   // K 线周期：101=日 102=周 103=月；selectedSymbol 为指数/板块直传腾讯 symbol 时使用
   const klt = ref('101')
+  const KLINE_HISTORY_LIMIT = 500
   const selectedSymbol = ref<string | null>(null)
   const selectedPlatecode = ref<string | null>(null)
   const minutePoints = ref<MinutePoint[]>([])
@@ -314,7 +315,7 @@ export function useFinance() {
         secid: item.quoteId || `0.${item.code}`,
         name: item.name,
         klt: klt.value,
-        limit: '250',
+        limit: String(KLINE_HISTORY_LIMIT),
       })
       if (item.code) params.set('code', item.code)
       const res = await fetch(`/api/finance/kline?${params.toString()}`, { credentials: 'include' })
@@ -338,7 +339,7 @@ export function useFinance() {
     error.value = ''
     try {
       const res = await fetch(
-        `/api/finance/kline?secid=${encodeURIComponent(symbol)}&name=${encodeURIComponent(item.name)}&symbol=${encodeURIComponent(symbol)}&klt=${klt.value}&limit=250`,
+        `/api/finance/kline?secid=${encodeURIComponent(symbol)}&name=${encodeURIComponent(item.name)}&symbol=${encodeURIComponent(symbol)}&klt=${klt.value}&limit=${KLINE_HISTORY_LIMIT}`,
         { credentials: 'include' },
       )
       const data = (await res.json().catch(() => null)) as { klines?: Kline[]; error?: string } | null
