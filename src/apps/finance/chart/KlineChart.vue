@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { dispose, init, type Chart, type Crosshair, type KLineData } from 'klinecharts'
-import type { CandlePeriod, Kline, MinutePoint } from '../types'
-import { shouldLoadMoreHistory } from '../useFinance'
+import type { CandlePeriod, Kline, MinuteInterval, MinutePoint } from '../types'
+import { parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
 
 const props = defineProps<{
   klines: Kline[]
@@ -11,11 +11,12 @@ const props = defineProps<{
   hasMoreHistory?: boolean
 }>()
 const emit = defineEmits<{
-  (e: 'periodChange', period: CandlePeriod): void
+  (e: 'periodChange', period: CandlePeriod | MinuteInterval): void
   (e: 'load-more-history'): void
 }>()
 
 type View = 'minute' | 'candle'
+type ChartSelection = 'minute' | 'five-day' | CandlePeriod | MinuteInterval
 type SubIndicator = 'VOL' | 'MACD' | 'KDJ' | 'RSI' | 'BOLL'
 type ChartData = KLineData & { date?: string; change?: number; pct?: number }
 type MAPeriod = 5 | 10 | 20 | 60
@@ -27,7 +28,8 @@ const CANDLE_PANE_ID = 'candle_pane'
 
 const container = ref<HTMLDivElement | null>(null)
 const view = ref<View>('candle')
-const period = ref<'day' | 'week' | 'month'>('day')
+const period = ref<CandlePeriod | MinuteInterval>('day')
+const unavailableNotice = ref('')
 const showMA = ref(true)
 const enabledMA = ref<Record<MAPeriod, boolean>>({ 5: true, 10: true, 20: true, 60: true })
 const activeSub = ref<SubIndicator | null>('VOL')
@@ -46,18 +48,18 @@ const SUB_INDICATORS: SubIndicator[] = ['VOL', 'MACD', 'KDJ', 'RSI', 'BOLL']
 const visibleMAPeriods = computed(() =>
   showMA.value ? MA_PERIODS.filter((ma) => enabledMA.value[ma]) : [],
 )
-const VIEWS = [
+const VIEWS: Array<{ key: ChartSelection; label: string }> = [
   { key: 'minute', label: '分时' },
+  { key: 'five-day', label: '五日' },
   { key: 'day', label: '日K' },
   { key: 'week', label: '周K' },
   { key: 'month', label: '月K' },
-] as const
-
-function toTimestamp(date: string): number {
-  const [y, m, d] = date.split('-').map(Number)
-  if (!y || !m || !d) return 0
-  return Date.UTC(y, m - 1, d)
-}
+  { key: '1', label: '1分' },
+  { key: '5', label: '5分' },
+  { key: '15', label: '15分' },
+  { key: '30', label: '30分' },
+  { key: '60', label: '60分' },
+]
 
 function pricePrecision(): number {
   let max = 0
@@ -69,7 +71,7 @@ function toKLineData(klines: Kline[]): ChartData[] {
   return klines
     .filter((k) => k.date)
     .map((k) => ({
-      timestamp: toTimestamp(k.date),
+      timestamp: parseTencentKlineTimestamp(k.date),
       date: k.date,
       open: k.open,
       high: k.high,
@@ -219,7 +221,12 @@ function reload(keepViewport = false) {
   applyStyles()
   chart.setDataLoader({ getBars: ({ callback }) => callback(currentData(), false) })
   chart.setSymbol({ ticker: 'X', pricePrecision: pricePrecision(), volumePrecision: 0 })
-  chart.setPeriod({ type: view.value === 'minute' ? 'minute' : period.value, span: 1 })
+  const chartPeriod = view.value === 'minute'
+    ? { type: 'minute' as const, span: 1 }
+    : period.value === 'day' || period.value === 'week' || period.value === 'month'
+      ? { type: period.value, span: 1 }
+      : { type: 'minute' as const, span: Number(period.value) }
+  chart.setPeriod(chartPeriod)
   chart.setLeftMinVisibleBarCount(1)
   chart.setRightMinVisibleBarCount(1)
   if (keepViewport && pendingHistoryDate) {
@@ -289,8 +296,13 @@ function toggleSub(name: SubIndicator) {
   resetReadoutAfterRender()
 }
 
-function selectPeriod(key: 'minute' | 'day' | 'week' | 'month') {
+function selectPeriod(key: ChartSelection) {
   resetHistoryState()
+  unavailableNotice.value = ''
+  if (key === 'five-day') {
+    unavailableNotice.value = '五日分时暂不可用：当前数据源未提供可验证的跨交易日原始分时数据。'
+    return
+  }
   if (key === 'minute') {
     view.value = 'minute'
     reload()
@@ -471,7 +483,8 @@ onBeforeUnmount(() => {
             :key="item.key"
             type="button"
             class="kchart__button"
-            :class="{ 'kchart__button--active': item.key === 'minute' ? view === 'minute' : view === 'candle' && period === item.key }"
+            :class="{ 'kchart__button--active': item.key === 'minute' ? view === 'minute' : item.key !== 'five-day' && view === 'candle' && period === item.key }"
+            :aria-pressed="item.key === 'minute' ? view === 'minute' : item.key !== 'five-day' && view === 'candle' && period === item.key"
             @click="selectPeriod(item.key)"
           >
             {{ item.label }}
@@ -515,6 +528,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <p v-if="unavailableNotice" class="kchart__notice" role="status">{{ unavailableNotice }}</p>
     <div v-if="klines.length || minute.length" ref="container" class="kchart__canvas" />
     <div v-else class="kchart__empty">暂无数据</div>
   </div>
@@ -693,6 +707,15 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 320px;
   flex: 1;
+}
+
+.kchart__notice {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
 }
 
 .kchart__empty {

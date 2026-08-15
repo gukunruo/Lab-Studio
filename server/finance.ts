@@ -74,6 +74,21 @@ export interface KlineResponse {
   latest: string | null
 }
 
+const CANDLE_KLINE_PERIODS = new Set(['101', '102', '103'])
+const MINUTE_KLINE_PERIODS = new Set(['1', '5', '15', '30', '60'])
+
+export function normalizeMinuteKlineInterval(value: string | undefined): string | null {
+  return value && MINUTE_KLINE_PERIODS.has(value) ? value : null
+}
+
+export function isSupportedKlinePeriod(value: string): boolean {
+  return CANDLE_KLINE_PERIODS.has(value) || normalizeMinuteKlineInterval(value) !== null
+}
+
+export function supportsTencentMinuteSymbol(symbol: string): boolean {
+  return /^(?:sh|sz|hk)\w+$/i.test(symbol)
+}
+
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -364,7 +379,7 @@ async function fetchTencentKline(
   klt = '101',
   before: string | null = null,
 ): Promise<{ code: string; name: string; klines: Kline[]; hasMore: boolean } | null> {
-  // klt：101=日 102=周 103=月。周期参数：day/week/month。
+  // klt：101=日 102=周 103=月；分钟周期使用腾讯 mkline。
   const period = klt === '102' ? 'week' : klt === '103' ? 'month' : 'day'
   // 腾讯接口的 end-date 位于第三、四参数之间；cursor 请求只取 before 之前的窗口。
   const range = `,,${before ?? ''},${limit + 1}`
@@ -426,6 +441,57 @@ async function fetchTencentKline(
     const name = qt?.[1] ?? ''
     const code = qt?.[2] ?? symbol.slice(2)
     return { ...sourceWindow({ code, name, klines }, limit) }
+  } catch {
+    return null
+  }
+}
+
+async function fetchTencentMinuteKline(
+  symbol: string,
+  interval: string,
+  limit: number,
+): Promise<{ code: string; name: string; klines: Kline[]; hasMore: boolean } | null> {
+  const url = `https://web.ifzq.gtimg.cn/appstock/app/kline/mkline?param=${encodeURIComponent(`${symbol},m${interval},,${Math.min(limit, 320)}`)}`
+  try {
+    const data = (await fetchJson(url, 'https://gu.qq.com/')) as {
+      data?: {
+        [sym: string]: {
+          qt?: { [sym: string]: string[] }
+          [key: string]: string[][] | { [sym: string]: string[] } | undefined
+        }
+      }
+    }
+    const bucket = data.data?.[symbol]
+    const rows = bucket?.[`m${interval}`]
+    if (!Array.isArray(rows) || !rows.length) return null
+    const klines = rows.map((row) => {
+      const open = Number(row[1] ?? 0)
+      const close = Number(row[2] ?? 0)
+      const high = Number(row[3] ?? 0)
+      const low = Number(row[4] ?? 0)
+      const change = close - open
+      return {
+        date: row[0] ?? '',
+        open,
+        close,
+        high,
+        low,
+        volume: Number(row[5] ?? 0),
+        amount: 0,
+        amplitude: low ? ((high - low) / low) * 100 : 0,
+        pct: open ? Number(((change / open) * 100).toFixed(2)) : 0,
+        change: Number(change.toFixed(2)),
+        turnover: 0,
+      }
+    }).filter((item) => item.date)
+    if (!klines.length) return null
+    const qt = bucket?.qt?.[symbol]
+    return {
+      code: qt?.[2] ?? symbol.slice(2),
+      name: qt?.[1] ?? '',
+      klines: klines.slice(-limit),
+      hasMore: false,
+    }
   } catch {
     return null
   }
@@ -863,12 +929,24 @@ export function registerFinanceRoutes(app: Hono): void {
     const before = parseBeforeDate(beforeValue)
     // 重点板块直接传入腾讯 symbol（如 sh000001/us.DJI/hkHSI），跳过 secid 映射
     const symbolParam = c.req.query('symbol')?.trim() ?? ''
-    if (!['101', '102', '103'].includes(klt)) return c.json({ error: 'invalid klt' }, 400)
+    if (!isSupportedKlinePeriod(klt)) return c.json({ error: 'invalid klt' }, 400)
     if (!Number.isInteger(limit) || limit < 1 || limit > 500) return c.json({ error: 'invalid limit' }, 400)
     if (beforeValue !== undefined && !before) return c.json({ error: 'invalid before' }, 400)
+    const minuteInterval = normalizeMinuteKlineInterval(klt)
+    if (minuteInterval && before) return c.json({ error: 'history is unavailable for this interval' }, 422)
     const today = todayUtc()
     const withMeta = (fallback: { code: string; name: string; klines: Kline[]; hasMore: boolean }, responseSecid: string): KlineResponse =>
       makeKlineResponse(fallback, responseSecid, klt, limit, before)
+    const minuteResponse = (fallback: { code: string; name: string; klines: Kline[]; hasMore: boolean }, responseSecid: string): KlineResponse => ({
+      code: fallback.code,
+      name: fallback.name || name,
+      secid: responseSecid,
+      klt,
+      klines: fallback.klines,
+      hasMore: false,
+      oldest: fallback.klines[0]?.date ?? null,
+      latest: fallback.klines.at(-1)?.date ?? null,
+    })
 
     // 重点板块：有 symbol 参数时直接按 symbol 抓腾讯 K 线
     if (symbolParam) {
@@ -876,9 +954,16 @@ export function registerFinanceRoutes(app: Hono): void {
       const cached = cacheGet<KlineResponse>(cacheKey)
       if (cached) return c.json(cached)
       const symbol = normalizeKlineSymbol(symbolParam)
-      const fallback = await fetchTencentKline(symbol, limit, klt, before)
+      if (minuteInterval && !supportsTencentMinuteSymbol(symbol)) {
+        return c.json({ error: '该标的不支持分钟 K 线' }, 422)
+      }
+      const fallback = minuteInterval
+        ? await fetchTencentMinuteKline(symbol, minuteInterval, limit)
+        : await fetchTencentKline(symbol, limit, klt, before)
       if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
-      const result = withMeta({ ...fallback, name: fallback.name || name }, symbolParam)
+      const result = minuteInterval
+        ? minuteResponse({ ...fallback, name: fallback.name || name }, symbolParam)
+        : withMeta({ ...fallback, name: fallback.name || name }, symbolParam)
       cacheSet(cacheKey, result, 300_000)
       return c.json(result)
     }
@@ -890,6 +975,10 @@ export function registerFinanceRoutes(app: Hono): void {
     if (cached) return c.json(cached)
 
     const isBoard = secid.startsWith('90.')
+
+    if (isBoard && minuteInterval) {
+      return c.json({ error: '该标的不支持分钟 K 线' }, 422)
+    }
 
     if (isBoard) {
       const boards = await loadThsBoards()
@@ -905,6 +994,7 @@ export function registerFinanceRoutes(app: Hono): void {
     // 美股个股走新浪（腾讯美股 fqkline 数据不完整）
     const market = secid.slice(0, secid.indexOf('.'))
     if (market === '105' || market === '106' || market === '107') {
+      if (minuteInterval) return c.json({ error: '该标的不支持分钟 K 线' }, 422)
       const usCode = code || secid.slice(secid.indexOf('.') + 1)
       const fallback = await fetchSinaUsKline(usCode, name, limit, before)
       if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
@@ -916,9 +1006,14 @@ export function registerFinanceRoutes(app: Hono): void {
     // 其余走腾讯（A股/ETF/指数/港股/环球指数）
     const symbol = secidToTencentSymbol(secid, code)
     if (!symbol) return c.json({ error: '数据源暂时不可用' }, 502)
-    const fallback = await fetchTencentKline(symbol, limit, klt, before)
+    if (minuteInterval && !supportsTencentMinuteSymbol(symbol)) {
+      return c.json({ error: '该标的不支持分钟 K 线' }, 422)
+    }
+    const fallback = minuteInterval
+      ? await fetchTencentMinuteKline(symbol, minuteInterval, limit)
+      : await fetchTencentKline(symbol, limit, klt, before)
     if (!fallback) return c.json({ error: '数据源暂时不可用' }, 502)
-    const result = withMeta(fallback, secid)
+    const result = minuteInterval ? minuteResponse(fallback, secid) : withMeta(fallback, secid)
     cacheSet(cacheKey, result, 300_000)
     return c.json(result)
   })

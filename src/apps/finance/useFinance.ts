@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { BoardRow, Kline, KlinePage, MinutePoint, QuoteDetail, SearchItem } from './types'
+import type { BoardRow, CandlePeriod, Kline, KlinePage, MinuteInterval, MinutePoint, QuoteDetail, SearchItem } from './types'
 
 export function oldestKlineDate(items: Kline[]): string | null {
   return items.reduce<string | null>((oldest, item) => {
@@ -112,6 +112,21 @@ export function pageFromResponse(data: Partial<KlinePage> | null): KlinePage {
     oldest: data?.oldest ?? null,
     latest: data?.latest ?? null,
   }
+}
+
+export function klineErrorMessage(data: { error?: string } | null): string {
+  return data?.error ?? '加载失败'
+}
+
+export function parseTencentKlineTimestamp(date: string): number {
+  const normalized = date.includes('T') ? date : date.replace(' ', 'T')
+  const value = normalized.includes('T')
+    ? /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized)
+      ? normalized
+      : `${normalized}+08:00`
+    : `${normalized}T00:00:00Z`
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : 0
 }
 
 export function klineRequestParams(item: Pick<SearchItem, 'quoteId' | 'code' | 'name'>, symbol?: string, before?: string, klt = '101') {
@@ -227,9 +242,9 @@ export function useFinance() {
     const res = await fetch(`/api/finance/kline?${klineRequestParams(item, symbol, before, klt.value).toString()}`, {
       credentials: 'include',
     })
-    const data = pageFromResponse((await res.json().catch(() => null)) as Partial<KlinePage> | null)
-    if (!res.ok) throw new Error('加载失败')
-    return data
+    const data = (await res.json().catch(() => null)) as (Partial<KlinePage> & { error?: string }) | null
+    if (!res.ok) throw new Error(klineErrorMessage(data))
+    return pageFromResponse(data)
   }
 
   async function loadKlinePage(item: SearchItem, symbol?: string, before?: string): Promise<void> {
@@ -504,13 +519,13 @@ export function useFinance() {
   }
 
   // K 线周期切换（日/周/月），按当前选中标的重载
-  async function setPeriod(period: 'day' | 'week' | 'month') {
-    const next = period === 'week' ? '102' : period === 'month' ? '103' : '101'
+  async function setPeriod(period: CandlePeriod | MinuteInterval) {
+    const next = period === 'day' ? '101' : period === 'week' ? '102' : period === 'month' ? '103' : period
     if (next === klt.value) return
     klt.value = next
     const item = selected.value
     if (!item) return
-    if (item.type === 'OTCFUND') return // 基金无周/月净值
+    if (item.type === 'OTCFUND') return
     if (selectedSymbol.value) {
       await loadKlineForSymbol(selectedSymbol.value, item)
     } else {

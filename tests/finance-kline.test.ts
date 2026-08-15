@@ -1,8 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filterKlinesBefore, mergeKlines, parseBeforeDate } from '../server/finance'
+import {
+  filterKlinesBefore,
+  isSupportedKlinePeriod,
+  supportsTencentMinuteSymbol,
+  mergeKlines,
+  parseBeforeDate,
+  normalizeMinuteKlineInterval,
+} from '../server/finance'
 import {
   buildKlineParams,
+  klineErrorMessage,
+  parseTencentKlineTimestamp,
   createHistoryRequestState,
   oldestKlineDate,
   calculatePrependCompensation,
@@ -109,4 +118,41 @@ test('request sequence rejects responses from an earlier selection', () => {
   const second = sequence.begin()
   assert.equal(sequence.isCurrent(first), false)
   assert.equal(sequence.isCurrent(second), true)
+})
+
+test('kline periods allow daily, weekly, monthly, and supported minute intervals only', () => {
+  assert.equal(isSupportedKlinePeriod('101'), true)
+  assert.equal(isSupportedKlinePeriod('102'), true)
+  assert.equal(isSupportedKlinePeriod('103'), true)
+  assert.equal(isSupportedKlinePeriod('1'), true)
+  assert.equal(isSupportedKlinePeriod('60'), true)
+  assert.equal(isSupportedKlinePeriod('5d'), false)
+  assert.equal(isSupportedKlinePeriod('240'), false)
+})
+
+test('minute K-line interval accepts only real provider intervals', () => {
+  assert.equal(normalizeMinuteKlineInterval('1'), '1')
+  assert.equal(normalizeMinuteKlineInterval('5'), '5')
+  assert.equal(normalizeMinuteKlineInterval('15'), '15')
+  assert.equal(normalizeMinuteKlineInterval('30'), '30')
+  assert.equal(normalizeMinuteKlineInterval('60'), '60')
+  assert.equal(normalizeMinuteKlineInterval('5d'), null)
+  assert.equal(normalizeMinuteKlineInterval('120'), null)
+})
+
+test('minute K-lines are limited to Tencent China and Hong Kong symbols', () => {
+  assert.equal(supportsTencentMinuteSymbol('sh600000'), true)
+  assert.equal(supportsTencentMinuteSymbol('sz000001'), true)
+  assert.equal(supportsTencentMinuteSymbol('hk00700'), true)
+  assert.equal(supportsTencentMinuteSymbol('us.DJI'), false)
+})
+
+test('K-line errors retain the server-provided unsupported reason', () => {
+  assert.equal(klineErrorMessage({ error: '该标的不支持分钟 K 线' }), '该标的不支持分钟 K 线')
+  assert.equal(klineErrorMessage(null), '加载失败')
+})
+
+test('Tencent local minute timestamps use the exchange offset', () => {
+  assert.equal(parseTencentKlineTimestamp('2026-08-15 10:00'), Date.parse('2026-08-15T10:00:00+08:00'))
+  assert.equal(parseTencentKlineTimestamp('2026-08-15'), Date.parse('2026-08-15T00:00:00Z'))
 })
