@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { Quote } from '../useFinance'
 
-defineProps<{ domestic: Quote[]; overseas: Quote[] }>()
+defineProps<{ quotes: Quote[]; selectedCode?: string | null }>()
 const emit = defineEmits<{ (e: 'select', quote: Quote): void }>()
 
 function pctClass(pct: number): string {
   if (pct > 0) return 'idx__up'
   if (pct < 0) return 'idx__down'
-  return ''
+  return 'idx__flat'
 }
 
 function fmtPct(pct: number): string {
@@ -21,80 +21,99 @@ function fmtPrice(p: number): string {
 </script>
 
 <template>
-  <div class="idx">
+  <div class="idx" role="list" aria-label="市场指数">
     <button
-      v-for="q in domestic"
+      v-for="q in quotes"
       :key="q.symbol"
       type="button"
       class="idx__item"
+      :class="{ 'idx__item--selected': selectedCode === q.code }"
+      role="listitem"
       @click="emit('select', q)"
     >
-      <span class="idx__name">{{ q.name }}</span>
-      <span class="idx__price" :class="pctClass(q.pct)">{{ fmtPrice(q.price) }}</span>
-      <span class="idx__pct" :class="pctClass(q.pct)">{{ fmtPct(q.pct) }}</span>
+      <span class="idx__name" :title="q.name">{{ q.name }}</span>
+      <span class="idx__values">
+        <span class="idx__price" :class="pctClass(q.pct)">{{ fmtPrice(q.price) }}</span>
+        <span class="idx__pct" :class="pctClass(q.pct)">{{ fmtPct(q.pct) }}</span>
+      </span>
     </button>
-    <span class="idx__sep" />
-    <button
-      v-for="q in overseas"
-      :key="q.symbol"
-      type="button"
-      class="idx__item"
-      @click="emit('select', q)"
-    >
-      <span class="idx__name">{{ q.name }}</span>
-      <span class="idx__price" :class="pctClass(q.pct)">{{ fmtPrice(q.price) }}</span>
-      <span class="idx__pct" :class="pctClass(q.pct)">{{ fmtPct(q.pct) }}</span>
-    </button>
+    <div v-if="!quotes.length" class="idx__empty">暂无可用指数</div>
   </div>
 </template>
 
 <style scoped lang="scss">
 .idx {
   display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0.35rem var(--space-2);
+  align-items: stretch;
+  gap: var(--space-2);
+  height: 52px;
+  min-height: 52px;
+  padding: 0.3rem var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   overflow-x: auto;
-  scrollbar-width: thin;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.idx::-webkit-scrollbar {
+  display: none;
 }
 
 .idx__item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  padding: 0.15rem 0.4rem;
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
+  display: flex;
+  flex: 0 0 clamp(104px, 11vw, 124px);
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.12rem;
+  min-width: 104px;
+  padding: 0.35rem 0.55rem;
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.15s;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
 }
 
-.idx__item:hover {
-  background: var(--color-surface-2);
+.idx__item:hover,
+.idx__item--selected {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
 }
 
 .idx__name {
-  font-size: 0.76rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
   font-weight: 600;
-  color: var(--color-text);
+  line-height: 1.1;
 }
 
-.idx__price {
+.idx__values {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.idx__price,
+.idx__pct {
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: 0.73rem;
   font-weight: 600;
-  color: var(--color-text);
+  white-space: nowrap;
 }
 
 .idx__pct {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.68rem;
 }
 
 .idx__up {
@@ -105,10 +124,16 @@ function fmtPrice(p: number): string {
   color: var(--fin-down);
 }
 
-.idx__sep {
-  width: 1px;
-  align-self: stretch;
-  margin: 0 var(--space-1);
-  background: var(--color-border);
+.idx__flat {
+  color: var(--color-text-muted);
+}
+
+.idx__empty {
+  display: flex;
+  align-items: center;
+  padding-inline: 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
 }
 </style>

@@ -54,6 +54,7 @@ export interface FundNavPoint {
 export type MarketKey = 'cn' | 'global' | 'hk' | 'us'
 
 export interface MarketQuote extends QuoteDetail {
+  time: string
   provider: 'tencent'
   source: 'qt.gtimg.cn'
   fetchedAt: string

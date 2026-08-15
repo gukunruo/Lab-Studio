@@ -1,5 +1,5 @@
-import { ref } from 'vue'
-import type { BoardRow, CandlePeriod, Kline, KlinePage, MinuteInterval, MinutePoint, QuoteDetail, SearchItem } from './types'
+import { computed, ref } from 'vue'
+import type { BoardRow, CandlePeriod, Kline, KlinePage, MarketGroup, MarketKey, MarketsResponse, MinuteInterval, MinutePoint, QuoteDetail, SearchItem } from './types'
 
 export const CHART_MA_PERIODS = [5, 10, 20, 30, 60, 120, 250] as const
 export const GRID_GAP = 12
@@ -286,6 +286,28 @@ export interface MarketBoardGroup {
   quotes: Quote[]
 }
 
+export const FRONTEND_MARKET_KEYS: MarketKey[] = ['cn', 'global', 'hk', 'us']
+
+export function marketGroupForKey(groups: MarketGroup[], key: MarketKey): MarketGroup | null {
+  return groups.find((group) => group.key === key) ?? null
+}
+
+export function createMarketRequestState() {
+  let current = 0
+  return {
+    begin(): number {
+      current += 1
+      return current
+    },
+    isCurrent(sequence: number): boolean {
+      return current !== 0 && sequence === current
+    },
+    finish(sequence: number): void {
+      if (sequence === current) current = 0
+    },
+  }
+}
+
 export function marketBoardGroups(
   boards: Pick<BoardsData, 'domestic' | 'overseas'> | null,
 ): MarketBoardGroup[] {
@@ -323,9 +345,58 @@ export function useFinance() {
   const searching = ref(false)
   const searchError = ref('')
 
-  // 重点板块（指数条）
-  const boards = ref<BoardsData | null>(null)
-  const boardsLoading = ref(false)
+  // 市场指数：所有价格和涨跌均来自 provider。
+  const markets = ref<MarketsResponse | null>(null)
+  const currentMarket = ref<MarketKey>('cn')
+  const marketsLoading = ref(false)
+  const marketRequest = createMarketRequestState()
+
+  const boards = computed<BoardsData | null>(() => {
+    const groups = markets.value?.markets ?? []
+    return {
+      domestic: marketGroupForKey(groups, 'cn')?.quotes ?? [],
+      overseas: [
+        ...(marketGroupForKey(groups, 'global')?.quotes ?? []),
+        ...(marketGroupForKey(groups, 'hk')?.quotes ?? []),
+      ],
+      industries: [],
+    }
+  })
+  const boardsLoading = computed(() => marketsLoading.value)
+
+  const currentMarketGroup = computed(() => marketGroupForKey(markets.value?.markets ?? [], currentMarket.value))
+  const currentMarketQuotes = computed(() => currentMarketGroup.value?.quotes ?? [])
+  const marketUnavailable = computed(() => currentMarketGroup.value?.status === 'unavailable')
+  const marketError = computed(() => currentMarketGroup.value?.error ?? '')
+  const marketGroups = computed(() => markets.value?.markets ?? [])
+  const marketRequestState = marketRequest
+
+  async function loadMarkets() {
+    const sequence = marketRequest.begin()
+    marketsLoading.value = true
+    try {
+      const res = await fetch('/api/finance/markets', { credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as MarketsResponse | { error?: string } | null
+      if (!res.ok) throw new Error((data as { error?: string })?.error ?? '加载失败')
+      if (marketRequest.isCurrent(sequence)) markets.value = data as MarketsResponse
+    } catch {
+      if (marketRequest.isCurrent(sequence)) markets.value = null
+    } finally {
+      if (marketRequest.isCurrent(sequence)) {
+        marketsLoading.value = false
+        marketRequest.finish(sequence)
+      }
+    }
+  }
+
+  function setMarket(key: MarketKey) {
+    if (FRONTEND_MARKET_KEYS.includes(key)) currentMarket.value = key
+  }
+
+  // 兼容旧调用名，实际请求统一走四市场接口。
+  async function loadBoards() {
+    await loadMarkets()
+  }
 
   // 板块排行（行业/概念）
   const boardKind = ref<'industry' | 'concept'>('industry')
@@ -438,19 +509,6 @@ export function useFinance() {
     debounce = setTimeout(search, 250)
   }
 
-  async function loadBoards() {
-    boardsLoading.value = true
-    try {
-      const res = await fetch('/api/finance/boards', { credentials: 'include' })
-      const data = (await res.json().catch(() => null)) as BoardsData | { error?: string } | null
-      if (!res.ok) throw new Error((data as { error?: string })?.error ?? '加载失败')
-      boards.value = data as BoardsData
-    } catch {
-      boards.value = null
-    } finally {
-      boardsLoading.value = false
-    }
-  }
 
   async function loadBoardRank() {
     const seq = ++boardLoadSeq
@@ -768,6 +826,16 @@ export function useFinance() {
     suggestions,
     searching,
     searchError,
+    markets,
+    currentMarket,
+    marketsLoading,
+    currentMarketGroup,
+    currentMarketQuotes,
+    marketUnavailable,
+    marketError,
+    marketGroups,
+    loadMarkets,
+    setMarket,
     boards,
     boardsLoading,
     boardKind,

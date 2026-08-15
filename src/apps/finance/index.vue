@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { marked } from 'marked'
-import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
+import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp, PhArrowsOutSimple, PhArrowsInSimple } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, marketBoardGroups, nextDrawerState, watchlistLayout, type Quote, type WatchItem } from './useFinance'
+import { FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, watchlistLayout, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
@@ -138,7 +138,8 @@ const watchlistMode = computed(() =>
   leftDrawerOpen.value ? 'wide' : watchlistLayout(watchlistCollapsed.value ? 96 : leftWidth.value),
 )
 const leftTab = ref<'watchlist' | 'market'>('watchlist')
-const marketGroups = computed(() => marketBoardGroups(finance.boards.value))
+const marketGroup = computed(() => finance.currentMarketGroup.value)
+const marketQuotes = computed(() => finance.currentMarketQuotes.value)
 
 function fmtPct(pct: number): string {
   const sign = pct > 0 ? '+' : ''
@@ -249,7 +250,7 @@ function stopAnalysis() {
 }
 
 onMounted(async () => {
-  void finance.loadBoards()
+  void finance.loadMarkets()
   void finance.loadBoardRank()
   void finance.loadWatchlist()
   // 拉取服务端偏好并应用到布局
@@ -372,13 +373,27 @@ onMounted(async () => {
           </ul>
         </template>
         <div v-else class="fin__market-list">
-          <div v-if="!marketGroups.length" class="fin__empty">
-            <span>{{ finance.boardsLoading.value ? '加载中…' : '暂无指数数据' }}</span>
-          </div>
-          <section v-for="group in marketGroups" :key="group.key" class="fin__market-group">
-            <h2 class="fin__market-group-title">{{ group.label }}</h2>
+          <nav class="fin__market-tabs" aria-label="市场分类" role="tablist">
             <button
-              v-for="q in group.quotes"
+              v-for="key in FRONTEND_MARKET_KEYS"
+              :key="key"
+              type="button"
+              role="tab"
+              :aria-selected="finance.currentMarket.value === key"
+              :class="{ 'fin__market-tab--active': finance.currentMarket.value === key }"
+              @click="finance.setMarket(key)"
+            >{{ key === 'cn' ? '大A' : key === 'global' ? '全球' : key === 'hk' ? '港股' : '美股' }}</button>
+          </nav>
+          <div v-if="finance.marketsLoading.value && !finance.markets.value" class="fin__empty">加载中…</div>
+          <div v-else-if="!marketGroup" class="fin__empty">暂无市场数据</div>
+          <div v-else-if="finance.marketUnavailable.value" class="fin__empty fin__empty--error">
+            <strong>{{ marketGroup.label }}暂不可用</strong>
+            <span>{{ finance.marketError.value || 'provider 未返回可用行情' }}</span>
+          </div>
+          <template v-else>
+            <h2 class="fin__market-group-title">{{ marketGroup.label }}</h2>
+            <button
+              v-for="q in marketQuotes"
               :key="q.symbol"
               type="button"
               class="fin__market-item"
@@ -389,11 +404,11 @@ onMounted(async () => {
                 <span class="fin__market-code">{{ q.code }}</span>
               </span>
               <span class="fin__market-values">
-                <span class="fin__market-price">{{ fmtPrice(q.price) }}</span>
+                <span class="fin__market-price" :class="pctClass(q.pct)">{{ fmtPrice(q.price) }}</span>
                 <span class="fin__market-pct" :class="pctClass(q.pct)">{{ fmtPct(q.pct) }}</span>
               </span>
             </button>
-          </section>
+          </template>
         </div>
       </aside>
 
@@ -410,8 +425,8 @@ onMounted(async () => {
       <main class="fin__col fin__col--center">
         <IndexStrip
           class="fin__top-indices"
-          :domestic="finance.boards.value?.domestic ?? []"
-          :overseas="finance.boards.value?.overseas ?? []"
+          :quotes="marketQuotes"
+          :selected-code="finance.selected.value?.code || null"
           @select="finance.selectBoard"
         />
         <template v-if="finance.selected.value">
@@ -913,6 +928,35 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
+.fin__market-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.2rem;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.fin__market-tabs button {
+  min-width: 0;
+  padding: 0.35rem 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.fin__market-tabs button:hover,
+.fin__market-tab--active {
+  color: var(--color-accent) !important;
+  background: var(--color-accent-soft) !important;
+}
+
 .fin__market-group-title {
   margin: 0;
   padding: 0.55rem 0.75rem 0.3rem;
@@ -1183,10 +1227,17 @@ onMounted(async () => {
 }
 
 .fin__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: var(--space-6) var(--space-3);
   text-align: center;
   color: var(--color-text-muted);
   font-size: 0.78rem;
+}
+
+.fin__empty--error strong {
+  color: var(--color-danger);
 }
 
 .fin__watch {

@@ -7,6 +7,21 @@ import {
   normalizeMarketQuotes,
   type Quote,
 } from '../server/finance'
+import {
+  FRONTEND_MARKET_KEYS,
+  createMarketRequestState,
+  marketGroupForKey,
+} from '../src/apps/finance/useFinance'
+import type { MarketGroup } from '../src/apps/finance/types'
+
+const marketGroup = (key: MarketGroup['key'], status: MarketGroup['status'] = 'ok'): MarketGroup => ({
+  key,
+  label: key,
+  provider: 'tencent',
+  source: 'qt.gtimg.cn',
+  status,
+  quotes: [],
+})
 
 const quote = (symbol: string, overrides: Partial<Quote> = {}): Quote => ({
   symbol,
@@ -67,6 +82,26 @@ test('normalizing market quotes rejects missing or non-finite quote values', () 
   )
   assert.equal(result.length, 1)
   assert.equal(result[0]?.price, 101)
+})
+
+test('frontend market navigation keeps the provider order and selects one group', () => {
+  assert.deepEqual(FRONTEND_MARKET_KEYS, ['cn', 'global', 'hk', 'us'])
+  const groups = FRONTEND_MARKET_KEYS.map((key) => marketGroup(key))
+  assert.equal(marketGroupForKey(groups, 'hk')?.key, 'hk')
+  assert.equal(marketGroupForKey(groups, 'us')?.label, 'us')
+  assert.equal(marketGroupForKey(groups, 'cn')?.status, 'ok')
+})
+
+test('market request state ignores a stale response after switching markets', () => {
+  const state = createMarketRequestState()
+  const first = state.begin()
+  const second = state.begin()
+  assert.equal(state.isCurrent(first), false)
+  assert.equal(state.isCurrent(second), true)
+  state.finish(first)
+  assert.equal(state.isCurrent(second), true)
+  state.finish(second)
+  assert.equal(state.isCurrent(second), false)
 })
 
 test('market groups preserve order and mark empty provider groups unavailable', () => {
