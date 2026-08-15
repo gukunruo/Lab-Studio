@@ -7,6 +7,10 @@ export function chartRightOffsetLimit(): number {
   return 0
 }
 
+export function clampSplitterWidth(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
 export function oldestKlineDate(items: Kline[]): string | null {
   return items.reduce<string | null>((oldest, item) => {
     if (!item.date) return oldest

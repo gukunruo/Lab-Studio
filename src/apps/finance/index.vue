@@ -3,12 +3,13 @@ import { computed, onMounted, ref } from 'vue'
 import { marked } from 'marked'
 import { PhMagnifyingGlass, PhPlus, PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { useFinance, itemToSymbol, type Quote, type WatchItem } from './useFinance'
+import { useFinance, itemToSymbol, clampSplitterWidth, type Quote, type WatchItem } from './useFinance'
 import type { SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
 import IndexStrip from './components/IndexStrip.vue'
 import BoardTable from './components/BoardTable.vue'
+import ResizeGutter from '@/components/ResizeGutter.vue'
 
 const finance = useFinance()
 
@@ -22,6 +23,12 @@ const aiError = ref('')
 const aiAvailable = ref(false)
 const aiExpanded = ref(true)
 const watchlistCollapsed = ref(false)
+const leftWidth = ref(210)
+const rightWidth = ref(280)
+const LEFT_MIN = 200
+const LEFT_MAX = 360
+const RIGHT_MIN = 280
+const RIGHT_MAX = 480
 const workspaceTab = ref<'ai' | 'boards' | 'settings'>('ai')
 const colorSchemeLabel = ref('中国市场')
 let controller: AbortController | null = null
@@ -33,6 +40,20 @@ function pctClass(pct: number): string {
   if (pct < 0) return 'fin__down'
   return ''
 }
+
+function onLeftResize(w: number) {
+  leftWidth.value = clampSplitterWidth(w, LEFT_MIN, LEFT_MAX)
+}
+function onRightResize(w: number) {
+  rightWidth.value = clampSplitterWidth(w, RIGHT_MIN, RIGHT_MAX)
+}
+
+const gridTemplate = computed(() => {
+  if (watchlistCollapsed.value) {
+    return `3.25rem 6px minmax(520px, 1fr) 6px ${rightWidth.value}px`
+  }
+  return `${leftWidth.value}px 6px minmax(520px, 1fr) 6px ${rightWidth.value}px`
+})
 
 function fmtPct(pct: number): string {
   const sign = pct > 0 ? '+' : ''
@@ -212,7 +233,7 @@ onMounted(async () => {
     </div>
 
     <!-- 三栏主体 -->
-    <div class="fin__grid">
+    <div class="fin__grid" :style="{ gridTemplateColumns: gridTemplate }">
       <!-- 左栏：自选列表 -->
       <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed }">
         <div class="fin__col-head">
@@ -267,6 +288,15 @@ onMounted(async () => {
         </ul>
       </aside>
 
+      <ResizeGutter
+        v-if="!watchlistCollapsed"
+        class="fin__gutter fin__gutter--left"
+        :min="LEFT_MIN"
+        :max="LEFT_MAX"
+        :value="leftWidth"
+        @resize="onLeftResize"
+      />
+
       <!-- 中栏：标的详情 + K 线 + AI 分析 -->
       <main class="fin__col fin__col--center">
         <template v-if="finance.selected.value">
@@ -306,6 +336,15 @@ onMounted(async () => {
           <p>点击左侧自选、顶部指数或右侧工作区以查看 K 线</p>
         </div>
       </main>
+
+      <ResizeGutter
+        class="fin__gutter fin__gutter--right"
+        :min="RIGHT_MIN"
+        :max="RIGHT_MAX"
+        :value="rightWidth"
+        reverse
+        @resize="onRightResize"
+      />
 
       <aside class="fin__col fin__col--right">
         <nav class="fin__workspace-tabs" aria-label="右侧工作区">
@@ -506,8 +545,7 @@ onMounted(async () => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(3.25rem, 210px) minmax(520px, 1fr) minmax(240px, 280px);
-  gap: var(--space-3);
+  gap: 0;
 }
 
 .fin__col {
@@ -964,14 +1002,23 @@ onMounted(async () => {
   margin: 0.3rem 0;
 }
 
-// 响应式
+// 响应式：移动端禁用 splitter，改为单列
 @media (max-width: 1023px) {
   .fin__grid {
-    grid-template-columns: 180px 1fr;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .fin__gutter {
+    display: none;
+  }
+
+  .fin__col--left {
+    max-height: 200px;
   }
 
   .fin__col--right {
-    display: none;
+    max-height: 300px;
   }
 }
 
@@ -987,19 +1034,6 @@ onMounted(async () => {
 
   .fin__search {
     width: 100%;
-  }
-
-  .fin__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .fin__col--left {
-    max-height: 200px;
-  }
-
-  .fin__col--right {
-    display: flex;
-    max-height: 300px;
   }
 }
 </style>

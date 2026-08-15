@@ -12,6 +12,7 @@ import {
   buildKlineParams,
   CHART_MA_PERIODS,
   chartRightOffsetLimit,
+  clampSplitterWidth,
   klineErrorMessage,
   parseTencentKlineTimestamp,
   createHistoryRequestState,
@@ -165,4 +166,12 @@ test('chart MA periods include common short and long windows', () => {
 
 test('chart disallows right-side offset beyond the latest data', () => {
   assert.equal(chartRightOffsetLimit(), 0)
+})
+
+test('splitter width clamps to allowed range', () => {
+  assert.equal(clampSplitterWidth(250, 200, 360), 250)
+  assert.equal(clampSplitterWidth(100, 200, 360), 200)
+  assert.equal(clampSplitterWidth(500, 200, 360), 360)
+  assert.equal(clampSplitterWidth(300, 280, 480), 300)
+  assert.equal(clampSplitterWidth(200, 280, 480), 280)
 })
