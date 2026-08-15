@@ -186,9 +186,9 @@ test('splitter width clamps to allowed range', () => {
   assert.equal(clampSplitterWidth(200, 280, 480), 280)
 })
 
-test('collapsed grid keeps center and right columns in their own tracks', () => {
-  assert.equal(financeGridTemplate(true, 280, 360), '52px minmax(520px, 1fr) 8px 360px')
-  assert.equal(financeGridTemplate(false, 280, 360), '280px 8px minmax(520px, 1fr) 8px 360px')
+test('collapsed grid keeps a compact watchlist and 12px module spacing', () => {
+  assert.equal(financeGridTemplate(true, 280, 360), '96px 12px minmax(520px, 1fr) 12px 360px')
+  assert.equal(financeGridTemplate(false, 280, 360), '280px 12px minmax(520px, 1fr) 12px 360px')
 })
 
 test('Tencent minute rows preserve average price and cumulative values', () => {

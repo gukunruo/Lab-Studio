@@ -2,6 +2,9 @@ import { ref } from 'vue'
 import type { BoardRow, CandlePeriod, Kline, KlinePage, MinuteInterval, MinutePoint, QuoteDetail, SearchItem } from './types'
 
 export const CHART_MA_PERIODS = [5, 10, 20, 30, 60, 120, 250] as const
+export const GRID_GAP = 12
+export const COLLAPSED_LEFT = 96
+export const CENTER_MIN = 520
 
 export function chartRightOffsetLimit(): number {
   return 0
@@ -13,8 +16,8 @@ export function clampSplitterWidth(value: number, min: number, max: number): num
 
 export function financeGridTemplate(collapsed: boolean, leftWidth: number, rightWidth: number): string {
   return collapsed
-    ? `52px minmax(520px, 1fr) 8px ${rightWidth}px`
-    : `${leftWidth}px 8px minmax(520px, 1fr) 8px ${rightWidth}px`
+    ? `${COLLAPSED_LEFT}px ${GRID_GAP}px minmax(${CENTER_MIN}px, 1fr) ${GRID_GAP}px ${rightWidth}px`
+    : `${leftWidth}px ${GRID_GAP}px minmax(${CENTER_MIN}px, 1fr) ${GRID_GAP}px ${rightWidth}px`
 }
 
 export function parseTencentMinuteRow(row: string): MinutePoint {

@@ -682,7 +682,18 @@ onMounted(async () => {
   flex: 1;
   min-height: 0;
   display: grid;
-  gap: 0;
+}
+
+.fin__grid > .fin__gutter {
+  width: 12px;
+}
+
+.fin__grid > .fin__gutter::before {
+  inset: 0 -4px;
+}
+
+.fin__grid > .fin__gutter .gutter__line {
+  left: 50%;
 }
 
 .fin__col {
