@@ -60,6 +60,19 @@ export function shouldContinueHistory(hasMore: boolean, pageLength: number): boo
   return hasMore && pageLength > 0
 }
 
+export function createRequestSequence() {
+  let current = 0
+  return {
+    begin(): number {
+      current += 1
+      return current
+    },
+    isCurrent(sequence: number): boolean {
+      return sequence === current
+    },
+  }
+}
+
 export function createHistoryRequestState() {
   let sequence = 0
   let locked = false
@@ -198,6 +211,8 @@ export function useFinance() {
   let debounce: ReturnType<typeof setTimeout> | null = null
   let loadSeq = 0
   let historyLoadSeq = 0
+  const detailRequest = createRequestSequence()
+  const minuteRequest = createRequestSequence()
   const historyState = createHistoryRequestState()
 
   function resetKlineState() {
@@ -402,9 +417,10 @@ export function useFinance() {
   }
 
   async function loadDetail(item: SearchItem) {
+    const sequence = detailRequest.begin()
     const symbol = detailSymbolOf(item)
     if (!symbol) {
-      detail.value = null
+      if (detailRequest.isCurrent(sequence)) detail.value = null
       return
     }
     try {
@@ -413,9 +429,9 @@ export function useFinance() {
       })
       const data = (await res.json().catch(() => null)) as QuoteDetail | { error?: string } | null
       if (!res.ok) throw new Error((data as { error?: string })?.error ?? '加载失败')
-      detail.value = data as QuoteDetail
+      if (detailRequest.isCurrent(sequence)) detail.value = data as QuoteDetail
     } catch {
-      detail.value = null
+      if (detailRequest.isCurrent(sequence)) detail.value = null
     }
   }
 
@@ -504,10 +520,11 @@ export function useFinance() {
 
   // 分时：板块传 platecode 走同花顺，其余走腾讯 symbol
   async function loadMinute() {
+    const sequence = minuteRequest.begin()
     const item = selected.value
     if (!item) return
     if (item.type === 'OTCFUND') {
-      minutePoints.value = []
+      if (minuteRequest.isCurrent(sequence)) minutePoints.value = []
       return
     }
     const params = new URLSearchParams()
@@ -518,7 +535,7 @@ export function useFinance() {
     } else {
       const symbol = itemToSymbol(item)
       if (!symbol) {
-        minutePoints.value = []
+        if (minuteRequest.isCurrent(sequence)) minutePoints.value = []
         return
       }
       params.set('symbol', symbol)
@@ -527,9 +544,9 @@ export function useFinance() {
       const res = await fetch(`/api/finance/minute?${params.toString()}`, { credentials: 'include' })
       const data = (await res.json().catch(() => null)) as { points?: MinutePoint[]; error?: string } | null
       if (!res.ok) throw new Error(data?.error ?? '加载失败')
-      minutePoints.value = data?.points ?? []
+      if (minuteRequest.isCurrent(sequence)) minutePoints.value = data?.points ?? []
     } catch {
-      minutePoints.value = []
+      if (minuteRequest.isCurrent(sequence)) minutePoints.value = []
     }
   }
 

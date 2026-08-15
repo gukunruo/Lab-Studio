@@ -9,6 +9,7 @@ import {
   shouldLoadMoreHistory,
   shouldShowBlockingKlineError,
   shouldContinueHistory,
+  createRequestSequence,
 } from '../src/apps/finance/useFinance'
 
 const bar = (date: string, close: number) => ({
@@ -100,4 +101,12 @@ test('empty history pages stop further cursor requests', () => {
   assert.equal(shouldContinueHistory(true, 3), true)
   assert.equal(shouldContinueHistory(true, 0), false)
   assert.equal(shouldContinueHistory(false, 0), false)
+})
+
+test('request sequence rejects responses from an earlier selection', () => {
+  const sequence = createRequestSequence()
+  const first = sequence.begin()
+  const second = sequence.begin()
+  assert.equal(sequence.isCurrent(first), false)
+  assert.equal(sequence.isCurrent(second), true)
 })

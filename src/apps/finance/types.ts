@@ -1,3 +1,5 @@
+export type CandlePeriod = 'day' | 'week' | 'month'
+
 export interface Kline {
   date: string
   open: number
@@ -10,6 +12,13 @@ export interface Kline {
   pct: number
   change: number
   turnover: number
+}
+
+export interface KlinePage {
+  klines: Kline[]
+  hasMore: boolean
+  oldest: string | null
+  latest: string | null
 }
 
 export interface SearchItem {
