@@ -12,6 +12,14 @@ export interface BoardWeight {
   weight?: number
   weightProvider?: string
   weightSource?: string
+  weightTradeDate?: string
+}
+
+export interface BoardWeightMeta {
+  status: 'available' | 'partial' | 'unavailable'
+  provider: string
+  source: string
+  tradeDate: string | null
 }
 
 export function createBoardPageState(query: Record<string, unknown>): BoardPageState {

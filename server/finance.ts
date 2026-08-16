@@ -2,6 +2,112 @@ import type { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db } from './db/client'
 import { financePreferences, watchlist } from './db/schema'
+import {
+  createTushareClient,
+  fetchTushareBoardMarketCaps,
+  TushareCoverageError,
+  TushareUnavailableError,
+  type BoardMarketCapAggregate,
+} from './finance-tushare'
+
+const TUSHARE_WEIGHT_SOURCE = 'ths_member+daily_basic.total_mv' as const
+const TUSHARE_WEIGHT_PROVIDER = 'tushare' as const
+
+type BoardWeightStatus = 'available' | 'partial' | 'unavailable'
+
+export interface BoardResponseMeta {
+  ranking: { provider: '10jqka'; source: string }
+  weight: {
+    status: BoardWeightStatus
+    provider: 'tushare'
+    source: typeof TUSHARE_WEIGHT_SOURCE
+    tradeDate: string | null
+    marketCapUnit: '万元'
+    fetchedAt: string
+    reason?: string
+  }
+}
+
+function boardResponseMeta(weight: BoardResponseMeta['weight']): BoardResponseMeta {
+  return {
+    ranking: { provider: '10jqka', source: 'q.10jqka.com.cn' },
+    weight,
+  }
+}
+
+function unavailableBoardWeight(fetchedAt: string, reason: string): BoardResponseMeta['weight'] {
+  return {
+    status: 'unavailable',
+    provider: TUSHARE_WEIGHT_PROVIDER,
+    source: TUSHARE_WEIGHT_SOURCE,
+    tradeDate: null,
+    marketCapUnit: '万元',
+    fetchedAt,
+    reason,
+  }
+}
+
+function partialBoardWeight(fetchedAt: string, reason: string): BoardResponseMeta['weight'] {
+  return {
+    ...unavailableBoardWeight(fetchedAt, reason),
+    status: 'partial',
+  }
+}
+
+function addBoardWeights(rows: BoardRow[], aggregates: BoardMarketCapAggregate[]): BoardRow[] {
+  const byCode = new Map(aggregates.map((row) => [row.boardCode, row]))
+  return rows.map((row) => {
+    const weight = byCode.get(row.code)
+    return weight
+      ? {
+          ...row,
+          weight: weight.weight,
+          weightProvider: TUSHARE_WEIGHT_PROVIDER,
+          weightSource: TUSHARE_WEIGHT_SOURCE,
+          weightTradeDate: weight.tradeDate,
+          marketCap: weight.marketCap,
+          marketCapUnit: weight.marketCapUnit,
+          memberCount: weight.memberCount,
+          coveredMemberCount: weight.coveredMemberCount,
+        }
+      : row
+  })
+}
+
+async function loadBoardWeights(rows: BoardRow[], kind: 'industry' | 'concept', fetchedAt: string): Promise<{ rows: BoardRow[]; meta: BoardResponseMeta }> {
+  try {
+    const aggregates = await fetchTushareBoardMarketCaps({
+      rows: rows.map((row) => ({ code: row.code, name: row.name })),
+      kind,
+      client: createTushareClient(),
+    })
+    return {
+      rows: addBoardWeights(rows, aggregates),
+      meta: boardResponseMeta({
+        status: 'available',
+        provider: TUSHARE_WEIGHT_PROVIDER,
+        source: TUSHARE_WEIGHT_SOURCE,
+        tradeDate: aggregates[0]?.tradeDate ?? null,
+        marketCapUnit: '万元',
+        fetchedAt,
+      }),
+    }
+  } catch (error) {
+    const reason = error instanceof TushareUnavailableError
+      ? error.message
+      : error instanceof TushareCoverageError
+        ? error.message
+        : 'Tushare weight data is unavailable'
+    return {
+      rows,
+      meta: boardResponseMeta(
+        error instanceof TushareCoverageError
+          ? partialBoardWeight(fetchedAt, reason)
+          : unavailableBoardWeight(fetchedAt, reason),
+      ),
+    }
+  }
+}
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
@@ -204,6 +310,14 @@ export interface BoardRow {
   downCount: number
   netInflow: number
   kind: 'industry' | 'concept'
+  weight?: number
+  weightProvider?: 'tushare'
+  weightSource?: typeof TUSHARE_WEIGHT_SOURCE
+  weightTradeDate?: string
+  marketCap?: number
+  marketCapUnit?: '万元'
+  memberCount?: number
+  coveredMemberCount?: number
 }
 
 export interface MinutePoint {
@@ -1183,13 +1297,16 @@ export function registerFinanceRoutes(app: Hono): void {
     if (kind !== 'industry' && kind !== 'concept') return c.json({ error: 'invalid kind' }, 400)
     const order = c.req.query('order') === 'down' ? 'down' : 'up'
     const cacheKey = `boards:${kind}:${order}`
-    const cached = cacheGet<BoardRow[]>(cacheKey)
-    if (cached) return c.json({ items: cached })
+    const cached = cacheGet<{ items: BoardRow[]; meta: BoardResponseMeta }>(cacheKey)
+    if (cached) return c.json(cached)
     const rows = kind === 'industry' ? await fetchIndustryBoards() : await fetchConceptBoards()
     if (!rows.length) return c.json({ error: '数据源暂时不可用' }, 502)
     const sorted = sortBoards(rows, order)
-    cacheSet(cacheKey, sorted, 30_000)
-    return c.json({ items: sorted })
+    const fetchedAt = new Date().toISOString()
+    const weighted = await loadBoardWeights(sorted, kind, fetchedAt)
+    const result = { items: weighted.rows, meta: weighted.meta }
+    cacheSet(cacheKey, result, 30_000)
+    return c.json(result)
   })
 
   // 实时行情批量（自选列表刷新用）

@@ -103,6 +103,30 @@ export interface BoardRow {
   downCount: number
   netInflow: number
   kind: 'industry' | 'concept'
+  weight?: number
+  weightProvider?: 'tushare'
+  weightSource?: 'ths_member+daily_basic.total_mv'
+  weightTradeDate?: string
+  marketCap?: number
+  marketCapUnit?: '万元'
+  memberCount?: number
+  coveredMemberCount?: number
+}
+
+export interface BoardResponseMeta {
+  ranking: {
+    provider: '10jqka'
+    source: string
+  }
+  weight: {
+    status: 'available' | 'partial' | 'unavailable'
+    provider: 'tushare'
+    source: 'ths_member+daily_basic.total_mv'
+    tradeDate: string | null
+    marketCapUnit: '万元'
+    fetchedAt: string
+    reason?: string
+  }
 }
 
 export interface MinutePoint {
