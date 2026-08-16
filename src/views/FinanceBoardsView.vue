@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { PhArrowLeft, PhChartLine } from '@phosphor-icons/vue'
-import BoardTable from '@/apps/finance/components/BoardTable.vue'
 import { boardPageQuery, createBoardPageState, heatmapAvailability, heatmapFlexWeights, type BoardKind, type BoardOrder, type BoardWeightMeta } from '@/apps/finance/boards'
 import type { BoardResponseMeta, BoardRow } from '@/apps/finance/types'
 
@@ -38,8 +37,8 @@ function selectRow(row: BoardRow) {
   selectedBoardCode.value = row.code
 }
 
-function updateQuery(kind: BoardKind, order: BoardOrder, view = state.value.view) {
-  void router.replace({ query: boardPageQuery({ kind, order, view }) })
+function updateQuery(kind: BoardKind, order: BoardOrder) {
+  void router.replace({ query: boardPageQuery({ kind, order, view: 'heatmap' }) })
 }
 
 async function loadBoards() {
@@ -74,42 +73,21 @@ function setOrder(order: BoardOrder) {
   updateQuery(state.value.kind, order)
 }
 
-function setView(view: 'list' | 'heatmap') {
-  if (view === 'heatmap' && !heatmap.value.available) return
-  updateQuery(state.value.kind, state.value.order, view)
-}
-
 watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true })
 </script>
 
 <template>
   <div class="boards-page">
     <header class="boards-page__header">
-      <RouterLink to="/finance" class="boards-page__back" aria-label="返回金融终端" title="返回金融终端">
+      <RouterLink to="/finance" class="boards-page__back" aria-label="返回 AI Finance" title="返回 AI Finance">
         <PhArrowLeft :size="18" />
       </RouterLink>
       <div class="boards-page__title">
         <PhChartLine :size="18" weight="bold" />
         <div>
-          <h1>板块研究</h1>
-          <p>行业与概念排行</p>
+          <h1>板块跟踪</h1>
+          <p>概念与行业实时热力图</p>
         </div>
-      </div>
-      <div class="boards-page__modes" aria-label="板块视图">
-        <button
-          class="boards-page__mode"
-          :class="{ 'boards-page__mode--active': state.view === 'list' }"
-          type="button"
-          @click="setView('list')"
-        >列表</button>
-        <button
-          class="boards-page__mode"
-          :class="{ 'boards-page__mode--active': state.view === 'heatmap' }"
-          type="button"
-          :disabled="!heatmap.available"
-          :title="heatmap.available ? '按真实权重展示' : heatmap.reason"
-          @click="setView('heatmap')"
-        >热力图</button>
       </div>
     </header>
 
@@ -121,6 +99,16 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
         <span v-if="meta?.weight.tradeDate">交易日 {{ meta.weight.tradeDate }}</span>
         <span v-if="meta?.weight.status === 'available'">来源 {{ meta.weight.source }}</span>
       </div>
+      <div class="boards-page__filters" aria-label="板块筛选">
+        <div class="boards-page__filter-group" aria-label="板块分类">
+          <button type="button" :class="{ 'boards-page__filter--active': state.kind === 'industry' }" @click="setKind('industry')">行业</button>
+          <button type="button" :class="{ 'boards-page__filter--active': state.kind === 'concept' }" @click="setKind('concept')">概念</button>
+        </div>
+        <div class="boards-page__filter-group" aria-label="涨跌排序">
+          <button type="button" :class="{ 'boards-page__filter--active': state.order === 'up' }" @click="setOrder('up')">涨幅</button>
+          <button type="button" :class="{ 'boards-page__filter--active': state.order === 'down' }" @click="setOrder('down')">跌幅</button>
+        </div>
+      </div>
       <div v-if="!heatmap.available" class="boards-page__notice" role="status">
         {{ heatmap.reason }}
       </div>
@@ -129,7 +117,7 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
         <span>{{ error }}</span>
         <button type="button" @click="loadBoards">重试</button>
       </div>
-      <div v-else-if="state.view === 'heatmap' && heatmap.available" class="boards-page__heatmap" aria-label="板块权重热力图">
+      <div v-else-if="heatmap.available" class="boards-page__heatmap" aria-label="板块权重热力图">
         <button
           v-for="(row, index) in heatmapRows"
           :key="row.code"
@@ -149,19 +137,6 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
       </div>
       <div v-if="selectedRow" class="boards-page__selection" role="status">
         已选择：{{ selectedRow.name }}（{{ selectedRow.code }}）
-      </div>
-      <BoardTable
-        v-if="state.view !== 'heatmap'"
-        :kind="state.kind"
-        :order="state.order"
-        :rows="rows"
-        :loading="loading"
-        @set-kind="setKind"
-        @set-order="setOrder"
-        @select="selectRow"
-      />
-      <div v-if="state.view === 'heatmap' && heatmap.available" class="boards-page__table-fallback">
-        <button type="button" @click="setView('list')">切换列表查看精确数据</button>
       </div>
     </main>
   </div>
@@ -219,30 +194,40 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
   font-size: 0.72rem;
 }
 
-.boards-page__modes {
+.boards-page__filters {
   display: flex;
-  gap: 0.25rem;
-  margin-left: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
-.boards-page__mode {
-  padding: 0.4rem 0.8rem;
-  color: var(--color-text-muted);
-  background: transparent;
+.boards-page__filter-group {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+}
+
+.boards-page__filter-group button {
+  padding: 0.35rem 0.7rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
   cursor: pointer;
 }
 
-.boards-page__mode--active {
+.boards-page__filter-group button:hover,
+.boards-page__filter--active {
   color: var(--color-accent);
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
+  background: var(--color-accent-soft) !important;
 }
 
-.boards-page__mode:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+.boards-page__filter--active {
+  font-weight: 700;
 }
 
 .boards-page__main {
@@ -330,20 +315,10 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
   white-space: nowrap;
 }
 
-.boards-page__selection,
-.boards-page__table-fallback {
+.boards-page__selection {
   margin-top: var(--space-3);
   color: var(--color-text-muted);
   font-size: 0.75rem;
-}
-
-.boards-page__table-fallback button {
-  padding: 0.35rem 0.65rem;
-  color: var(--color-accent);
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
 }
 
 .boards-page__notice {

@@ -633,7 +633,7 @@ onMounted(async () => {
             @set-order="finance.setBoardOrder"
             @select="finance.selectBoardRow"
           />
-          <RouterLink to="/finance/boards" class="fin__boards-link">查看完整板块研究</RouterLink>
+          <RouterLink to="/finance/boards" class="fin__boards-link">板块跟踪</RouterLink>
         </div>
 
         <div v-else id="finance-workspace-settings" class="fin__workspace-panel fin__workspace-panel--settings" role="tabpanel">

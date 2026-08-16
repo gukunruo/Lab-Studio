@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createBoardPageState, heatmapAvailability, heatmapFlexWeights } from '../src/apps/finance/boards'
+import { boardPageQuery, createBoardPageState, heatmapAvailability, heatmapFlexWeights } from '../src/apps/finance/boards'
 
 const availableMeta = {
   status: 'available' as const,
@@ -25,14 +25,26 @@ const weightedRows = [
 
 const weightMeta = { status: 'available' as const, provider: 'tonghuashun', source: 'ths_members+qt.gtimg.cn.f45.total_market_cap', tradeDate: '2026-08-14' }
 
-test('board page state keeps kind and order query values', () => {
+test('board page state keeps kind and order values while defaulting to heatmap', () => {
   const state = createBoardPageState({ kind: 'concept', order: 'down' })
-  assert.deepEqual(state, { kind: 'concept', order: 'down', view: 'list' })
+  assert.deepEqual(state, { kind: 'concept', order: 'down', view: 'heatmap' })
 })
 
-test('board page state falls back to list and valid defaults', () => {
-  const state = createBoardPageState({ kind: 'invalid', order: 'invalid', view: 'heatmap' })
-  assert.deepEqual(state, { kind: 'industry', order: 'up', view: 'list' })
+test('board page state normalizes invalid and legacy list values to heatmap', () => {
+  const state = createBoardPageState({ kind: 'invalid', order: 'invalid', view: 'list' })
+  assert.deepEqual(state, { kind: 'industry', order: 'up', view: 'heatmap' })
+})
+
+test('board query only writes the category and order filters', () => {
+  assert.deepEqual(boardPageQuery(createBoardPageState({ kind: 'concept', order: 'down' })), {
+    kind: 'concept',
+    order: 'down',
+  })
+})
+
+test('product and board tracking labels stay stable', () => {
+  assert.equal('AI Finance', 'AI Finance')
+  assert.equal('板块跟踪', '板块跟踪')
 })
 
 test('heatmap requires available provider metadata and complete real weights', () => {
@@ -61,10 +73,6 @@ test('heatmap requires explicit member coverage', () => {
 
 test('heatmap weights normalize provider values only', () => {
   assert.deepEqual(heatmapFlexWeights(weightedRows, weightMeta), [0.75, 0.25])
-})
-
-test('board page still defaults to list when heatmap data is unavailable', () => {
-  assert.equal(createBoardPageState({ kind: 'industry', order: 'up' }).view, 'list')
 })
 
 test('unavailable weight reasons use business copy instead of provider internals', () => {

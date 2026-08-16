@@ -56,7 +56,11 @@ test('fullscreen workspace no longer reserves a collapsed right rail', () => {
   assert.equal(workspaceGridTemplate(COLLAPSED_RIGHT, true), 'minmax(0, 1fr)')
 })
 
-test('board page state accepts the heatmap view query', () => {
+test('board page state always normalizes legacy view queries to heatmap', () => {
+  assert.equal(
+    createBoardPageState({ kind: 'industry', order: 'up', view: 'list' }).view,
+    'heatmap',
+  )
   assert.equal(
     createBoardPageState({ kind: 'industry', order: 'up', view: 'heatmap' }).view,
     'heatmap',

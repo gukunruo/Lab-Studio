@@ -24,11 +24,9 @@ export type BoardWeightMeta = Pick<BoardResponseMeta['weight'], 'status' | 'prov
 export const HEATMAP_UNAVAILABLE_REASON = '暂无真实权重数据，热力图暂不可用'
 
 export function createBoardPageState(query: Record<string, unknown>): BoardPageState {
-  const validKind = query.kind === 'industry' || query.kind === 'concept'
-  const validOrder = query.order === 'up' || query.order === 'down'
   const kind: BoardKind = query.kind === 'concept' ? 'concept' : 'industry'
   const order: BoardOrder = query.order === 'down' ? 'down' : 'up'
-  const view: BoardView = validKind && validOrder && query.view === 'heatmap' ? 'heatmap' : 'list'
+  const view: BoardView = 'heatmap'
   return { kind, order, view }
 }
 
@@ -63,5 +61,5 @@ export function heatmapFlexWeights(rows: BoardWeight[], meta?: BoardWeightMeta):
 }
 
 export function boardPageQuery(state: BoardPageState): Record<string, string> {
-  return { kind: state.kind, order: state.order, view: state.view }
+  return { kind: state.kind, order: state.order }
 }
