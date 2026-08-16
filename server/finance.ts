@@ -1042,6 +1042,7 @@ export type FinanceSubIndicator = (typeof SUB_INDICATORS)[number]
 export interface FinancePreferences {
   leftCollapsed: boolean
   leftWidth: number
+  rightCollapsed: boolean
   rightWidth: number
   rightPanel: FinanceRightPanel
   chartView: (typeof CHART_VIEWS)[number]
@@ -1055,6 +1056,7 @@ export interface FinancePreferences {
 export const DEFAULT_FINANCE_PREFERENCES: FinancePreferences = {
   leftCollapsed: false,
   leftWidth: 260,
+  rightCollapsed: false,
   rightWidth: 360,
   rightPanel: 'ai',
   chartView: 'candle',
@@ -1095,6 +1097,7 @@ export function normalizeFinancePreferences(raw: unknown): FinancePreferences {
   return {
     leftCollapsed: boolOr(obj.leftCollapsed, DEFAULT_FINANCE_PREFERENCES.leftCollapsed),
     leftWidth: clampInt(obj.leftWidth, 200, 360, DEFAULT_FINANCE_PREFERENCES.leftWidth),
+    rightCollapsed: boolOr(obj.rightCollapsed, DEFAULT_FINANCE_PREFERENCES.rightCollapsed),
     rightWidth: clampInt(obj.rightWidth, 280, 480, DEFAULT_FINANCE_PREFERENCES.rightWidth),
     rightPanel: oneOf(obj.rightPanel, RIGHT_PANELS, DEFAULT_FINANCE_PREFERENCES.rightPanel),
     chartView: oneOf(obj.chartView, CHART_VIEWS, DEFAULT_FINANCE_PREFERENCES.chartView),

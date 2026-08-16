@@ -1,10 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  COLLAPSED_RIGHT,
   INDEX_STRIP_HEIGHT,
   MA_MENU_PORTAL_TARGET,
   nextAiPanelState,
   nextMaMenuState,
+  nextRightCollapsedState,
+  financeGridTemplate,
   workspaceGridTemplate,
 } from '../src/apps/finance/useFinance'
 import {
@@ -36,6 +39,27 @@ test('fullscreen workspace keeps the center and AI columns together', () => {
   assert.equal(
     workspaceGridTemplate(360),
     'minmax(0, 1fr) 12px 360px',
+  )
+})
+
+test('right workspace collapses to an accessible rail without changing the center minimum', () => {
+  assert.equal(COLLAPSED_RIGHT, 48)
+  assert.equal(nextRightCollapsedState(false), true)
+  assert.equal(nextRightCollapsedState(true), false)
+  assert.equal(
+    financeGridTemplate(false, 210, 360, true),
+    '210px 12px minmax(520px, 1fr) 12px 48px',
+  )
+  assert.equal(
+    financeGridTemplate(true, 210, 360, true),
+    '96px 12px minmax(520px, 1fr) 12px 48px',
+  )
+})
+
+test('fullscreen workspace keeps a collapsed right rail when requested', () => {
+  assert.equal(
+    workspaceGridTemplate(COLLAPSED_RIGHT),
+    'minmax(0, 1fr) 12px 48px',
   )
 })
 

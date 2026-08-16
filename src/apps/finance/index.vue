@@ -4,7 +4,7 @@ import { enterFullscreen, exitFullscreen, fullscreenState } from './fullscreen'
 import { marked } from 'marked'
 import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp, PhArrowsOutSimple, PhArrowsInSimple } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextAiPanelState, nextDrawerState, watchlistLayout, workspaceGridTemplate, type Quote, type WatchItem } from './useFinance'
+import { COLLAPSED_RIGHT, FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextAiPanelState, nextDrawerState, nextRightCollapsedState, watchlistLayout, workspaceGridTemplate, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
@@ -26,6 +26,7 @@ const aiPrompt = ref('')
 const watchlistCollapsed = ref(false)
 const leftDrawerOpen = ref(false)
 const rightDrawerOpen = ref(false)
+const rightCollapsed = ref(false)
 const leftDrawerTrigger = ref<HTMLButtonElement | null>(null)
 const rightDrawerTrigger = ref<HTMLButtonElement | null>(null)
 const leftWidth = ref(210)
@@ -103,6 +104,7 @@ function currentLayoutPrefs() {
   return {
     leftCollapsed: watchlistCollapsed.value,
     leftWidth: leftWidth.value,
+    rightCollapsed: rightCollapsed.value,
     rightWidth: rightWidth.value,
     rightPanel: workspaceTab.value,
     chartView: chartPrefs.value?.chartView ?? 'candle',
@@ -136,10 +138,10 @@ function onChartPrefsChange(prefs: ChartPrefs) {
   scheduleSave()
 }
 
-watch([watchlistCollapsed, leftWidth, rightWidth, workspaceTab], scheduleSave)
+watch([watchlistCollapsed, leftWidth, rightCollapsed, rightWidth, workspaceTab], scheduleSave)
 
 const gridTemplate = computed(() =>
-  financeGridTemplate(watchlistCollapsed.value, leftWidth.value, rightWidth.value),
+  financeGridTemplate(watchlistCollapsed.value, leftWidth.value, rightWidth.value, rightCollapsed.value),
 )
 
 const watchlistMode = computed(() =>
@@ -296,6 +298,7 @@ onMounted(async () => {
       leftWidth.value = clampSplitterWidth(leftW, LEFT_MIN, LEFT_MAX)
       rightWidth.value = clampSplitterWidth(rightW, RIGHT_MIN, RIGHT_MAX)
       watchlistCollapsed.value = data.leftCollapsed === true
+      rightCollapsed.value = data.rightCollapsed === true
       const rp = data.rightPanel
       if (rp === 'ai' || rp === 'boards' || rp === 'settings') workspaceTab.value = rp
       chartPrefs.value = {
@@ -344,7 +347,7 @@ onMounted(async () => {
       ref="financeWorkspaceGrid"
       class="fin__grid"
       :class="{ 'fin__grid--fullscreen': isWorkspaceFullscreen }"
-      :style="{ gridTemplateColumns: isWorkspaceFullscreen ? workspaceGridTemplate(rightWidth) : gridTemplate }"
+      :style="{ gridTemplateColumns: isWorkspaceFullscreen ? workspaceGridTemplate(rightCollapsed ? COLLAPSED_RIGHT : rightWidth) : gridTemplate }"
     >
       <!-- 左栏：自选与市场指数 -->
       <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed, 'fin__drawer--open': leftDrawerOpen }">
@@ -521,6 +524,7 @@ onMounted(async () => {
 
       <ResizeGutter
         class="fin__gutter fin__gutter--right"
+        :class="{ 'fin__gutter--collapsed': rightCollapsed }"
         :min="RIGHT_MIN"
         :max="RIGHT_MAX"
         :value="rightWidth"
@@ -528,7 +532,25 @@ onMounted(async () => {
         @resize="onRightResize"
       />
 
-      <aside class="fin__col fin__col--right" :class="{ 'fin__drawer--open': rightDrawerOpen }">
+      <aside
+        id="finance-workspace-right"
+        class="fin__col fin__col--right"
+        :class="{ 'fin__col--right-collapsed': rightCollapsed, 'fin__drawer--open': rightDrawerOpen }"
+        aria-label="右侧工作区"
+      >
+        <button
+          v-if="rightCollapsed && !rightDrawerOpen"
+          class="fin__right-expand"
+          type="button"
+          aria-controls="finance-workspace-right"
+          :aria-expanded="!rightCollapsed"
+          aria-label="展开右侧工作区"
+          title="展开右侧工作区"
+          @click="rightCollapsed = nextRightCollapsedState(rightCollapsed)"
+        >
+          <span aria-hidden="true">‹</span>
+        </button>
+        <template v-else>
         <nav class="fin__workspace-tabs" aria-label="右侧工作区" role="tablist">
           <button
             type="button"
@@ -619,6 +641,18 @@ onMounted(async () => {
           <p>涨跌配色：{{ colorSchemeLabel }}</p>
           <p>左侧自选栏：{{ watchlistCollapsed ? '已收起' : '已展开' }}</p>
         </div>
+        <button
+          class="fin__right-collapse"
+          type="button"
+          aria-controls="finance-workspace-right"
+          :aria-expanded="!rightCollapsed"
+          aria-label="收起右侧工作区"
+          title="收起右侧工作区"
+          @click="rightCollapsed = nextRightCollapsedState(rightCollapsed)"
+        >
+          <span aria-hidden="true">›</span>
+        </button>
+        </template>
       </aside>
     </div>
 
@@ -862,6 +896,42 @@ onMounted(async () => {
 
 .fin__col--right {
   overflow: hidden;
+}
+
+.fin__col--right-collapsed {
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.fin__right-expand,
+.fin__right-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 2rem;
+  padding: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fin__right-expand:hover,
+.fin__right-collapse:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.fin__right-collapse {
+  align-self: flex-end;
+  flex: 0 0 auto;
+  margin: 0.35rem;
 }
 
 .fin__workspace-tabs {
@@ -1459,7 +1529,7 @@ onMounted(async () => {
   position: fixed;
   inset: 0;
   z-index: 100;
-  grid-template-columns: minmax(0, 1fr) 12px minmax(280px, 360px) !important;
+  grid-template-columns: minmax(0, 1fr) 12px minmax(48px, 360px) !important;
   width: 100vw;
   height: 100vh;
   padding: var(--space-3);
@@ -1480,6 +1550,10 @@ onMounted(async () => {
 .fin__grid--fullscreen > .fin__col--right {
   grid-column: 3;
   min-width: 0;
+}
+
+.fin__grid--fullscreen > .fin__col--right-collapsed {
+  min-width: 48px;
 }
 
 .fin__grid--fullscreen > .fin__col--center,

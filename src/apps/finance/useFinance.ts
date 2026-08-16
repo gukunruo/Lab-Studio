@@ -6,6 +6,7 @@ export const INDEX_STRIP_HEIGHT = 64
 export const MA_MENU_PORTAL_TARGET = 'body'
 export const GRID_GAP = 12
 export const COLLAPSED_LEFT = 96
+export const COLLAPSED_RIGHT = 48
 
 export function nextAiPanelState(expanded: boolean): boolean {
   return !expanded
@@ -20,6 +21,10 @@ export function nextMaMenuState(open: boolean): boolean {
   return !open
 }
 
+export function nextRightCollapsedState(collapsed: boolean): boolean {
+  return !collapsed
+}
+
 export function chartRightOffsetLimit(): number {
   return 0
 }
@@ -28,10 +33,15 @@ export function clampSplitterWidth(value: number, min: number, max: number): num
   return Math.min(max, Math.max(min, value))
 }
 
-export function financeGridTemplate(collapsed: boolean, leftWidth: number, rightWidth: number): string {
-  return collapsed
-    ? `${COLLAPSED_LEFT}px ${GRID_GAP}px minmax(${CENTER_MIN}px, 1fr) ${GRID_GAP}px ${rightWidth}px`
-    : `${leftWidth}px ${GRID_GAP}px minmax(${CENTER_MIN}px, 1fr) ${GRID_GAP}px ${rightWidth}px`
+export function financeGridTemplate(
+  leftCollapsed: boolean,
+  leftWidth: number,
+  rightWidth: number,
+  rightCollapsed = false,
+): string {
+  const leftTrack = leftCollapsed ? COLLAPSED_LEFT : leftWidth
+  const rightTrack = rightCollapsed ? COLLAPSED_RIGHT : rightWidth
+  return `${leftTrack}px ${GRID_GAP}px minmax(${CENTER_MIN}px, 1fr) ${GRID_GAP}px ${rightTrack}px`
 }
 
 export function watchlistLayout(width: number): 'wide' | 'compact' {

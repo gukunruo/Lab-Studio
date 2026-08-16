@@ -7,6 +7,7 @@ import {
 
 test('default preferences have sensible terminal values', () => {
   assert.equal(DEFAULT_FINANCE_PREFERENCES.leftCollapsed, false)
+  assert.equal(DEFAULT_FINANCE_PREFERENCES.rightCollapsed, false)
   assert.equal(DEFAULT_FINANCE_PREFERENCES.rightPanel, 'ai')
   assert.equal(DEFAULT_FINANCE_PREFERENCES.chartView, 'candle')
   assert.equal(DEFAULT_FINANCE_PREFERENCES.candlePeriod, 'day')
@@ -65,11 +66,19 @@ test('normalization ignores userKey, id, updatedAt, and credentials', () => {
   assert.equal('token' in result, false)
 })
 
-test('leftCollapsed and showMA coerce non-booleans to defaults', () => {
+test('leftCollapsed, rightCollapsed, and showMA coerce non-booleans to defaults', () => {
   assert.equal(normalizeFinancePreferences({ leftCollapsed: 'yes' }).leftCollapsed, false)
   assert.equal(normalizeFinancePreferences({ leftCollapsed: 1 }).leftCollapsed, false)
+  assert.equal(normalizeFinancePreferences({ rightCollapsed: 'yes' }).rightCollapsed, false)
+  assert.equal(normalizeFinancePreferences({ rightCollapsed: 1 }).rightCollapsed, false)
+  assert.equal(normalizeFinancePreferences({ rightCollapsed: true }).rightCollapsed, true)
   assert.equal(normalizeFinancePreferences({ showMA: 'true' }).showMA, false)
   assert.equal(normalizeFinancePreferences({ showMA: 0 }).showMA, false)
+})
+
+ test('rightCollapsed uses the default when omitted or null', () => {
+  assert.equal(normalizeFinancePreferences({}).rightCollapsed, false)
+  assert.equal(normalizeFinancePreferences({ rightCollapsed: null }).rightCollapsed, false)
 })
 
 test('subIndicator falls back to VOL for unknown values', () => {
