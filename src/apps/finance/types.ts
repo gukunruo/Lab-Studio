@@ -104,11 +104,11 @@ export interface BoardRow {
   netInflow: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: 'tushare'
-  weightSource?: 'ths_member+daily_basic.total_mv'
+  weightProvider?: 'eastmoney'
+  weightSource?: 'clist/get.f20.total_market_cap'
   weightTradeDate?: string
   marketCap?: number
-  marketCapUnit?: '万元'
+  marketCapUnit?: '元'
   memberCount?: number
   coveredMemberCount?: number
 }

@@ -3,15 +3,15 @@ import { eq } from 'drizzle-orm'
 import { db } from './db/client'
 import { financePreferences, watchlist } from './db/schema'
 import {
-  createTushareClient,
-  fetchTushareBoardMarketCaps,
-  TushareCoverageError,
-  TushareUnavailableError,
-  type BoardMarketCapAggregate,
-} from './finance-tushare'
+  createEastmoneyClient,
+  EastmoneyCoverageError,
+  EastmoneyUnavailableError,
+  fetchEastmoneyBoardMarketCaps,
+  type EastmoneyBoardMarketCapAggregate,
+} from './finance-eastmoney'
 
-const TUSHARE_WEIGHT_SOURCE = 'ths_member+daily_basic.total_mv' as const
-const TUSHARE_WEIGHT_PROVIDER = 'tushare' as const
+const EASTMONEY_WEIGHT_SOURCE = 'clist/get.f20.total_market_cap' as const
+const EASTMONEY_WEIGHT_PROVIDER = 'eastmoney' as const
 
 type BoardWeightStatus = 'available' | 'partial' | 'unavailable'
 
@@ -19,10 +19,10 @@ export interface BoardResponseMeta {
   ranking: { provider: '10jqka'; source: string }
   weight: {
     status: BoardWeightStatus
-    provider: 'tushare'
-    source: typeof TUSHARE_WEIGHT_SOURCE
+    provider: 'eastmoney'
+    source: typeof EASTMONEY_WEIGHT_SOURCE
     tradeDate: string | null
-    marketCapUnit: '万元'
+    marketCapUnit: '元'
     fetchedAt: string
     reason?: string
   }
@@ -38,10 +38,10 @@ function boardResponseMeta(weight: BoardResponseMeta['weight']): BoardResponseMe
 function unavailableBoardWeight(fetchedAt: string, reason: string): BoardResponseMeta['weight'] {
   return {
     status: 'unavailable',
-    provider: TUSHARE_WEIGHT_PROVIDER,
-    source: TUSHARE_WEIGHT_SOURCE,
+    provider: EASTMONEY_WEIGHT_PROVIDER,
+    source: EASTMONEY_WEIGHT_SOURCE,
     tradeDate: null,
-    marketCapUnit: '万元',
+    marketCapUnit: '元',
     fetchedAt,
     reason,
   }
@@ -54,7 +54,7 @@ function partialBoardWeight(fetchedAt: string, reason: string): BoardResponseMet
   }
 }
 
-function addBoardWeights(rows: BoardRow[], aggregates: BoardMarketCapAggregate[]): BoardRow[] {
+function addBoardWeights(rows: BoardRow[], aggregates: EastmoneyBoardMarketCapAggregate[]): BoardRow[] {
   const byCode = new Map(aggregates.map((row) => [row.boardCode, row]))
   return rows.map((row) => {
     const weight = byCode.get(row.code)
@@ -62,8 +62,8 @@ function addBoardWeights(rows: BoardRow[], aggregates: BoardMarketCapAggregate[]
       ? {
           ...row,
           weight: weight.weight,
-          weightProvider: TUSHARE_WEIGHT_PROVIDER,
-          weightSource: TUSHARE_WEIGHT_SOURCE,
+          weightProvider: EASTMONEY_WEIGHT_PROVIDER,
+          weightSource: EASTMONEY_WEIGHT_SOURCE,
           weightTradeDate: weight.tradeDate,
           marketCap: weight.marketCap,
           marketCapUnit: weight.marketCapUnit,
@@ -76,32 +76,37 @@ function addBoardWeights(rows: BoardRow[], aggregates: BoardMarketCapAggregate[]
 
 async function loadBoardWeights(rows: BoardRow[], kind: 'industry' | 'concept', fetchedAt: string): Promise<{ rows: BoardRow[]; meta: BoardResponseMeta }> {
   try {
-    const aggregates = await fetchTushareBoardMarketCaps({
+    const aggregates = await fetchEastmoneyBoardMarketCaps({
       rows: rows.map((row) => ({ code: row.code, name: row.name })),
       kind,
-      client: createTushareClient(),
+      snapshot: {
+        asOfDate: fetchedAt.slice(0, 10),
+        startedAt: Date.parse(fetchedAt),
+        maxSnapshotSkewMs: 60_000,
+      },
+      client: createEastmoneyClient(),
     })
     return {
       rows: addBoardWeights(rows, aggregates),
       meta: boardResponseMeta({
         status: 'available',
-        provider: TUSHARE_WEIGHT_PROVIDER,
-        source: TUSHARE_WEIGHT_SOURCE,
+        provider: EASTMONEY_WEIGHT_PROVIDER,
+        source: EASTMONEY_WEIGHT_SOURCE,
         tradeDate: aggregates[0]?.tradeDate ?? null,
-        marketCapUnit: '万元',
+        marketCapUnit: '元',
         fetchedAt,
       }),
     }
   } catch (error) {
-    const reason = error instanceof TushareUnavailableError
-      ? error.message
-      : error instanceof TushareCoverageError
-        ? error.message
-        : 'Tushare weight data is unavailable'
+    const reason = error instanceof EastmoneyUnavailableError
+      ? 'Eastmoney weight data is unavailable'
+      : error instanceof EastmoneyCoverageError
+        ? 'Eastmoney weight coverage is incomplete'
+        : 'Eastmoney weight data is unavailable'
     return {
       rows,
       meta: boardResponseMeta(
-        error instanceof TushareCoverageError
+        error instanceof EastmoneyCoverageError
           ? partialBoardWeight(fetchedAt, reason)
           : unavailableBoardWeight(fetchedAt, reason),
       ),
@@ -311,11 +316,11 @@ export interface BoardRow {
   netInflow: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: 'tushare'
-  weightSource?: typeof TUSHARE_WEIGHT_SOURCE
+  weightProvider?: 'eastmoney'
+  weightSource?: typeof EASTMONEY_WEIGHT_SOURCE
   weightTradeDate?: string
   marketCap?: number
-  marketCapUnit?: '万元'
+  marketCapUnit?: '元'
   memberCount?: number
   coveredMemberCount?: number
 }
