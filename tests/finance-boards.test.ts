@@ -4,26 +4,26 @@ import { createBoardPageState, heatmapAvailability, heatmapFlexWeights } from '.
 
 const availableMeta = {
   status: 'available' as const,
-  provider: 'eastmoney',
-  source: 'clist/get.f20.total_market_cap',
+  provider: 'tonghuashun',
+  source: 'ths_members+qt.gtimg.cn.f45.total_market_cap',
   tradeDate: '2026-08-14',
 }
 
 const unavailableMeta = {
   status: 'unavailable' as const,
-  provider: 'eastmoney',
-  source: 'clist/get.f20.total_market_cap',
+  provider: 'tonghuashun',
+  source: 'ths_members+qt.gtimg.cn.f45.total_market_cap',
   tradeDate: null,
 }
 
 const partialMeta = { ...availableMeta, status: 'partial' as const }
 
 const weightedRows = [
-  { weight: 75, weightProvider: 'eastmoney', weightSource: 'clist/get.f20.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 4, coveredMemberCount: 4 },
-  { weight: 25, weightProvider: 'eastmoney', weightSource: 'clist/get.f20.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 2, coveredMemberCount: 2 },
+  { weight: 75, weightProvider: 'tonghuashun', weightSource: 'ths_members+qt.gtimg.cn.f45.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 4, coveredMemberCount: 4 },
+  { weight: 25, weightProvider: 'tonghuashun', weightSource: 'ths_members+qt.gtimg.cn.f45.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 2, coveredMemberCount: 2 },
 ]
 
-const weightMeta = { status: 'available' as const, provider: 'eastmoney', source: 'clist/get.f20.total_market_cap', tradeDate: '2026-08-14' }
+const weightMeta = { status: 'available' as const, provider: 'tonghuashun', source: 'ths_members+qt.gtimg.cn.f45.total_market_cap', tradeDate: '2026-08-14' }
 
 test('board page state keeps kind and order query values', () => {
   const state = createBoardPageState({ kind: 'concept', order: 'down' })

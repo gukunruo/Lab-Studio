@@ -104,8 +104,8 @@ export interface BoardRow {
   netInflow: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: 'eastmoney'
-  weightSource?: 'clist/get.f20.total_market_cap'
+  weightProvider?: 'tonghuashun'
+  weightSource?: 'ths_members+qt.gtimg.cn.f45.total_market_cap'
   weightTradeDate?: string
   marketCap?: number
   marketCapUnit?: '元'
@@ -120,10 +120,10 @@ export interface BoardResponseMeta {
   }
   weight: {
     status: 'available' | 'partial' | 'unavailable'
-    provider: 'tushare'
-    source: 'ths_member+daily_basic.total_mv'
+    provider: 'tonghuashun'
+    source: 'ths_members+qt.gtimg.cn.f45.total_market_cap'
     tradeDate: string | null
-    marketCapUnit: '万元'
+    marketCapUnit: '元'
     fetchedAt: string
     reason?: string
   }
