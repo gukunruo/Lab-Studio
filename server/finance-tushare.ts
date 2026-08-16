@@ -134,7 +134,7 @@ export function aggregateBoardMarketCaps(input: {
   const { boards, members, dailyBasic, tradeDate } = input
   const basicByCode = new Map<string, number>()
   for (const row of dailyBasic) {
-    if (row.trade_date !== tradeDate) throw new Error('mixed trade dates in daily basic')
+    if (row.trade_date !== tradeDate) throw new TushareCoverageError('incomplete market-cap coverage')
     const value = typeof row.total_mv === 'number' ? row.total_mv : Number(row.total_mv)
     if (Number.isFinite(value) && value > 0) basicByCode.set(row.ts_code, value)
   }

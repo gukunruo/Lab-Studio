@@ -4,7 +4,7 @@ import { enterFullscreen, exitFullscreen, fullscreenState } from './fullscreen'
 import { marked } from 'marked'
 import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp, PhArrowsOutSimple, PhArrowsInSimple } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { COLLAPSED_RIGHT, FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextAiPanelState, nextDrawerState, nextRightCollapsedState, watchlistLayout, workspaceGridTemplate, type Quote, type WatchItem } from './useFinance'
+import { FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextAiPanelState, nextDrawerState, nextRightCollapsedState, watchlistLayout, workspaceGridTemplate, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
@@ -347,7 +347,7 @@ onMounted(async () => {
       ref="financeWorkspaceGrid"
       class="fin__grid"
       :class="{ 'fin__grid--fullscreen': isWorkspaceFullscreen }"
-      :style="{ gridTemplateColumns: isWorkspaceFullscreen ? workspaceGridTemplate(rightCollapsed ? COLLAPSED_RIGHT : rightWidth) : gridTemplate }"
+      :style="{ gridTemplateColumns: isWorkspaceFullscreen ? workspaceGridTemplate(rightWidth, rightCollapsed) : gridTemplate }"
     >
       <!-- 左栏：自选与市场指数 -->
       <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed, 'fin__drawer--open': leftDrawerOpen }">
@@ -535,11 +535,11 @@ onMounted(async () => {
       <aside
         id="finance-workspace-right"
         class="fin__col fin__col--right"
-        :class="{ 'fin__col--right-collapsed': rightCollapsed, 'fin__drawer--open': rightDrawerOpen }"
+        :class="{ 'fin__col--right-collapsed': rightCollapsed && !rightDrawerOpen, 'fin__drawer--open': rightDrawerOpen }"
         aria-label="右侧工作区"
       >
         <button
-          v-if="rightCollapsed && !rightDrawerOpen"
+          v-if="rightCollapsed && !rightDrawerOpen && !isWorkspaceFullscreen"
           class="fin__right-expand"
           type="button"
           aria-controls="finance-workspace-right"
@@ -548,7 +548,8 @@ onMounted(async () => {
           title="展开右侧工作区"
           @click="rightCollapsed = nextRightCollapsedState(rightCollapsed)"
         >
-          <span aria-hidden="true">‹</span>
+          <span class="fin__right-expand-mark" aria-hidden="true">‹</span>
+          <span class="fin__right-expand-label">工作区</span>
         </button>
         <template v-else>
         <nav class="fin__workspace-tabs" aria-label="右侧工作区" role="tablist">
@@ -655,6 +656,19 @@ onMounted(async () => {
         </template>
       </aside>
     </div>
+
+    <button
+      v-if="isWorkspaceFullscreen && rightCollapsed"
+      class="fin__fullscreen-workspace-reopen"
+      type="button"
+      aria-controls="finance-workspace-right"
+      aria-label="在全屏中展开右侧工作区"
+      title="展开右侧工作区"
+      @click="rightCollapsed = false"
+    >
+      <span aria-hidden="true">‹</span>
+      <span>工作区</span>
+    </button>
 
     <div v-if="anyDrawerOpen" class="fin__scrim" aria-hidden="true" @click="closeDrawers()" />
   </div>
@@ -899,9 +913,12 @@ onMounted(async () => {
 }
 
 .fin__col--right-collapsed {
+  position: relative;
   align-items: center;
   justify-content: center;
   gap: 0;
+  background: var(--color-surface-2);
+  border-color: transparent;
 }
 
 .fin__right-expand,
@@ -909,30 +926,67 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.7rem;
-  height: 2rem;
   padding: 0;
   color: var(--color-text-muted);
   background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: 1.2rem;
-  line-height: 1;
+  border: 0;
   cursor: pointer;
 }
 
-.fin__right-expand:hover,
-.fin__right-collapse:hover {
+.fin__right-expand {
+  flex-direction: column;
+  gap: 0.45rem;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-md);
+}
+
+.fin__right-expand-mark {
+  display: block;
   color: var(--color-accent);
-  border-color: var(--color-accent);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.fin__right-expand-label {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+}
+
+.fin__right-expand:hover,
+.fin__right-expand:focus-visible {
+  color: var(--color-accent);
   background: var(--color-accent-soft);
+  outline: none;
 }
 
 .fin__right-collapse {
-  align-self: flex-end;
-  flex: 0 0 auto;
-  margin: 0.35rem;
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  z-index: 2;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
 }
+
+.fin__right-collapse:hover,
+.fin__right-collapse:focus-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  outline: none;
+}
+
+.fin__right-expand:focus-visible,
+.fin__right-collapse:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.fin__grid--fullscreen > .fin__col--right-collapsed {
+  display: none;
+}
+
 
 .fin__workspace-tabs {
   display: grid;
@@ -1529,7 +1583,6 @@ onMounted(async () => {
   position: fixed;
   inset: 0;
   z-index: 100;
-  grid-template-columns: minmax(0, 1fr) 12px minmax(48px, 360px) !important;
   width: 100vw;
   height: 100vh;
   padding: var(--space-3);
@@ -1553,7 +1606,7 @@ onMounted(async () => {
 }
 
 .fin__grid--fullscreen > .fin__col--right-collapsed {
-  min-width: 48px;
+  display: none;
 }
 
 .fin__grid--fullscreen > .fin__col--center,
@@ -1565,6 +1618,35 @@ onMounted(async () => {
   width: 100vw;
   height: 100vh;
   background: var(--color-bg);
+}
+
+.fin__fullscreen-workspace-reopen {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  z-index: 110;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.8rem;
+  padding: 0 0.65rem 0 0.5rem;
+  color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.7rem;
+  writing-mode: horizontal-tb;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.fin__fullscreen-workspace-reopen:hover,
+.fin__fullscreen-workspace-reopen:focus-visible {
+  background: var(--color-accent-soft);
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 .fin__chart-wrap {

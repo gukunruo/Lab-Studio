@@ -13,8 +13,8 @@ export function nextAiPanelState(expanded: boolean): boolean {
 }
 export const CENTER_MIN = 520
 
-export function workspaceGridTemplate(rightWidth: number): string {
-  return `minmax(0, 1fr) ${GRID_GAP}px ${rightWidth}px`
+export function workspaceGridTemplate(rightWidth: number, rightCollapsed = false): string {
+  return rightCollapsed ? 'minmax(0, 1fr)' : `minmax(0, 1fr) ${GRID_GAP}px ${rightWidth}px`
 }
 
 export function nextMaMenuState(open: boolean): boolean {

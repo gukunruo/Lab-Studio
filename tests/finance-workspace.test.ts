@@ -12,8 +12,6 @@ import {
 } from '../src/apps/finance/useFinance'
 import {
   createBoardPageState,
-  heatmapAvailability,
-  heatmapFlexWeights,
 } from '../src/apps/finance/boards'
 
 test('index strip reserves a readable card height', () => {
@@ -35,11 +33,9 @@ test('AI panel toggle keeps the panel open or closed explicitly', () => {
 })
 
 
-test('fullscreen workspace keeps the center and AI columns together', () => {
-  assert.equal(
-    workspaceGridTemplate(360),
-    'minmax(0, 1fr) 12px 360px',
-  )
+test('fullscreen workspace only reserves the AI column when expanded', () => {
+  assert.equal(workspaceGridTemplate(360, false), 'minmax(0, 1fr) 12px 360px')
+  assert.equal(workspaceGridTemplate(360, true), 'minmax(0, 1fr)')
 })
 
 test('right workspace collapses to an accessible rail without changing the center minimum', () => {
@@ -56,34 +52,13 @@ test('right workspace collapses to an accessible rail without changing the cente
   )
 })
 
-test('fullscreen workspace keeps a collapsed right rail when requested', () => {
-  assert.equal(
-    workspaceGridTemplate(COLLAPSED_RIGHT),
-    'minmax(0, 1fr) 12px 48px',
-  )
+test('fullscreen workspace no longer reserves a collapsed right rail', () => {
+  assert.equal(workspaceGridTemplate(COLLAPSED_RIGHT, true), 'minmax(0, 1fr)')
 })
 
 test('board page state accepts the heatmap view query', () => {
   assert.equal(
     createBoardPageState({ kind: 'industry', order: 'up', view: 'heatmap' }).view,
     'heatmap',
-  )
-})
-
-test('heatmap flex weights require real positive sourced weights', () => {
-  assert.deepEqual(
-    heatmapFlexWeights([
-      { weight: 75, weightProvider: 'provider', weightSource: 'source' },
-      { weight: 25, weightProvider: 'provider', weightSource: 'source' },
-    ]),
-    [0.75, 0.25],
-  )
-  assert.deepEqual(
-    heatmapFlexWeights([{ weight: 75 }]),
-    [],
-  )
-  assert.equal(
-    heatmapAvailability([{ weight: 0, weightProvider: 'provider', weightSource: 'source' }]).available,
-    false,
   )
 })

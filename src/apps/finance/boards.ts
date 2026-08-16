@@ -1,3 +1,5 @@
+import type { BoardResponseMeta } from './types'
+
 export type BoardKind = 'industry' | 'concept'
 export type BoardOrder = 'up' | 'down'
 export type BoardView = 'list' | 'heatmap'
@@ -13,14 +15,13 @@ export interface BoardWeight {
   weightProvider?: string
   weightSource?: string
   weightTradeDate?: string
+  memberCount?: number
+  coveredMemberCount?: number
 }
 
-export interface BoardWeightMeta {
-  status: 'available' | 'partial' | 'unavailable'
-  provider: string
-  source: string
-  tradeDate: string | null
-}
+export type BoardWeightMeta = Pick<BoardResponseMeta['weight'], 'status' | 'provider' | 'source' | 'tradeDate' | 'reason'>
+
+export const HEATMAP_UNAVAILABLE_REASON = '暂无真实权重数据，热力图暂不可用'
 
 export function createBoardPageState(query: Record<string, unknown>): BoardPageState {
   const validKind = query.kind === 'industry' || query.kind === 'concept'
@@ -31,20 +32,31 @@ export function createBoardPageState(query: Record<string, unknown>): BoardPageS
   return { kind, order, view }
 }
 
-export function heatmapAvailability(rows: BoardWeight[]): { available: boolean; reason: string } {
-  const complete = rows.length > 0 && rows.every((row) => (
+export function heatmapAvailability(
+  rows: BoardWeight[],
+  meta?: BoardWeightMeta,
+): { available: boolean; reason: string } {
+  const unavailable = meta?.status !== 'available'
+  const referenceProvider = meta?.provider
+  const referenceSource = meta?.source
+  const referenceDate = meta?.tradeDate
+  const complete = !unavailable && rows.length > 0 && Boolean(referenceDate) && rows.every((row) => (
     Number.isFinite(row.weight)
     && (row.weight ?? 0) > 0
-    && Boolean(row.weightProvider)
-    && Boolean(row.weightSource)
+    && row.weightProvider === referenceProvider
+    && row.weightSource === referenceSource
+    && row.weightTradeDate === referenceDate
+    && Number.isInteger(row.memberCount)
+    && (row.memberCount ?? 0) > 0
+    && row.coveredMemberCount === row.memberCount
   ))
   return complete
     ? { available: true, reason: '' }
-    : { available: false, reason: '暂无真实权重数据，热力图不可用' }
+    : { available: false, reason: HEATMAP_UNAVAILABLE_REASON }
 }
 
-export function heatmapFlexWeights(rows: BoardWeight[]): number[] {
-  if (!heatmapAvailability(rows).available) return []
+export function heatmapFlexWeights(rows: BoardWeight[], meta?: BoardWeightMeta): number[] {
+  if (!heatmapAvailability(rows, meta).available) return []
   const total = rows.reduce((sum, row) => sum + (row.weight ?? 0), 0)
   if (!Number.isFinite(total) || total <= 0) return []
   return rows.map((row) => (row.weight ?? 0) / total)

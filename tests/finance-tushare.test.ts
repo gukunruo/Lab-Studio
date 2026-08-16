@@ -5,6 +5,7 @@ import {
   aggregateBoardMarketCaps,
   createTushareClient,
   resolveLatestTradingDate,
+  TushareCoverageError,
   type DailyBasicRow,
   type ThsMemberRow,
   type TradeCalendarRow,
@@ -96,4 +97,23 @@ test('board market caps require complete positive same-date member coverage', ()
     dailyBasic: [{ ts_code: '600000.SH', trade_date: '2026-08-14', total_mv: 100 }],
     tradeDate: '2026-08-14',
   }), /incomplete market-cap coverage/)
+})
+
+test('invalid market caps are classified as coverage failures', () => {
+  const members: ThsMemberRow[] = [
+    { ts_code: 'THS001.CN', con_code: '600000.SH', in_date: '2026-01-01', out_date: '' },
+  ]
+  assert.throws(() => aggregateBoardMarketCaps({
+    boards: [{ ts_code: 'THS001.CN' }],
+    members,
+    dailyBasic: [{ ts_code: '600000.SH', trade_date: '2026-08-14', total_mv: Number.NaN }],
+    tradeDate: '2026-08-14',
+  }), TushareCoverageError)
+
+  assert.throws(() => aggregateBoardMarketCaps({
+    boards: [{ ts_code: 'THS001.CN' }],
+    members,
+    dailyBasic: [{ ts_code: '600000.SH', trade_date: '2026-08-13', total_mv: 100 }],
+    tradeDate: '2026-08-14',
+  }), TushareCoverageError)
 })
