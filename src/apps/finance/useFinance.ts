@@ -2,9 +2,18 @@ import { computed, ref } from 'vue'
 import type { BoardRow, CandlePeriod, Kline, KlinePage, MarketGroup, MarketKey, MarketsResponse, MinuteInterval, MinutePoint, QuoteDetail, SearchItem } from './types'
 
 export const CHART_MA_PERIODS = [5, 10, 20, 30, 60, 120, 250] as const
+export const INDEX_STRIP_HEIGHT = 64
 export const GRID_GAP = 12
 export const COLLAPSED_LEFT = 96
 export const CENTER_MIN = 520
+
+export function workspaceGridTemplate(rightWidth: number): string {
+  return `minmax(0, 1fr) ${GRID_GAP}px ${rightWidth}px`
+}
+
+export function nextMaMenuState(open: boolean): boolean {
+  return !open
+}
 
 export function chartRightOffsetLimit(): number {
   return 0

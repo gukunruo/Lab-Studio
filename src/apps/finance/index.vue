@@ -4,7 +4,7 @@ import { enterFullscreen, exitFullscreen, fullscreenState } from './fullscreen'
 import { marked } from 'marked'
 import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp, PhArrowsOutSimple, PhArrowsInSimple } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, watchlistLayout, type Quote, type WatchItem } from './useFinance'
+import { FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, watchlistLayout, workspaceGridTemplate, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
@@ -21,6 +21,7 @@ const aiText = ref('')
 const aiError = ref('')
 const aiAvailable = ref(false)
 const aiExpanded = ref(true)
+const aiPrompt = ref('')
 const watchlistCollapsed = ref(false)
 const leftDrawerOpen = ref(false)
 const rightDrawerOpen = ref(false)
@@ -35,7 +36,7 @@ const RIGHT_MAX = 480
 const workspaceTab = ref<'ai' | 'boards' | 'settings'>('ai')
 const colorSchemeLabel = ref('中国市场')
 const chartPrefs = ref<ChartPrefs | undefined>(undefined)
-const financeWorkspace = ref<HTMLElement | null>(null)
+const financeWorkspaceGrid = ref<HTMLElement | null>(null)
 const isWorkspaceFullscreen = ref(false)
 const fullscreenError = ref('')
 let prefsLoaded = false
@@ -210,6 +211,10 @@ function buildSnapshot(): string {
   return lines.join('\n')
 }
 
+function analysisInstruction(): string {
+  return aiPrompt.value.trim() || '请重点关注趋势、量价关系、技术指标和主要风险。'
+}
+
 async function runAnalysis() {
   if (!finance.selected.value || !finance.klines.value.length || analyzing.value) return
   analyzing.value = true
@@ -228,7 +233,7 @@ async function runAnalysis() {
   const messages: ChatMessage[] = [
     {
       role: 'user',
-      content: `请分析以下标的：\n\n${buildSnapshot()}\n\n结合均线、MACD、RSI、KDJ、BOLL 与量价关系，给出走势研判、量价关系、技术指标验证、推演与风险。`,
+      content: `请分析以下标的：\n\n${buildSnapshot()}\n\n用户补充要求：${analysisInstruction()}\n\n结合均线、MACD、RSI、KDJ、BOLL 与量价关系，给出走势研判、量价关系、技术指标验证、推演与风险。`,
     },
   ]
   try {
@@ -260,7 +265,7 @@ function syncWorkspaceFullscreen() {
 }
 
 async function toggleWorkspaceFullscreen() {
-  const target = financeWorkspace.value
+  const target = financeWorkspaceGrid.value
   if (!target) return
   fullscreenError.value = ''
   const success = isWorkspaceFullscreen.value
@@ -334,7 +339,12 @@ onMounted(async () => {
       <button ref="rightDrawerTrigger" type="button" class="fin__drawer-btn" @click="openDrawer('right')">工作区</button>
     </div>
     <!-- 三栏主体 -->
-    <div class="fin__grid" :style="{ gridTemplateColumns: gridTemplate }">
+    <div
+      ref="financeWorkspaceGrid"
+      class="fin__grid"
+      :class="{ 'fin__grid--fullscreen': isWorkspaceFullscreen }"
+      :style="{ gridTemplateColumns: isWorkspaceFullscreen ? workspaceGridTemplate(rightWidth) : gridTemplate }"
+    >
       <!-- 左栏：自选与市场指数 -->
       <aside class="fin__col fin__col--left" :class="{ 'fin__col--collapsed': watchlistCollapsed, 'fin__drawer--open': leftDrawerOpen }">
         <nav class="fin__left-tabs" aria-label="行情导航" role="tablist">
@@ -449,7 +459,7 @@ onMounted(async () => {
       />
 
       <!-- 中栏：标的详情 + K 线 + AI 分析 -->
-      <main ref="financeWorkspace" class="fin__col fin__col--center" :class="{ 'fin__workspace--fullscreen': isWorkspaceFullscreen }">
+      <main class="fin__col fin__col--center">
         <IndexStrip
           class="fin__top-indices"
           :quotes="marketQuotes"
@@ -564,6 +574,15 @@ onMounted(async () => {
             </button>
             <div v-if="aiExpanded" class="fin__ai-body-wrap">
               <p class="fin__disclaimer">基于公开历史行情与 AI 研判，仅供研究参考，不构成投资建议。</p>
+              <label class="fin__ai-prompt-label" for="finance-ai-prompt">补充分析要求</label>
+              <textarea
+                id="finance-ai-prompt"
+                v-model="aiPrompt"
+                class="fin__ai-prompt"
+                rows="3"
+                maxlength="500"
+                placeholder="例如：重点分析短线支撑位和放量风险"
+              />
               <div class="fin__ai-actions">
                 <button class="fin__analyze" :disabled="analyzing || !finance.klines.value.length" @click="runAnalysis">
                   <PhSparkle :size="14" weight="fill" />
@@ -757,7 +776,9 @@ onMounted(async () => {
 }
 
 .fin__top-indices {
-  flex: 1;
+  flex: 0 0 64px;
+  height: 64px;
+  min-height: 64px;
   min-width: 0;
 }
 
@@ -1415,17 +1436,39 @@ onMounted(async () => {
   font-size: 0.7rem;
 }
 
-.fin__workspace--fullscreen {
+.fin__grid--fullscreen {
   position: fixed;
   inset: 0;
   z-index: 100;
+  grid-template-columns: minmax(0, 1fr) 12px minmax(280px, 360px) !important;
   width: 100vw;
   height: 100vh;
   padding: var(--space-3);
   background: var(--color-bg);
 }
 
-.fin__workspace--fullscreen:fullscreen {
+.fin__grid--fullscreen > .fin__col--left,
+.fin__grid--fullscreen > .fin__gutter--left,
+.fin__grid--fullscreen > .fin__gutter--right {
+  display: none;
+}
+
+.fin__grid--fullscreen > .fin__col--center {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.fin__grid--fullscreen > .fin__col--right {
+  grid-column: 3;
+  min-width: 0;
+}
+
+.fin__grid--fullscreen > .fin__col--center,
+.fin__grid--fullscreen > .fin__col--right {
+  grid-row: 1;
+}
+
+.fin__grid--fullscreen:fullscreen {
   width: 100vw;
   height: 100vh;
   background: var(--color-bg);
@@ -1527,6 +1570,29 @@ onMounted(async () => {
   font-size: 0.72rem;
   color: var(--color-text-muted);
   line-height: 1.5;
+}
+
+.fin__ai-prompt-label {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.fin__ai-prompt {
+  width: 100%;
+  min-height: 4.2rem;
+  padding: 0.5rem;
+  resize: vertical;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.fin__ai-prompt:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 .fin__ai-actions {

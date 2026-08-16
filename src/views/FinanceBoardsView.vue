@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { PhArrowLeft, PhChartLine } from '@phosphor-icons/vue'
 import BoardTable from '@/apps/finance/components/BoardTable.vue'
-import { createBoardPageState, heatmapAvailability, type BoardKind, type BoardOrder } from '@/apps/finance/boards'
+import { boardPageQuery, createBoardPageState, heatmapAvailability, heatmapFlexWeights, type BoardKind, type BoardOrder } from '@/apps/finance/boards'
 import type { BoardRow } from '@/apps/finance/types'
 
 const route = useRoute()
@@ -12,11 +12,13 @@ const state = computed(() => createBoardPageState(route.query as Record<string, 
 const rows = ref<BoardRow[]>([])
 const loading = ref(false)
 const error = ref('')
-const heatmap = computed(() => heatmapAvailability([]))
+const heatmapRows = computed(() => rows.value as Array<BoardRow & { weight?: number; weightProvider?: string; weightSource?: string }>)
+const heatmap = computed(() => heatmapAvailability(heatmapRows.value))
+const heatmapWeights = computed(() => heatmapFlexWeights(heatmapRows.value))
 let sequence = 0
 
-function updateQuery(kind: BoardKind, order: BoardOrder) {
-  void router.replace({ query: { kind, order } })
+function updateQuery(kind: BoardKind, order: BoardOrder, view = state.value.view) {
+  void router.replace({ query: boardPageQuery({ kind, order, view }) })
 }
 
 async function loadBoards() {
@@ -45,6 +47,11 @@ function setOrder(order: BoardOrder) {
   updateQuery(state.value.kind, order)
 }
 
+function setView(view: 'list' | 'heatmap') {
+  if (view === 'heatmap' && !heatmap.value.available) return
+  updateQuery(state.value.kind, state.value.order, view)
+}
+
 watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true })
 </script>
 
@@ -62,19 +69,44 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
         </div>
       </div>
       <div class="boards-page__modes" aria-label="板块视图">
-        <button class="boards-page__mode boards-page__mode--active" type="button">列表</button>
-        <button class="boards-page__mode" type="button" disabled title="暂无真实权重数据，热力图不可用">热力图</button>
+        <button
+          class="boards-page__mode"
+          :class="{ 'boards-page__mode--active': state.view === 'list' }"
+          type="button"
+          @click="setView('list')"
+        >列表</button>
+        <button
+          class="boards-page__mode"
+          :class="{ 'boards-page__mode--active': state.view === 'heatmap' }"
+          type="button"
+          :disabled="!heatmap.available"
+          :title="heatmap.available ? '按真实权重展示' : heatmap.reason"
+          @click="setView('heatmap')"
+        >热力图</button>
       </div>
     </header>
 
     <main class="boards-page__main">
-      <div class="boards-page__notice" role="status">
+      <div v-if="!heatmap.available" class="boards-page__notice" role="status">
         {{ heatmap.reason }}
       </div>
       <div v-if="error" class="boards-page__error" role="alert">
         <strong>板块数据暂时不可用</strong>
         <span>{{ error }}</span>
         <button type="button" @click="loadBoards">重试</button>
+      </div>
+      <div v-else-if="state.view === 'heatmap' && heatmap.available" class="boards-page__heatmap" aria-label="板块权重热力图">
+        <button
+          v-for="(row, index) in heatmapRows"
+          :key="row.code"
+          type="button"
+          class="boards-page__heatmap-cell"
+          :style="{ flex: `${heatmapWeights[index] ?? 0} 1 0%` }"
+          @click="() => undefined"
+        >
+          <strong>{{ row.name }}</strong>
+          <span>{{ row.pct > 0 ? '+' : '' }}{{ row.pct.toFixed(2) }}%</span>
+        </button>
       </div>
       <BoardTable
         v-else
@@ -86,6 +118,9 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
         @set-order="setOrder"
         @select="() => undefined"
       />
+      <div v-if="state.view === 'heatmap' && !heatmap.available" class="boards-page__notice" role="status">
+        {{ heatmap.reason }}
+      </div>
     </main>
   </div>
 </template>
@@ -169,11 +204,53 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
 }
 
 .boards-page__main {
-  width: min(100%, 980px);
+  width: min(100%, 1180px);
   flex: 1;
   min-height: 0;
   margin: 0 auto;
   padding: var(--space-5);
+}
+
+.boards-page__heatmap {
+  display: flex;
+  gap: 0.3rem;
+  min-height: 420px;
+  padding: 0.3rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.boards-page__heatmap-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  color: var(--color-text);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.boards-page__heatmap-cell:hover {
+  border-color: var(--color-accent);
+}
+
+.boards-page__heatmap-cell strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boards-page__heatmap-cell span {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
 }
 
 .boards-page__notice {

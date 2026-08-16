@@ -46,9 +46,9 @@ function fmtPrice(p: number): string {
   display: flex;
   align-items: stretch;
   gap: var(--space-2);
-  height: 52px;
-  min-height: 52px;
-  padding: 0.3rem var(--space-2);
+  height: 64px;
+  min-height: 64px;
+  padding: 0.4rem var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);

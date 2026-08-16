@@ -82,6 +82,7 @@ const enabledMA = ref<Record<MAPeriod, boolean>>({
   250: false,
 })
 const activeSub = ref<SubIndicator | null>('VOL')
+const maMenuOpen = ref(false)
 const hoveredData = ref<ChartData | null>(null)
 const hoveredIndex = ref<number | null>(null)
 const indicatorReadoutVersion = ref(0)
@@ -366,6 +367,7 @@ function applyInitialPrefs() {
 function toggleMA() {
   if (view.value === 'minute') return
   showMA.value = !showMA.value
+  if (!showMA.value) maMenuOpen.value = false
   syncIndicators()
   resetReadoutAfterRender()
   emitPrefsChange()
@@ -377,6 +379,11 @@ function toggleMAPeriod(period: MAPeriod) {
   syncIndicators()
   resetReadoutAfterRender()
   emitPrefsChange()
+}
+
+function toggleMaMenu() {
+  if (view.value === 'minute' || !showMA.value) return
+  maMenuOpen.value = !maMenuOpen.value
 }
 
 function toggleSub(name: SubIndicator) {
@@ -604,23 +611,31 @@ onBeforeUnmount(() => {
           >
             {{ ma }}
           </button>
-          <details class="kchart__ma-more">
-            <summary class="kchart__ma-toggle" :class="{ 'kchart__ma-toggle--active': showMA && EXTENDED_MA_PERIODS.some((ma) => enabledMA[ma]) }">更多</summary>
-            <div class="kchart__ma-menu">
+          <div class="kchart__ma-more">
+            <button
+              type="button"
+              class="kchart__ma-toggle"
+              :class="{ 'kchart__ma-toggle--active': showMA && EXTENDED_MA_PERIODS.some((ma) => enabledMA[ma]) }"
+              :disabled="view === 'minute' || !showMA"
+              :aria-expanded="maMenuOpen"
+              aria-haspopup="menu"
+              @click="toggleMaMenu"
+            >更多</button>
+            <div v-if="maMenuOpen" class="kchart__ma-menu" role="menu">
               <button
                 v-for="ma in EXTENDED_MA_PERIODS"
                 :key="ma"
                 type="button"
+                role="menuitemcheckbox"
                 class="kchart__ma-menu-item"
                 :class="{ 'kchart__ma-menu-item--active': enabledMA[ma] }"
-                :disabled="view === 'minute' || !showMA"
-                :aria-pressed="enabledMA[ma]"
+                :aria-checked="enabledMA[ma]"
                 @click="toggleMAPeriod(ma)"
               >
                 MA{{ ma }}
               </button>
             </div>
-          </details>
+          </div>
         </div>
         <div class="kchart__group" aria-label="技术指标">
           <button
@@ -797,12 +812,9 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-.kchart__ma-more summary {
-  list-style: none;
-}
-
-.kchart__ma-more summary::-webkit-details-marker {
-  display: none;
+.kchart__ma-more > .kchart__ma-toggle {
+  display: inline-flex;
+  align-items: center;
 }
 
 .kchart__ma-menu {
