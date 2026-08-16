@@ -118,9 +118,6 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
         @set-order="setOrder"
         @select="() => undefined"
       />
-      <div v-if="state.view === 'heatmap' && !heatmap.available" class="boards-page__notice" role="status">
-        {{ heatmap.reason }}
-      </div>
     </main>
   </div>
 </template>

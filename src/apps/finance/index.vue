@@ -4,12 +4,13 @@ import { enterFullscreen, exitFullscreen, fullscreenState } from './fullscreen'
 import { marked } from 'marked'
 import { PhX, PhSparkle, PhStop, PhCaretDown, PhCaretUp, PhArrowsOutSimple, PhArrowsInSimple } from '@phosphor-icons/vue'
 import { getAiConfig, streamChat, type ChatMessage } from '@/learn/ai'
-import { FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextDrawerState, watchlistLayout, workspaceGridTemplate, type Quote, type WatchItem } from './useFinance'
+import { FRONTEND_MARKET_KEYS, useFinance, itemToSymbol, clampSplitterWidth, financeGridTemplate, nextAiPanelState, nextDrawerState, watchlistLayout, workspaceGridTemplate, type Quote, type WatchItem } from './useFinance'
 import type { ChartPrefs, SearchItem } from './types'
 import KlineChart from './chart/KlineChart.vue'
 import QuoteHeader from './components/QuoteHeader.vue'
 import IndexStrip from './components/IndexStrip.vue'
 import BoardTable from './components/BoardTable.vue'
+import { RouterLink } from 'vue-router'
 import ResizeGutter from '@/components/ResizeGutter.vue'
 
 const props = defineProps<{ finance?: ReturnType<typeof useFinance> }>()
@@ -565,14 +566,14 @@ onMounted(async () => {
         </nav>
 
         <div v-if="workspaceTab === 'ai'" id="finance-workspace-ai" class="fin__workspace-panel" role="tabpanel">
-          <div v-if="!aiAvailable" class="fin__ai-unavailable">未配置 AI，无法进行分析。</div>
-          <template v-else>
-            <button class="fin__ai-toggle" type="button" @click="aiExpanded = !aiExpanded">
-              <component :is="aiExpanded ? PhCaretDown : PhCaretUp" :size="14" />
-              <span>当前标的分析</span>
-              <span v-if="!aiExpanded && aiText" class="fin__ai-preview">已生成</span>
-            </button>
-            <div v-if="aiExpanded" class="fin__ai-body-wrap">
+          <button class="fin__ai-toggle" type="button" @click="aiExpanded = nextAiPanelState(aiExpanded)">
+            <component :is="aiExpanded ? PhCaretDown : PhCaretUp" :size="14" />
+            <span>当前标的分析</span>
+            <span v-if="!aiExpanded && aiText" class="fin__ai-preview">已生成</span>
+          </button>
+          <div v-if="aiExpanded">
+            <div v-if="!aiAvailable" class="fin__ai-unavailable">未配置 AI，无法进行分析。</div>
+            <div v-else class="fin__ai-body-wrap">
               <p class="fin__disclaimer">基于公开历史行情与 AI 研判，仅供研究参考，不构成投资建议。</p>
               <label class="fin__ai-prompt-label" for="finance-ai-prompt">补充分析要求</label>
               <textarea
@@ -596,7 +597,7 @@ onMounted(async () => {
               <div v-if="aiText" class="fin__ai-body markdown" v-html="renderedAi" />
               <div v-else-if="!analyzing" class="fin__ai-empty">点击「开始分析」，AI 将基于当前 K 线与技术指标给出走势研判。</div>
             </div>
-          </template>
+          </div>
         </div>
 
         <div v-else-if="workspaceTab === 'boards'" id="finance-workspace-boards" class="fin__workspace-panel fin__workspace-panel--boards" role="tabpanel">
@@ -609,6 +610,7 @@ onMounted(async () => {
             @set-order="finance.setBoardOrder"
             @select="finance.selectBoardRow"
           />
+          <RouterLink to="/finance/boards" class="fin__boards-link">查看完整板块研究</RouterLink>
         </div>
 
         <div v-else id="finance-workspace-settings" class="fin__workspace-panel fin__workspace-panel--settings" role="tabpanel">
@@ -894,7 +896,24 @@ onMounted(async () => {
 }
 
 .fin__workspace-panel--boards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 0.5rem;
+}
+
+.fin__boards-link {
+  flex-shrink: 0;
+  padding: 0.45rem 0.65rem;
+  color: var(--color-accent);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.fin__boards-link:hover {
+  background: var(--color-accent-soft);
 }
 
 .fin__workspace-panel--settings {

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { dispose, init, registerIndicator, type Chart, type Crosshair, type KLineData } from 'klinecharts'
 import type { CandlePeriod, ChartPrefs, ChartSelection, Kline, MinuteInterval, MinutePoint, SubIndicator } from '../types'
-import { candleAxisConfig, CHART_MA_PERIODS, chartRightOffsetLimit, parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
+import { candleAxisConfig, CHART_MA_PERIODS, chartRightOffsetLimit, MA_MENU_PORTAL_TARGET, parseTencentKlineTimestamp, shouldLoadMoreHistory } from '../useFinance'
 
 const props = defineProps<{
   klines: Kline[]
@@ -83,6 +83,8 @@ const enabledMA = ref<Record<MAPeriod, boolean>>({
 })
 const activeSub = ref<SubIndicator | null>('VOL')
 const maMenuOpen = ref(false)
+const maMenuTrigger = ref<HTMLButtonElement | null>(null)
+const maMenuPosition = ref({ top: 0, left: 0 })
 const hoveredData = ref<ChartData | null>(null)
 const hoveredIndex = ref<number | null>(null)
 const indicatorReadoutVersion = ref(0)
@@ -384,6 +386,13 @@ function toggleMAPeriod(period: MAPeriod) {
 function toggleMaMenu() {
   if (view.value === 'minute' || !showMA.value) return
   maMenuOpen.value = !maMenuOpen.value
+  if (maMenuOpen.value && maMenuTrigger.value) {
+    const rect = maMenuTrigger.value.getBoundingClientRect()
+    maMenuPosition.value = {
+      top: rect.bottom + 4,
+      left: Math.max(8, rect.right - 72),
+    }
+  }
 }
 
 function toggleSub(name: SubIndicator) {
@@ -613,6 +622,7 @@ onBeforeUnmount(() => {
           </button>
           <div class="kchart__ma-more">
             <button
+              ref="maMenuTrigger"
               type="button"
               class="kchart__ma-toggle"
               :class="{ 'kchart__ma-toggle--active': showMA && EXTENDED_MA_PERIODS.some((ma) => enabledMA[ma]) }"
@@ -621,20 +631,27 @@ onBeforeUnmount(() => {
               aria-haspopup="menu"
               @click="toggleMaMenu"
             >更多</button>
-            <div v-if="maMenuOpen" class="kchart__ma-menu" role="menu">
-              <button
-                v-for="ma in EXTENDED_MA_PERIODS"
-                :key="ma"
-                type="button"
-                role="menuitemcheckbox"
-                class="kchart__ma-menu-item"
-                :class="{ 'kchart__ma-menu-item--active': enabledMA[ma] }"
-                :aria-checked="enabledMA[ma]"
-                @click="toggleMAPeriod(ma)"
+            <Teleport :to="MA_MENU_PORTAL_TARGET">
+              <div
+                v-if="maMenuOpen"
+                class="kchart__ma-menu kchart__ma-menu--portal"
+                role="menu"
+                :style="{ top: `${maMenuPosition.top}px`, left: `${maMenuPosition.left}px` }"
               >
-                MA{{ ma }}
-              </button>
-            </div>
+                <button
+                  v-for="ma in EXTENDED_MA_PERIODS"
+                  :key="ma"
+                  type="button"
+                  role="menuitemcheckbox"
+                  class="kchart__ma-menu-item"
+                  :class="{ 'kchart__ma-menu-item--active': enabledMA[ma] }"
+                  :aria-checked="enabledMA[ma]"
+                  @click="toggleMAPeriod(ma)"
+                >
+                  MA{{ ma }}
+                </button>
+              </div>
+            </Teleport>
           </div>
         </div>
         <div class="kchart__group" aria-label="技术指标">
@@ -829,6 +846,13 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   box-shadow: var(--shadow-md);
+}
+
+.kchart__ma-menu--portal {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 1000;
 }
 
 .kchart__ma-menu-item {

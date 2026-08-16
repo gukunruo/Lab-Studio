@@ -3,8 +3,13 @@ import type { BoardRow, CandlePeriod, Kline, KlinePage, MarketGroup, MarketKey, 
 
 export const CHART_MA_PERIODS = [5, 10, 20, 30, 60, 120, 250] as const
 export const INDEX_STRIP_HEIGHT = 64
+export const MA_MENU_PORTAL_TARGET = 'body'
 export const GRID_GAP = 12
 export const COLLAPSED_LEFT = 96
+
+export function nextAiPanelState(expanded: boolean): boolean {
+  return !expanded
+}
 export const CENTER_MIN = 520
 
 export function workspaceGridTemplate(rightWidth: number): string {

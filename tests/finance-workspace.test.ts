@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   INDEX_STRIP_HEIGHT,
+  MA_MENU_PORTAL_TARGET,
+  nextAiPanelState,
   nextMaMenuState,
   workspaceGridTemplate,
 } from '../src/apps/finance/useFinance'
@@ -19,6 +21,16 @@ test('MA more menu toggles open and closed from a button click', () => {
   assert.equal(nextMaMenuState(false), true)
   assert.equal(nextMaMenuState(true), false)
 })
+
+test('MA more menu renders outside the horizontal toolbar overflow', () => {
+  assert.equal(MA_MENU_PORTAL_TARGET, 'body')
+})
+
+test('AI panel toggle keeps the panel open or closed explicitly', () => {
+  assert.equal(nextAiPanelState(true), false)
+  assert.equal(nextAiPanelState(false), true)
+})
+
 
 test('fullscreen workspace keeps the center and AI columns together', () => {
   assert.equal(
