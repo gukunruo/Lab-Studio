@@ -14,22 +14,26 @@ function response(items: unknown[], total = items.length) {
   return new Response(JSON.stringify({ data: { total, diff: items } }), { status: 200 })
 }
 
+function jsonpResponse(items: unknown[], total = items.length) {
+  return new Response(`jQuery123(${JSON.stringify({ data: { total, diff: items } })});`, { status: 200 })
+}
+
 const boardRows: EastmoneyBoardRow[] = [
-  { f12: 'BK0001', f14: '白酒', f86: '20260815150000' },
-  { f12: 'BK0002', f14: '银行', f86: '20260815150000' },
+  { f12: 'BK0001', f14: '白酒', f86: 2668, f124: '20260815150000' },
+  { f12: 'BK0002', f14: '银行', f86: 2953, f124: '20260815150000' },
 ]
 
 const memberRows: EastmoneyMemberRow[] = [
-  { f12: '600000', f14: '甲', f20: '100000000', f86: '20260815150000' },
-  { f12: '600001', f14: '乙', f20: '300000000', f86: '20260815150000' },
+  { f12: '600000', f14: '甲', f20: '100000000', f86: 2668, f124: '20260815150000' },
+  { f12: '600001', f14: '乙', f20: '300000000', f86: 2953, f124: '20260815150000' },
 ]
 
-test('Eastmoney client builds clist requests with board and member query fields', async () => {
+test('Eastmoney client builds JSONP clist requests with board and member query fields', async () => {
   const requests: URL[] = []
   const client = createEastmoneyClient({
     fetchImpl: async (input) => {
       requests.push(new URL(String(input)))
-      return response([])
+      return jsonpResponse([])
     },
   })
 
@@ -40,7 +44,34 @@ test('Eastmoney client builds clist requests with board and member query fields'
   assert.equal(requests[1]?.searchParams.get('fs'), 'b:BK0001')
   assert.equal(requests[1]?.searchParams.get('pn'), '2')
   assert.equal(requests[1]?.searchParams.get('pz'), '1000')
+  assert.equal(requests[0]?.searchParams.get('cb'), '?')
+  assert.ok(requests[0]?.searchParams.get('fields')?.includes('f124'))
   assert.ok(Number(requests[0]?.searchParams.get('pz')) <= 1000)
+})
+
+test('Eastmoney client unwraps JSONP response data', async () => {
+  const client = createEastmoneyClient({
+    fetchImpl: async () => jsonpResponse(memberRows),
+  })
+
+  const table = await client.request<EastmoneyMemberRow>({ fs: 'b:BK0001', pn: 1, pz: 1000, fields: 'f12,f20' })
+  assert.deepEqual(table.items, memberRows)
+})
+
+test('Eastmoney client falls back to the public guest host after endpoint failure', async () => {
+  const endpoints: string[] = []
+  const client = createEastmoneyClient({
+    fetchImpl: async (input) => {
+      const url = new URL(String(input))
+      endpoints.push(url.origin)
+      if (url.origin.includes('push2.')) return new Response('', { status: 200 })
+      return jsonpResponse(memberRows)
+    },
+  })
+
+  const table = await client.request<EastmoneyMemberRow>({ fs: 'b:BK0001', pn: 1, pz: 1000, fields: 'f12,f20' })
+  assert.deepEqual(table.items, memberRows)
+  assert.ok(endpoints.includes('https://pushguest.eastmoney.com'))
 })
 
 test('Eastmoney client retries one empty response before failing', async () => {
@@ -57,9 +88,10 @@ test('Eastmoney client retries one empty response before failing', async () => {
   assert.deepEqual(table.items, memberRows)
 })
 
-test('Eastmoney snapshot timestamps normalize to a trading date', () => {
+test('Eastmoney snapshot timestamps accept f124 format and reject f86 numeric values', () => {
   assert.equal(parseEastmoneySnapshotAt('20260815150000'), '2026-08-15T15:00:00.000Z')
-  assert.equal(parseEastmoneySnapshotAt('2026-08-15 15:00:00'), '2026-08-15T15:00:00.000Z')
+  assert.equal(parseEastmoneySnapshotAt('2026-08-15 15:00:00'), null)
+  assert.equal(parseEastmoneySnapshotAt(2668), null)
   assert.equal(parseEastmoneySnapshotAt(''), null)
 })
 
@@ -107,7 +139,7 @@ test('Eastmoney rejects incomplete, duplicate, invalid, or stale member coverage
   }), EastmoneyCoverageError)
 
   assert.throws(() => aggregateEastmoneyBoardMarketCaps({
-    boards: [{ boardCode: 'BK0001', memberCount: 1, members: [{ ...memberRows[0], f86: '20260814150000' }] }],
+    boards: [{ boardCode: 'BK0001', memberCount: 1, members: [{ ...memberRows[0], f124: '20260814150000' }] }],
     asOfDate: '2026-08-15',
     snapshotAt: '2026-08-15T15:00:00.000Z',
   }), EastmoneyCoverageError)
@@ -118,7 +150,7 @@ test('Eastmoney fetch rejects mixed member snapshot dates', async () => {
     fetchImpl: async (input) => {
       const url = new URL(String(input))
       if (url.searchParams.get('fs') === 'm:90+t:2') return response(boardRows)
-      return response(memberRows.map((member, index) => ({ ...member, f86: index === 0 ? '20260815150000' : '20260814150000' })))
+      return response(memberRows.map((member, index) => ({ ...member, f124: index === 0 ? '20260815150000' : '20260814150000' })))
     },
   })
 
