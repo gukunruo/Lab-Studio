@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   COLLAPSED_RIGHT,
   INDEX_STRIP_HEIGHT,
@@ -55,6 +57,17 @@ test('right workspace collapses to an accessible rail without changing the cente
 test('fullscreen workspace no longer reserves a collapsed right rail', () => {
   assert.equal(workspaceGridTemplate(COLLAPSED_RIGHT, true), 'minmax(0, 1fr)')
 })
+
+test('right collapse control is part of the workspace top tool area, not an absolute content overlay', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/apps/finance/index.vue'), 'utf8')
+  const navStart = source.indexOf('<nav class="fin__workspace-tabs"')
+  const navEnd = source.indexOf('</nav>', navStart)
+  const collapseStart = source.indexOf('class="fin__right-collapse"')
+  assert.ok(navStart >= 0)
+  assert.ok(collapseStart > navStart && collapseStart < navEnd)
+  assert.doesNotMatch(source.slice(source.indexOf('.fin__right-collapse {'), source.indexOf('.fin__right-collapse:hover')), /position:\s*absolute/)
+})
+
 
 test('board page state always normalizes legacy view queries to heatmap', () => {
   assert.equal(

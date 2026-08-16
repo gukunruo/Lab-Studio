@@ -552,41 +552,54 @@ onMounted(async () => {
           <span class="fin__right-expand-label">工作区</span>
         </button>
         <template v-else>
-        <nav class="fin__workspace-tabs" aria-label="右侧工作区" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-controls="finance-workspace-ai"
-            :aria-selected="workspaceTab === 'ai'"
-            :tabindex="workspaceTab === 'ai' ? 0 : -1"
-            :class="{ 'fin__workspace-tab--active': workspaceTab === 'ai' }"
-            @click="workspaceTab = 'ai'"
-          >
-            AI 分析
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-controls="finance-workspace-boards"
-            :aria-selected="workspaceTab === 'boards'"
-            :tabindex="workspaceTab === 'boards' ? 0 : -1"
-            :class="{ 'fin__workspace-tab--active': workspaceTab === 'boards' }"
-            @click="workspaceTab = 'boards'"
-          >
-            板块
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-controls="finance-workspace-settings"
-            :aria-selected="workspaceTab === 'settings'"
-            :tabindex="workspaceTab === 'settings' ? 0 : -1"
-            :class="{ 'fin__workspace-tab--active': workspaceTab === 'settings' }"
-            @click="workspaceTab = 'settings'"
-          >
-            设置
-          </button>
-        </nav>
+          <nav class="fin__workspace-tabs" aria-label="右侧工作区" role="tablist">
+            <div class="fin__workspace-tab-list">
+              <button
+                type="button"
+                role="tab"
+                aria-controls="finance-workspace-ai"
+                :aria-selected="workspaceTab === 'ai'"
+                :tabindex="workspaceTab === 'ai' ? 0 : -1"
+                :class="{ 'fin__workspace-tab--active': workspaceTab === 'ai' }"
+                @click="workspaceTab = 'ai'"
+              >
+                AI 分析
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-controls="finance-workspace-boards"
+                :aria-selected="workspaceTab === 'boards'"
+                :tabindex="workspaceTab === 'boards' ? 0 : -1"
+                :class="{ 'fin__workspace-tab--active': workspaceTab === 'boards' }"
+                @click="workspaceTab = 'boards'"
+              >
+                板块
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-controls="finance-workspace-settings"
+                :aria-selected="workspaceTab === 'settings'"
+                :tabindex="workspaceTab === 'settings' ? 0 : -1"
+                :class="{ 'fin__workspace-tab--active': workspaceTab === 'settings' }"
+                @click="workspaceTab = 'settings'"
+              >
+                设置
+              </button>
+            </div>
+            <button
+              class="fin__right-collapse"
+              type="button"
+              aria-controls="finance-workspace-right"
+              :aria-expanded="!rightCollapsed"
+              aria-label="收起右侧工作区"
+              title="收起右侧工作区"
+              @click="rightCollapsed = nextRightCollapsedState(rightCollapsed)"
+            >
+              <span aria-hidden="true">›</span>
+            </button>
+          </nav>
 
         <div v-if="workspaceTab === 'ai'" id="finance-workspace-ai" class="fin__workspace-panel" role="tabpanel">
           <button class="fin__ai-toggle" type="button" @click="aiExpanded = nextAiPanelState(aiExpanded)">
@@ -642,17 +655,6 @@ onMounted(async () => {
           <p>涨跌配色：{{ colorSchemeLabel }}</p>
           <p>左侧自选栏：{{ watchlistCollapsed ? '已收起' : '已展开' }}</p>
         </div>
-        <button
-          class="fin__right-collapse"
-          type="button"
-          aria-controls="finance-workspace-right"
-          :aria-expanded="!rightCollapsed"
-          aria-label="收起右侧工作区"
-          title="收起右侧工作区"
-          @click="rightCollapsed = nextRightCollapsedState(rightCollapsed)"
-        >
-          <span aria-hidden="true">›</span>
-        </button>
         </template>
       </aside>
     </div>
@@ -962,10 +964,7 @@ onMounted(async () => {
 }
 
 .fin__right-collapse {
-  position: absolute;
-  top: 0.35rem;
-  left: 0.35rem;
-  z-index: 2;
+  flex: 0 0 auto;
   width: 1.8rem;
   height: 1.8rem;
   border-radius: 50%;
@@ -989,12 +988,20 @@ onMounted(async () => {
 
 
 .fin__workspace-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   padding: 0.35rem;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-2);
+}
+
+.fin__workspace-tab-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 1;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .fin__workspace-tabs button {

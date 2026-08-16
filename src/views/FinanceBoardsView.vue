@@ -94,7 +94,7 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
     <main class="boards-page__main">
       <div class="boards-page__legend" aria-label="热力图图例">
         <span class="boards-page__legend-title">板块跟踪</span>
-        <span>面积 = 成员总市值</span>
+        <span>面积 = 板块总市值</span>
         <span>颜色 = 涨跌幅</span>
         <span v-if="meta?.weight.tradeDate">交易日 {{ meta.weight.tradeDate }}</span>
         <span v-if="meta?.weight.status === 'available'">来源 {{ meta.weight.source }}</span>
@@ -132,7 +132,7 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
           <span>{{ fmtPct(row.pct) }}</span>
           <small>权重 {{ fmtWeight(heatmapWeights[index] ?? 0) }}</small>
           <small>{{ fmtMarketCap(row) }}</small>
-          <small>{{ row.coveredMemberCount }}/{{ row.memberCount }} 成员 · {{ row.weightTradeDate }}</small>
+          <small>{{ row.weightCoverageLabel ?? `${row.coveredMemberCount}/${row.memberCount} 成员` }} · {{ row.weightTradeDate }}</small>
         </button>
       </div>
       <div v-if="selectedRow" class="boards-page__selection" role="status">

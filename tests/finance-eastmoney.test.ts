@@ -5,6 +5,7 @@ import {
   createEastmoneyClient,
   EastmoneyCoverageError,
   fetchEastmoneyBoardMarketCaps,
+  fetchEastmoneyBoardDirectoryMarketCaps,
   parseEastmoneySnapshotAt,
   type EastmoneyBoardRow,
   type EastmoneyMemberRow,
@@ -93,6 +94,48 @@ test('Eastmoney snapshot timestamps accept f124 format and reject f86 numeric va
   assert.equal(parseEastmoneySnapshotAt('2026-08-15 15:00:00'), null)
   assert.equal(parseEastmoneySnapshotAt(2668), null)
   assert.equal(parseEastmoneySnapshotAt(''), null)
+})
+
+test('Eastmoney aggregates public board directory market caps into normalized board weights', async () => {
+  const client = createEastmoneyClient({
+    fetchImpl: async (input) => {
+      const url = new URL(String(input))
+      assert.equal(url.searchParams.get('fs'), 'm:90+t:2')
+      return response([
+        { f12: 'BK0001', f14: '白酒', f20: '400000000', f124: '20260815150000' },
+        { f12: 'BK0002', f14: '银行', f20: '600000000', f124: '20260815150000' },
+      ])
+    },
+  })
+
+  const aggregates = await fetchEastmoneyBoardDirectoryMarketCaps({
+    rows: [{ code: '881001', name: '白酒' }, { code: '881002', name: '银行' }],
+    kind: 'industry',
+    snapshot: { asOfDate: '2026-08-15', startedAt: Date.parse('2026-08-15T15:00:00.000Z'), maxSnapshotSkewMs: 60_000 },
+    client,
+  })
+
+  assert.deepEqual(aggregates.map((row) => [row.boardCode, row.marketCap, row.weight, row.weightCoverage]), [
+    ['881001', 400000000, 0.4, 'board-total'],
+    ['881002', 600000000, 0.6, 'board-total'],
+  ])
+})
+
+test('Eastmoney directory weights accept the latest prior trading date', async () => {
+  const client = createEastmoneyClient({
+    fetchImpl: async () => response([
+      { f12: 'BK0001', f14: '白酒', f20: '400000000', f124: '20260814150000' },
+    ]),
+  })
+
+  const result = await fetchEastmoneyBoardDirectoryMarketCaps({
+    rows: [{ code: '881001', name: '白酒' }],
+    kind: 'industry',
+    snapshot: { asOfDate: '2026-08-15', startedAt: Date.parse('2026-08-15T15:00:00.000Z'), maxSnapshotSkewMs: 24 * 60 * 60_000 },
+    client,
+  })
+
+  assert.equal(result[0]?.tradeDate, '2026-08-14')
 })
 
 test('Eastmoney aggregates member total market caps into normalized board weights', () => {

@@ -25,6 +25,7 @@ export interface EastmoneyClient {
 export interface EastmoneyBoardRow {
   f12: string
   f14: string
+  f20?: number | string
   f86?: string | number
   f124?: string | number
 }
@@ -48,8 +49,9 @@ export interface EastmoneyBoardMarketCapAggregate {
   weight: number
   marketCap: number
   marketCapUnit: '元'
-  memberCount: number
-  coveredMemberCount: number
+  memberCount?: number
+  coveredMemberCount?: number
+  weightCoverage: 'members' | 'board-total'
   tradeDate: string
   snapshotAt: string
 }
@@ -189,6 +191,7 @@ export function aggregateEastmoneyBoardMarketCaps(input: {
       marketCapUnit: '元' as const,
       memberCount: board.memberCount,
       coveredMemberCount: board.members.length,
+      weightCoverage: 'members' as const,
       tradeDate: input.asOfDate,
       snapshotAt: input.snapshotAt,
     }
@@ -215,6 +218,52 @@ async function fetchAllPages<T>(client: EastmoneyClient, fs: string, fields: str
   }
   if (items.length !== first.total) throw new EastmoneyCoverageError()
   return { total: first.total, items }
+}
+
+export async function fetchEastmoneyBoardDirectoryMarketCaps(input: {
+  rows: Array<{ code: string; name: string }>
+  kind: 'industry' | 'concept'
+  snapshot: EastmoneySnapshot
+  client?: EastmoneyClient
+}): Promise<EastmoneyBoardMarketCapAggregate[]> {
+  const client = input.client ?? createEastmoneyClient()
+  const boardType = input.kind === 'industry' ? '2' : '3'
+  const directory = await fetchAllPages<EastmoneyBoardRow>(client, `m:90+t:${boardType}`, 'f12,f14,f20,f86,f124')
+  const wanted = new Map<string, EastmoneyBoardRow>()
+  for (const row of directory.items) {
+    if (!row.f12 || !row.f14) continue
+    const name = normalizedBoardName(row.f14)
+    if (wanted.has(name)) throw new EastmoneyCoverageError('ambiguous board mapping')
+    wanted.set(name, row)
+  }
+
+  const aggregates = input.rows.map((row) => {
+    const board = wanted.get(normalizedBoardName(row.name))
+    if (!board) throw new EastmoneyCoverageError('incomplete board mapping')
+    const marketCap = typeof board.f20 === 'number' ? board.f20 : Number(board.f20)
+    const snapshotAt = parseEastmoneySnapshotAt(board.f124)
+    if (!Number.isFinite(marketCap) || marketCap <= 0 || !snapshotAt) {
+      throw new EastmoneyCoverageError('invalid board market cap')
+    }
+    const snapshotTime = Date.parse(snapshotAt)
+    const tradeDate = snapshotAt.slice(0, 10)
+    if (tradeDate > input.snapshot.asOfDate
+      || Math.abs(snapshotTime - input.snapshot.startedAt) > input.snapshot.maxSnapshotSkewMs) {
+      throw new EastmoneyCoverageError('inconsistent board snapshot time')
+    }
+    return {
+      boardCode: row.code,
+      weight: 0,
+      marketCap,
+      marketCapUnit: '元' as const,
+      weightCoverage: 'board-total' as const,
+      tradeDate,
+      snapshotAt,
+    }
+  })
+  const total = aggregates.reduce((sum, row) => sum + row.marketCap, 0)
+  if (!Number.isFinite(total) || total <= 0) throw new EastmoneyCoverageError()
+  return aggregates.map((row) => ({ ...row, weight: row.marketCap / total }))
 }
 
 export async function fetchEastmoneyBoardMarketCaps(input: {

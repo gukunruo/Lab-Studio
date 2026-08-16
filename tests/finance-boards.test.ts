@@ -4,26 +4,26 @@ import { boardPageQuery, createBoardPageState, heatmapAvailability, heatmapFlexW
 
 const availableMeta = {
   status: 'available' as const,
-  provider: 'tonghuashun',
-  source: 'ths_members+qt.gtimg.cn.f45.total_market_cap',
+  provider: 'eastmoney',
+  source: 'eastmoney_board_directory.f20.total_market_cap',
   tradeDate: '2026-08-14',
 }
 
 const unavailableMeta = {
   status: 'unavailable' as const,
-  provider: 'tonghuashun',
-  source: 'ths_members+qt.gtimg.cn.f45.total_market_cap',
+  provider: 'eastmoney',
+  source: 'eastmoney_board_directory.f20.total_market_cap',
   tradeDate: null,
 }
 
 const partialMeta = { ...availableMeta, status: 'partial' as const }
 
 const weightedRows = [
-  { weight: 75, weightProvider: 'tonghuashun', weightSource: 'ths_members+qt.gtimg.cn.f45.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 4, coveredMemberCount: 4 },
-  { weight: 25, weightProvider: 'tonghuashun', weightSource: 'ths_members+qt.gtimg.cn.f45.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 2, coveredMemberCount: 2 },
+  { weight: 75, weightProvider: 'eastmoney', weightSource: 'eastmoney_board_directory.f20.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 4, coveredMemberCount: 4 },
+  { weight: 25, weightProvider: 'eastmoney', weightSource: 'eastmoney_board_directory.f20.total_market_cap', weightTradeDate: '2026-08-14', memberCount: 2, coveredMemberCount: 2 },
 ]
 
-const weightMeta = { status: 'available' as const, provider: 'tonghuashun', source: 'ths_members+qt.gtimg.cn.f45.total_market_cap', tradeDate: '2026-08-14' }
+const weightMeta = { status: 'available' as const, provider: 'eastmoney', source: 'eastmoney_board_directory.f20.total_market_cap', tradeDate: '2026-08-14' }
 
 test('board page state keeps kind and order values while defaulting to heatmap', () => {
   const state = createBoardPageState({ kind: 'concept', order: 'down' })
@@ -67,9 +67,18 @@ test('heatmap remains unavailable without metadata or real finite weights', () =
   assert.equal(heatmapAvailability([{ weight: 20, weightProvider: 'provider', weightSource: 'source' }]).available, false)
 })
 
+test('heatmap accepts an explicitly labeled board-total weight without member coverage', () => {
+  const rows = [
+    { ...weightedRows[0], memberCount: undefined, coveredMemberCount: undefined, weightCoverage: 'board-total' as const, weightCoverageLabel: '板块总市值' },
+    { ...weightedRows[1], memberCount: undefined, coveredMemberCount: undefined, weightCoverage: 'board-total' as const, weightCoverageLabel: '板块总市值' },
+  ]
+  assert.equal(heatmapAvailability(rows, weightMeta).available, true)
+})
+
 test('heatmap requires explicit member coverage', () => {
   assert.equal(heatmapAvailability([{ ...weightedRows[0], memberCount: undefined, coveredMemberCount: undefined }, weightedRows[1]], weightMeta).available, false)
 })
+
 
 test('heatmap weights normalize provider values only', () => {
   assert.deepEqual(heatmapFlexWeights(weightedRows, weightMeta), [0.75, 0.25])

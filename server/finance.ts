@@ -3,14 +3,14 @@ import { eq } from 'drizzle-orm'
 import { db } from './db/client'
 import { financePreferences, watchlist } from './db/schema'
 import {
-  fetchThsBoardMarketCaps,
-  ThsCoverageError,
-  ThsUnavailableError,
-  type ThsBoardMarketCapAggregate,
-} from './finance-ths'
+  fetchEastmoneyBoardDirectoryMarketCaps,
+  EastmoneyCoverageError,
+  EastmoneyUnavailableError,
+  type EastmoneyBoardMarketCapAggregate,
+} from './finance-eastmoney'
 
-const THS_WEIGHT_SOURCE = 'ths_members+qt.gtimg.cn.f45.total_market_cap' as const
-const THS_WEIGHT_PROVIDER = 'tonghuashun' as const
+const EASTMONEY_WEIGHT_SOURCE = 'eastmoney_board_directory.f20.total_market_cap' as const
+const EASTMONEY_WEIGHT_PROVIDER = 'eastmoney' as const
 
 type BoardWeightStatus = 'available' | 'partial' | 'unavailable'
 
@@ -18,8 +18,8 @@ export interface BoardResponseMeta {
   ranking: { provider: '10jqka'; source: string }
   weight: {
     status: BoardWeightStatus
-    provider: 'tonghuashun'
-    source: typeof THS_WEIGHT_SOURCE
+    provider: typeof EASTMONEY_WEIGHT_PROVIDER
+    source: typeof EASTMONEY_WEIGHT_SOURCE
     tradeDate: string | null
     marketCapUnit: '元'
     fetchedAt: string
@@ -37,8 +37,8 @@ function boardResponseMeta(weight: BoardResponseMeta['weight']): BoardResponseMe
 function unavailableBoardWeight(fetchedAt: string, reason: string): BoardResponseMeta['weight'] {
   return {
     status: 'unavailable',
-    provider: THS_WEIGHT_PROVIDER,
-    source: THS_WEIGHT_SOURCE,
+    provider: EASTMONEY_WEIGHT_PROVIDER,
+    source: EASTMONEY_WEIGHT_SOURCE,
     tradeDate: null,
     marketCapUnit: '元',
     fetchedAt,
@@ -53,7 +53,7 @@ function partialBoardWeight(fetchedAt: string, reason: string): BoardResponseMet
   }
 }
 
-function addBoardWeights(rows: BoardRow[], aggregates: ThsBoardMarketCapAggregate[]): BoardRow[] {
+function addBoardWeights(rows: BoardRow[], aggregates: EastmoneyBoardMarketCapAggregate[]): BoardRow[] {
   const byCode = new Map(aggregates.map((row) => [row.boardCode, row]))
   return rows.map((row) => {
     const weight = byCode.get(row.code)
@@ -61,13 +61,15 @@ function addBoardWeights(rows: BoardRow[], aggregates: ThsBoardMarketCapAggregat
       ? {
           ...row,
           weight: weight.weight,
-          weightProvider: THS_WEIGHT_PROVIDER,
-          weightSource: THS_WEIGHT_SOURCE,
+          weightProvider: EASTMONEY_WEIGHT_PROVIDER,
+          weightSource: EASTMONEY_WEIGHT_SOURCE,
           weightTradeDate: weight.tradeDate,
           marketCap: weight.marketCap,
           marketCapUnit: weight.marketCapUnit,
           memberCount: weight.memberCount,
           coveredMemberCount: weight.coveredMemberCount,
+          weightCoverage: 'board-total',
+          weightCoverageLabel: '板块总市值',
         }
       : row
   })
@@ -75,31 +77,37 @@ function addBoardWeights(rows: BoardRow[], aggregates: ThsBoardMarketCapAggregat
 
 async function loadBoardWeights(rows: BoardRow[], kind: 'industry' | 'concept', fetchedAt: string): Promise<{ rows: BoardRow[]; meta: BoardResponseMeta }> {
   try {
-    const aggregates = await fetchThsBoardMarketCaps({
+    const snapshot = {
+      asOfDate: fetchedAt.slice(0, 10),
+      startedAt: Date.parse(fetchedAt),
+      maxSnapshotSkewMs: 24 * 60 * 60_000,
+    }
+    const aggregates = await fetchEastmoneyBoardDirectoryMarketCaps({
       rows: rows.map((row) => ({ code: row.code, name: row.name })),
       kind,
+      snapshot,
     })
     return {
       rows: addBoardWeights(rows, aggregates),
       meta: boardResponseMeta({
         status: 'available',
-        provider: THS_WEIGHT_PROVIDER,
-        source: THS_WEIGHT_SOURCE,
+        provider: EASTMONEY_WEIGHT_PROVIDER,
+        source: EASTMONEY_WEIGHT_SOURCE,
         tradeDate: aggregates[0]?.tradeDate ?? null,
         marketCapUnit: '元',
         fetchedAt,
       }),
     }
   } catch (error) {
-    const reason = error instanceof ThsUnavailableError
-      ? 'Tonghuashun weight data is unavailable'
-      : error instanceof ThsCoverageError
-        ? 'Tonghuashun weight coverage is incomplete'
-        : 'Tonghuashun weight data is unavailable'
+    const reason = error instanceof EastmoneyCoverageError
+      ? 'Eastmoney weight coverage is incomplete'
+      : error instanceof EastmoneyUnavailableError
+        ? 'Eastmoney weight data is unavailable'
+        : 'Eastmoney weight data is unavailable'
     return {
       rows,
       meta: boardResponseMeta(
-        error instanceof ThsCoverageError
+        error instanceof EastmoneyCoverageError
           ? partialBoardWeight(fetchedAt, reason)
           : unavailableBoardWeight(fetchedAt, reason),
       ),
@@ -309,13 +317,15 @@ export interface BoardRow {
   netInflow: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: typeof THS_WEIGHT_PROVIDER
-  weightSource?: typeof THS_WEIGHT_SOURCE
+  weightProvider?: typeof EASTMONEY_WEIGHT_PROVIDER
+  weightSource?: typeof EASTMONEY_WEIGHT_SOURCE
   weightTradeDate?: string
   marketCap?: number
   marketCapUnit?: '元'
   memberCount?: number
   coveredMemberCount?: number
+  weightCoverage?: 'board-total'
+  weightCoverageLabel?: string
 }
 
 export interface MinutePoint {

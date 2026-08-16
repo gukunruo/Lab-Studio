@@ -17,6 +17,8 @@ export interface BoardWeight {
   weightTradeDate?: string
   memberCount?: number
   coveredMemberCount?: number
+  weightCoverage?: 'board-total'
+  weightCoverageLabel?: string
 }
 
 export type BoardWeightMeta = Pick<BoardResponseMeta['weight'], 'status' | 'provider' | 'source' | 'tradeDate' | 'reason'>
@@ -44,9 +46,13 @@ export function heatmapAvailability(
     && row.weightProvider === referenceProvider
     && row.weightSource === referenceSource
     && row.weightTradeDate === referenceDate
-    && Number.isInteger(row.memberCount)
-    && (row.memberCount ?? 0) > 0
-    && row.coveredMemberCount === row.memberCount
+    && (
+      row.weightCoverage === 'board-total'
+        ? row.weightCoverageLabel === '板块总市值'
+        : Number.isInteger(row.memberCount)
+          && (row.memberCount ?? 0) > 0
+          && row.coveredMemberCount === row.memberCount
+    )
   ))
   return complete
     ? { available: true, reason: '' }

@@ -104,13 +104,15 @@ export interface BoardRow {
   netInflow: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: 'tonghuashun'
-  weightSource?: 'ths_members+qt.gtimg.cn.f45.total_market_cap'
+  weightProvider?: 'eastmoney'
+  weightSource?: 'eastmoney_board_directory.f20.total_market_cap'
   weightTradeDate?: string
   marketCap?: number
   marketCapUnit?: '元'
   memberCount?: number
   coveredMemberCount?: number
+  weightCoverage?: 'board-total'
+  weightCoverageLabel?: string
 }
 
 export interface BoardResponseMeta {
@@ -120,10 +122,12 @@ export interface BoardResponseMeta {
   }
   weight: {
     status: 'available' | 'partial' | 'unavailable'
-    provider: 'tonghuashun'
-    source: 'ths_members+qt.gtimg.cn.f45.total_market_cap'
+    provider: 'eastmoney'
+    source: 'eastmoney_board_directory.f20.total_market_cap'
     tradeDate: string | null
     marketCapUnit: '元'
+    weightCoverage?: 'board-total'
+    weightCoverageLabel?: string
     fetchedAt: string
     reason?: string
   }
