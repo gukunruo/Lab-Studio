@@ -75,6 +75,41 @@ test('heatmap accepts an explicitly labeled board-total weight without member co
   assert.equal(heatmapAvailability(rows, weightMeta).available, true)
 })
 
+test('heatmap accepts an explicitly labeled provider value without market-cap semantics', () => {
+  const rows = weightedRows.map((row) => ({
+    ...row,
+    weightProvider: 'wenyuan' as const,
+    weightSource: 'map.wenyuanw.me/api/heatmap/treemap' as const,
+    memberCount: undefined,
+    coveredMemberCount: undefined,
+    weightCoverage: 'provider-value' as const,
+    weightCoverageLabel: '公开热力图面积值',
+  }))
+  assert.equal(heatmapAvailability(rows, {
+    ...weightMeta,
+    provider: 'wenyuan',
+    source: 'map.wenyuanw.me/api/heatmap/treemap',
+  }).available, true)
+  assert.equal(heatmapAvailability(rows, {
+    ...weightMeta,
+    provider: 'wenyuan',
+    source: 'map.wenyuanw.me/api/heatmap/treemap',
+  }).reason, '')
+})
+
+test('heatmap rejects an unlabeled provider value', () => {
+  const rows = weightedRows.map((row) => ({
+    ...row,
+    weightCoverage: 'provider-value' as const,
+    weightCoverageLabel: undefined,
+  }))
+  assert.equal(heatmapAvailability(rows, {
+    ...weightMeta,
+    provider: 'wenyuan',
+    source: 'map.wenyuanw.me/api/heatmap/treemap',
+  }).available, false)
+})
+
 test('heatmap requires explicit member coverage', () => {
   assert.equal(heatmapAvailability([{ ...weightedRows[0], memberCount: undefined, coveredMemberCount: undefined }, weightedRows[1]], weightMeta).available, false)
 })

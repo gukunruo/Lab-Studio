@@ -3,115 +3,114 @@ import { eq } from 'drizzle-orm'
 import { db } from './db/client'
 import { financePreferences, watchlist } from './db/schema'
 import {
-  fetchEastmoneyBoardDirectoryMarketCaps,
-  EastmoneyCoverageError,
-  EastmoneyUnavailableError,
-  type EastmoneyBoardMarketCapAggregate,
-} from './finance-eastmoney'
+  fetchWenyuanTreemap,
+  WenyuanSchemaError,
+  WenyuanUnavailableError,
+  type WenyuanTreemapSnapshot,
+} from './finance-wenyuan'
 
-const EASTMONEY_WEIGHT_SOURCE = 'eastmoney_board_directory.f20.total_market_cap' as const
-const EASTMONEY_WEIGHT_PROVIDER = 'eastmoney' as const
+const WENYUAN_WEIGHT_SOURCE = 'map.wenyuanw.me/api/heatmap/treemap' as const
+const WENYUAN_WEIGHT_PROVIDER = 'wenyuan' as const
+
+type WeightProvider = typeof WENYUAN_WEIGHT_PROVIDER
+type WeightSource = typeof WENYUAN_WEIGHT_SOURCE
+type WeightCoverage = 'board-total' | 'provider-value'
 
 type BoardWeightStatus = 'available' | 'partial' | 'unavailable'
 
 export interface BoardResponseMeta {
-  ranking: { provider: '10jqka'; source: string }
+  ranking: { provider: '10jqka' | 'wenyuan'; source: string }
   weight: {
     status: BoardWeightStatus
-    provider: typeof EASTMONEY_WEIGHT_PROVIDER
-    source: typeof EASTMONEY_WEIGHT_SOURCE
+    provider: WeightProvider
+    source: WeightSource
     tradeDate: string | null
-    marketCapUnit: '元'
     fetchedAt: string
+    sourceUpdatedAt?: string
+    weightCoverage?: WeightCoverage
+    weightCoverageLabel?: string
+    marketCapUnit?: '元'
     reason?: string
   }
 }
 
 function boardResponseMeta(weight: BoardResponseMeta['weight']): BoardResponseMeta {
   return {
-    ranking: { provider: '10jqka', source: 'q.10jqka.com.cn' },
+    ranking: { provider: weight.provider === WENYUAN_WEIGHT_PROVIDER ? 'wenyuan' : '10jqka', source: weight.source },
     weight,
   }
 }
 
-function unavailableBoardWeight(fetchedAt: string, reason: string): BoardResponseMeta['weight'] {
-  return {
-    status: 'unavailable',
-    provider: EASTMONEY_WEIGHT_PROVIDER,
-    source: EASTMONEY_WEIGHT_SOURCE,
-    tradeDate: null,
-    marketCapUnit: '元',
-    fetchedAt,
-    reason,
-  }
+function unavailableBoardWeight(
+  fetchedAt: string,
+  provider: WeightProvider,
+  source: WeightSource,
+  reason: string,
+): BoardResponseMeta['weight'] {
+  return { status: 'unavailable', provider, source, tradeDate: null, fetchedAt, reason }
 }
 
-function partialBoardWeight(fetchedAt: string, reason: string): BoardResponseMeta['weight'] {
-  return {
-    ...unavailableBoardWeight(fetchedAt, reason),
-    status: 'partial',
-  }
+function boardRowsFromWenyuan(snapshot: WenyuanTreemapSnapshot): BoardRow[] {
+  return snapshot.nodes.map((node) => ({
+    code: node.code,
+    name: node.name,
+    pct: node.pct,
+    leaderName: node.leaderName,
+    leaderPct: node.leaderPct,
+    upCount: node.upCount,
+    downCount: node.downCount,
+    kind: 'industry',
+    weight: node.value,
+    weightProvider: WENYUAN_WEIGHT_PROVIDER,
+    weightSource: WENYUAN_WEIGHT_SOURCE,
+    weightTradeDate: snapshot.updatedAt.slice(0, 10),
+    weightValue: node.value,
+    weightValueLabel: '公开热力图面积值',
+    memberCount: node.memberCount,
+    coveredMemberCount: node.memberCount,
+    weightCoverage: 'provider-value',
+  }))
 }
 
-function addBoardWeights(rows: BoardRow[], aggregates: EastmoneyBoardMarketCapAggregate[]): BoardRow[] {
-  const byCode = new Map(aggregates.map((row) => [row.boardCode, row]))
-  return rows.map((row) => {
-    const weight = byCode.get(row.code)
-    return weight
-      ? {
-          ...row,
-          weight: weight.weight,
-          weightProvider: EASTMONEY_WEIGHT_PROVIDER,
-          weightSource: EASTMONEY_WEIGHT_SOURCE,
-          weightTradeDate: weight.tradeDate,
-          marketCap: weight.marketCap,
-          marketCapUnit: weight.marketCapUnit,
-          memberCount: weight.memberCount,
-          coveredMemberCount: weight.coveredMemberCount,
-          weightCoverage: 'board-total',
-          weightCoverageLabel: '板块总市值',
-        }
-      : row
-  })
-}
-
-async function loadBoardWeights(rows: BoardRow[], kind: 'industry' | 'concept', fetchedAt: string): Promise<{ rows: BoardRow[]; meta: BoardResponseMeta }> {
+async function loadWenyuanIndustry(fetchedAt: string): Promise<{ rows: BoardRow[]; meta: BoardResponseMeta }> {
   try {
-    const snapshot = {
-      asOfDate: fetchedAt.slice(0, 10),
-      startedAt: Date.parse(fetchedAt),
-      maxSnapshotSkewMs: 24 * 60 * 60_000,
-    }
-    const aggregates = await fetchEastmoneyBoardDirectoryMarketCaps({
-      rows: rows.map((row) => ({ code: row.code, name: row.name })),
-      kind,
-      snapshot,
-    })
+    const snapshot = await fetchWenyuanTreemap()
     return {
-      rows: addBoardWeights(rows, aggregates),
+      rows: boardRowsFromWenyuan(snapshot),
       meta: boardResponseMeta({
         status: 'available',
-        provider: EASTMONEY_WEIGHT_PROVIDER,
-        source: EASTMONEY_WEIGHT_SOURCE,
-        tradeDate: aggregates[0]?.tradeDate ?? null,
-        marketCapUnit: '元',
+        provider: WENYUAN_WEIGHT_PROVIDER,
+        source: WENYUAN_WEIGHT_SOURCE,
+        tradeDate: snapshot.updatedAt.slice(0, 10),
+        sourceUpdatedAt: snapshot.updatedAt,
+        weightCoverage: 'provider-value',
+        weightCoverageLabel: '公开热力图面积值',
         fetchedAt,
       }),
     }
   } catch (error) {
-    const reason = error instanceof EastmoneyCoverageError
-      ? 'Eastmoney weight coverage is incomplete'
-      : error instanceof EastmoneyUnavailableError
-        ? 'Eastmoney weight data is unavailable'
-        : 'Eastmoney weight data is unavailable'
+    const reason = error instanceof WenyuanSchemaError
+      ? '公开热力图数据格式不完整'
+      : error instanceof WenyuanUnavailableError
+        ? '公开热力图数据暂时不可用'
+        : '公开热力图数据暂时不可用'
     return {
-      rows,
-      meta: boardResponseMeta(
-        error instanceof EastmoneyCoverageError
-          ? partialBoardWeight(fetchedAt, reason)
-          : unavailableBoardWeight(fetchedAt, reason),
-      ),
+      rows: [],
+      meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, reason)),
     }
+  }
+}
+
+async function loadBoardWeights(rows: BoardRow[], kind: 'industry' | 'concept', fetchedAt: string): Promise<{ rows: BoardRow[]; meta: BoardResponseMeta }> {
+  if (kind === 'industry') return loadWenyuanIndustry(fetchedAt)
+  return {
+    rows,
+    meta: boardResponseMeta(unavailableBoardWeight(
+      fetchedAt,
+      WENYUAN_WEIGHT_PROVIDER,
+      WENYUAN_WEIGHT_SOURCE,
+      '公开热力图仅提供行业分类，概念热力图暂不可用',
+    )),
   }
 }
 
@@ -314,18 +313,21 @@ export interface BoardRow {
   leaderPct: number
   upCount: number
   downCount: number
-  netInflow: number
+  netInflow?: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: typeof EASTMONEY_WEIGHT_PROVIDER
-  weightSource?: typeof EASTMONEY_WEIGHT_SOURCE
+  weightProvider?: WeightProvider
+  weightSource?: WeightSource
   weightTradeDate?: string
   marketCap?: number
   marketCapUnit?: '元'
+  weightValue?: number
+  weightValueLabel?: string
   memberCount?: number
   coveredMemberCount?: number
-  weightCoverage?: 'board-total'
+  weightCoverage?: WeightCoverage
   weightCoverageLabel?: string
+  sourceUpdatedAt?: string
 }
 
 export interface MinutePoint {
@@ -1307,12 +1309,15 @@ export function registerFinanceRoutes(app: Hono): void {
     const cacheKey = `boards:${kind}:${order}`
     const cached = cacheGet<{ items: BoardRow[]; meta: BoardResponseMeta }>(cacheKey)
     if (cached) return c.json(cached)
-    const rows = kind === 'industry' ? await fetchIndustryBoards() : await fetchConceptBoards()
-    if (!rows.length) return c.json({ error: '数据源暂时不可用' }, 502)
-    const sorted = sortBoards(rows, order)
     const fetchedAt = new Date().toISOString()
-    const weighted = await loadBoardWeights(sorted, kind, fetchedAt)
-    const result = { items: weighted.rows, meta: weighted.meta }
+    const weighted = kind === 'industry'
+      ? await loadBoardWeights([], kind, fetchedAt)
+      : await (async () => {
+          const rows = await fetchConceptBoards()
+          if (!rows.length) return { rows: [], meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, '概念板块数据暂时不可用')) }
+          return loadBoardWeights(sortBoards(rows, order), kind, fetchedAt)
+        })()
+    const result = { items: sortBoards(weighted.rows, order), meta: weighted.meta }
     cacheSet(cacheKey, result, 30_000)
     return c.json(result)
   })

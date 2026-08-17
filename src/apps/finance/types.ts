@@ -101,18 +101,21 @@ export interface BoardRow {
   leaderPct: number
   upCount: number
   downCount: number
-  netInflow: number
+  netInflow?: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: 'eastmoney'
-  weightSource?: 'eastmoney_board_directory.f20.total_market_cap'
+  weightProvider?: 'eastmoney' | 'wenyuan'
+  weightSource?: 'eastmoney_board_directory.f20.total_market_cap' | 'map.wenyuanw.me/api/heatmap/treemap'
   weightTradeDate?: string
   marketCap?: number
   marketCapUnit?: '元'
+  weightValue?: number
+  weightValueLabel?: string
   memberCount?: number
   coveredMemberCount?: number
-  weightCoverage?: 'board-total'
+  weightCoverage?: 'board-total' | 'provider-value'
   weightCoverageLabel?: string
+  sourceUpdatedAt?: string
 }
 
 export interface BoardResponseMeta {
@@ -122,12 +125,13 @@ export interface BoardResponseMeta {
   }
   weight: {
     status: 'available' | 'partial' | 'unavailable'
-    provider: 'eastmoney'
-    source: 'eastmoney_board_directory.f20.total_market_cap'
+    provider: 'eastmoney' | 'wenyuan'
+    source: 'eastmoney_board_directory.f20.total_market_cap' | 'map.wenyuanw.me/api/heatmap/treemap'
     tradeDate: string | null
-    marketCapUnit: '元'
-    weightCoverage?: 'board-total'
+    marketCapUnit?: '元'
+    weightCoverage?: 'board-total' | 'provider-value'
     weightCoverageLabel?: string
+    sourceUpdatedAt?: string
     fetchedAt: string
     reason?: string
   }

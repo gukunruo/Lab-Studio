@@ -17,7 +17,7 @@ export interface BoardWeight {
   weightTradeDate?: string
   memberCount?: number
   coveredMemberCount?: number
-  weightCoverage?: 'board-total'
+  weightCoverage?: 'board-total' | 'provider-value'
   weightCoverageLabel?: string
 }
 
@@ -49,7 +49,9 @@ export function heatmapAvailability(
     && (
       row.weightCoverage === 'board-total'
         ? row.weightCoverageLabel === '板块总市值'
-        : Number.isInteger(row.memberCount)
+        : row.weightCoverage === 'provider-value'
+          ? row.weightCoverageLabel === '公开热力图面积值'
+          : Number.isInteger(row.memberCount)
           && (row.memberCount ?? 0) > 0
           && row.coveredMemberCount === row.memberCount
     )

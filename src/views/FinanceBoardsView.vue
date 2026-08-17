@@ -24,9 +24,10 @@ function fmtPct(pct: number): string {
   return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`
 }
 
-function fmtMarketCap(row: BoardRow): string {
-  if (!Number.isFinite(row.marketCap)) return '—'
-  return `${row.marketCap!.toLocaleString('zh-CN')} ${row.marketCapUnit ?? '万元'}`
+function fmtValue(row: BoardRow): string {
+  const value = row.weightCoverage === 'provider-value' ? row.weightValue : row.marketCap
+  if (!Number.isFinite(value)) return '—'
+  return `${value!.toLocaleString('zh-CN')} ${row.weightCoverage === 'provider-value' ? '' : (row.marketCapUnit ?? '万元')}`.trim()
 }
 
 function fmtWeight(weight: number): string {
@@ -94,9 +95,10 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
     <main class="boards-page__main">
       <div class="boards-page__legend" aria-label="热力图图例">
         <span class="boards-page__legend-title">板块跟踪</span>
-        <span>面积 = 板块总市值</span>
+        <span>面积 = {{ meta?.weight.weightCoverageLabel ?? '真实权重口径' }}</span>
         <span>颜色 = 涨跌幅</span>
         <span v-if="meta?.weight.tradeDate">交易日 {{ meta.weight.tradeDate }}</span>
+        <span v-if="meta?.weight.sourceUpdatedAt">源更新时间 {{ meta.weight.sourceUpdatedAt }}</span>
         <span v-if="meta?.weight.status === 'available'">来源 {{ meta.weight.source }}</span>
       </div>
       <div class="boards-page__filters" aria-label="板块筛选">
@@ -125,13 +127,13 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
           class="boards-page__heatmap-cell"
           :class="{ 'boards-page__heatmap-cell--up': row.pct > 0, 'boards-page__heatmap-cell--down': row.pct < 0, 'boards-page__heatmap-cell--selected': row.code === selectedBoardCode }"
           :style="{ flex: `${heatmapWeights[index] ?? 0} 1 0%` }"
-          :aria-label="`${row.name}，涨跌幅 ${fmtPct(row.pct)}，权重 ${fmtWeight(heatmapWeights[index] ?? 0)}，市值 ${fmtMarketCap(row)}，成员覆盖 ${row.coveredMemberCount}/${row.memberCount}，交易日 ${row.weightTradeDate}`"
+          :aria-label="`${row.name}，涨跌幅 ${fmtPct(row.pct)}，权重 ${fmtWeight(heatmapWeights[index] ?? 0)}，${row.weightCoverageLabel ?? '数值'} ${fmtValue(row)}，成员覆盖 ${row.coveredMemberCount}/${row.memberCount}，交易日 ${row.weightTradeDate}`"
           @click="selectRow(row)"
         >
           <strong>{{ row.name }}</strong>
           <span>{{ fmtPct(row.pct) }}</span>
           <small>权重 {{ fmtWeight(heatmapWeights[index] ?? 0) }}</small>
-          <small>{{ fmtMarketCap(row) }}</small>
+          <small>{{ fmtValue(row) }}</small>
           <small>{{ row.weightCoverageLabel ?? `${row.coveredMemberCount}/${row.memberCount} 成员` }} · {{ row.weightTradeDate }}</small>
         </button>
       </div>
