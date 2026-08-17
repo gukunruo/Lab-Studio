@@ -50,7 +50,7 @@ export function heatmapAvailability(
       row.weightCoverage === 'board-total'
         ? row.weightCoverageLabel === '板块总市值'
         : row.weightCoverage === 'provider-value'
-          ? row.weightCoverageLabel === '公开热力图面积值' || row.weightCoverageLabel === '等权展示'
+          ? row.weightCoverageLabel === '公开热力图面积值' || row.weightCoverageLabel === '主力净流入额'
           : Number.isInteger(row.memberCount)
           && (row.memberCount ?? 0) > 0
           && row.coveredMemberCount === row.memberCount

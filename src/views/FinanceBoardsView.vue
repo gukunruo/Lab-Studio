@@ -244,8 +244,8 @@ onUnmounted(() => {
   transition: color 0.15s, background 0.15s;
 
   &:hover {
-    color: #58a6ff;
-    background: rgba(56, 139, 253, 0.1);
+    color: var(--color-accent, #2dd4bf);
+    background: rgba(45, 212, 191, 0.1);
   }
 }
 
@@ -253,7 +253,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #58a6ff;
+  color: var(--color-accent, #2dd4bf);
 
   h1 {
     margin: 0;
@@ -396,12 +396,12 @@ onUnmounted(() => {
   transition: border-color 0.15s, z-index 0s;
 
   &:hover {
-    border-color: #58a6ff;
+    border-color: var(--color-accent, #2dd4bf);
     z-index: 10;
   }
 
   &--selected {
-    border-color: #58a6ff;
+    border-color: var(--color-accent, #2dd4bf);
     z-index: 10;
   }
 }
@@ -454,15 +454,15 @@ onUnmounted(() => {
 
   button {
     padding: 6px 16px;
-    color: #58a6ff;
+    color: var(--color-accent, #2dd4bf);
     background: transparent;
-    border: 1px solid #58a6ff;
+    border: 1px solid var(--color-accent, #2dd4bf);
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.8rem;
 
     &:hover {
-      background: rgba(56, 139, 253, 0.1);
+      background: rgba(45, 212, 191, 0.1);
     }
   }
 }

@@ -116,17 +116,21 @@ async function loadConceptBoards(fetchedAt: string): Promise<{ rows: BoardRow[];
       }
     }
     const tradeDate = new Date().toISOString().slice(0, 10)
-    const weighted = rows.map((row) => ({
-      ...row,
-      weight: 1,
-      weightProvider: CONCEPT_WEIGHT_PROVIDER,
-      weightSource: CONCEPT_WEIGHT_SOURCE,
-      weightTradeDate: tradeDate,
-      weightValue: 1,
-      weightValueLabel: '等权',
-      weightCoverage: 'provider-value' as const,
-      weightCoverageLabel: '等权展示',
-    }))
+    const weighted = rows.map((row) => {
+      const inflowAbs = Math.abs(row.netInflow ?? 0)
+      const weight = inflowAbs > 0 ? inflowAbs : 0.01
+      return {
+        ...row,
+        weight,
+        weightProvider: CONCEPT_WEIGHT_PROVIDER,
+        weightSource: CONCEPT_WEIGHT_SOURCE,
+        weightTradeDate: tradeDate,
+        weightValue: row.netInflow ?? 0,
+        weightValueLabel: '主力净流入',
+        weightCoverage: 'provider-value' as const,
+        weightCoverageLabel: '主力净流入额',
+      }
+    })
     return {
       rows: weighted,
       meta: boardResponseMeta({
@@ -136,7 +140,7 @@ async function loadConceptBoards(fetchedAt: string): Promise<{ rows: BoardRow[];
         tradeDate,
         sourceUpdatedAt: fetchedAt,
         weightCoverage: 'provider-value',
-        weightCoverageLabel: '等权展示',
+        weightCoverageLabel: '主力净流入额',
         fetchedAt,
       }),
     }
