@@ -11,9 +11,11 @@ import {
 
 const WENYUAN_WEIGHT_SOURCE = 'map.wenyuanw.me/api/heatmap/treemap' as const
 const WENYUAN_WEIGHT_PROVIDER = 'wenyuan' as const
+const CONCEPT_WEIGHT_PROVIDER = '10jqka' as const
+const CONCEPT_WEIGHT_SOURCE = 'q.10jqka.com.cn/gn' as const
 
-type WeightProvider = typeof WENYUAN_WEIGHT_PROVIDER
-type WeightSource = typeof WENYUAN_WEIGHT_SOURCE
+type WeightProvider = typeof WENYUAN_WEIGHT_PROVIDER | typeof CONCEPT_WEIGHT_PROVIDER
+type WeightSource = typeof WENYUAN_WEIGHT_SOURCE | typeof CONCEPT_WEIGHT_SOURCE
 type WeightCoverage = 'board-total' | 'provider-value'
 
 type BoardWeightStatus = 'available' | 'partial' | 'unavailable'
@@ -98,6 +100,50 @@ async function loadWenyuanIndustry(fetchedAt: string): Promise<{ rows: BoardRow[
     return {
       rows: [],
       meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, reason)),
+    }
+  }
+}
+
+const EASTMONEY_BOARD_ENDPOINT = 'https://push2.eastmoney.com/api/qt/clist/get'
+
+async function loadConceptBoards(fetchedAt: string): Promise<{ rows: BoardRow[]; meta: BoardResponseMeta }> {
+  try {
+    const rows = await fetchConceptBoards()
+    if (!rows.length) {
+      return {
+        rows: [],
+        meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, '概念板块数据暂时不可用')),
+      }
+    }
+    const tradeDate = new Date().toISOString().slice(0, 10)
+    const weighted = rows.map((row) => ({
+      ...row,
+      weight: 1,
+      weightProvider: CONCEPT_WEIGHT_PROVIDER,
+      weightSource: CONCEPT_WEIGHT_SOURCE,
+      weightTradeDate: tradeDate,
+      weightValue: 1,
+      weightValueLabel: '等权',
+      weightCoverage: 'provider-value' as const,
+      weightCoverageLabel: '等权展示',
+    }))
+    return {
+      rows: weighted,
+      meta: boardResponseMeta({
+        status: 'available',
+        provider: CONCEPT_WEIGHT_PROVIDER,
+        source: CONCEPT_WEIGHT_SOURCE,
+        tradeDate,
+        sourceUpdatedAt: fetchedAt,
+        weightCoverage: 'provider-value',
+        weightCoverageLabel: '等权展示',
+        fetchedAt,
+      }),
+    }
+  } catch {
+    return {
+      rows: [],
+      meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, '概念板块数据暂时不可用')),
     }
   }
 }
@@ -1269,11 +1315,7 @@ export function registerPublicFinanceRoutes(app: Hono): void {
     const fetchedAt = new Date().toISOString()
     const weighted = kind === 'industry'
       ? await loadWenyuanIndustry(fetchedAt)
-      : await (async () => {
-          const rows = await fetchConceptBoards()
-          if (!rows.length) return { rows: [], meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, '概念板块数据暂时不可用')) }
-          return loadBoardWeights(sortBoards(rows, order), kind, fetchedAt)
-        })()
+      : await loadConceptBoards(fetchedAt)
     const result = { items: sortBoards(weighted.rows, order), meta: weighted.meta }
     cacheSet(cacheKey, result, 30_000)
     return c.json(result)

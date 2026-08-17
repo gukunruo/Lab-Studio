@@ -104,8 +104,8 @@ export interface BoardRow {
   netInflow?: number
   kind: 'industry' | 'concept'
   weight?: number
-  weightProvider?: 'eastmoney' | 'wenyuan'
-  weightSource?: 'eastmoney_board_directory.f20.total_market_cap' | 'map.wenyuanw.me/api/heatmap/treemap'
+  weightProvider?: 'eastmoney' | 'wenyuan' | '10jqka'
+  weightSource?: 'eastmoney_board_directory.f20.total_market_cap' | 'map.wenyuanw.me/api/heatmap/treemap' | 'q.10jqka.com.cn/gn'
   weightTradeDate?: string
   marketCap?: number
   marketCapUnit?: '元'
@@ -120,13 +120,13 @@ export interface BoardRow {
 
 export interface BoardResponseMeta {
   ranking: {
-    provider: '10jqka'
+    provider: '10jqka' | 'wenyuan'
     source: string
   }
   weight: {
     status: 'available' | 'partial' | 'unavailable'
-    provider: 'eastmoney' | 'wenyuan'
-    source: 'eastmoney_board_directory.f20.total_market_cap' | 'map.wenyuanw.me/api/heatmap/treemap'
+    provider: 'eastmoney' | 'wenyuan' | '10jqka'
+    source: 'eastmoney_board_directory.f20.total_market_cap' | 'map.wenyuanw.me/api/heatmap/treemap' | 'q.10jqka.com.cn/gn'
     tradeDate: string | null
     marketCapUnit?: '元'
     weightCoverage?: 'board-total' | 'provider-value'

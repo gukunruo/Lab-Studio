@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { PhArrowLeft, PhChartLine } from '@phosphor-icons/vue'
-import { boardPageQuery, createBoardPageState, heatmapAvailability, heatmapFlexWeights, type BoardKind, type BoardWeightMeta } from '@/apps/finance/boards'
+import { PhArrowLeft, PhChartLineUp } from '@phosphor-icons/vue'
+import { boardPageQuery, createBoardPageState, heatmapAvailability, squarify, type BoardKind, type TreemapItem } from '@/apps/finance/boards'
 import type { BoardResponseMeta, BoardRow } from '@/apps/finance/types'
 
 const route = useRoute()
@@ -13,25 +13,66 @@ const meta = ref<BoardResponseMeta | null>(null)
 const loading = ref(false)
 const error = ref('')
 const selectedBoardCode = ref('')
-const heatmapRows = computed(() => rows.value)
-const weightMeta = computed<BoardWeightMeta | undefined>(() => meta.value?.weight)
-const heatmap = computed(() => heatmapAvailability(heatmapRows.value, weightMeta.value))
-const heatmapWeights = computed(() => heatmapFlexWeights(heatmapRows.value, weightMeta.value))
-const selectedRow = computed(() => rows.value.find((row) => row.code === selectedBoardCode.value) ?? null)
+const containerEl = ref<HTMLElement | null>(null)
+const containerSize = ref({ w: 1200, h: 600 })
 let sequence = 0
+let resizeObserver: ResizeObserver | null = null
+
+const weights = computed(() => rows.value.map((r) => r.weight ?? 1))
+const heatAvailable = computed(() => heatmapAvailability(rows.value, meta.value?.weight))
+
+const treemapItems = computed<TreemapItem[]>(() => {
+  if (!heatAvailable.value.available) return []
+  const { w, h } = containerSize.value
+  if (w < 10 || h < 10) return []
+  return squarify(rows.value.map((r) => ({ weight: r.weight ?? 1 })), { x: 0, y: 0, w, h })
+})
+
+const treemapWithRows = computed(() =>
+  treemapItems.value
+    .map((item) => ({ item, row: rows.value[item.index] }))
+    .filter((entry): entry is { item: TreemapItem; row: BoardRow } => Boolean(entry.row))
+    .sort((a, b) => b.row.pct - a.row.pct),
+)
+
+const stats = computed(() => {
+  if (!rows.value.length) return null
+  const up = rows.value.filter((r) => r.pct > 0).length
+  const down = rows.value.filter((r) => r.pct < 0).length
+  const flat = rows.value.length - up - down
+  const maxPct = Math.max(...rows.value.map((r) => r.pct))
+  const minPct = Math.min(...rows.value.map((r) => r.pct))
+  return { up, down, flat, maxPct, minPct, total: rows.value.length }
+})
+
+const maxAbsPct = computed(() => {
+  if (!rows.value.length) return 1
+  return Math.max(...rows.value.map((r) => Math.abs(r.pct)), 0.1)
+})
+
+function pctColor(pct: number): string {
+  const intensity = Math.min(Math.abs(pct) / maxAbsPct.value, 1)
+  if (pct > 0) {
+    const alpha = 0.15 + intensity * 0.75
+    return `rgba(224, 58, 62, ${alpha})`
+  }
+  if (pct < 0) {
+    const alpha = 0.15 + intensity * 0.75
+    return `rgba(34, 160, 100, ${alpha})`
+  }
+  return 'rgba(80, 80, 90, 0.3)'
+}
+
+function pctTextColor(pct: number): string {
+  return pct > 0 ? '#ff6b6b' : pct < 0 ? '#51cf66' : '#adb5bd'
+}
 
 function fmtPct(pct: number): string {
   return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`
 }
 
-function fmtValue(row: BoardRow): string {
-  const value = row.weightCoverage === 'provider-value' ? row.weightValue : row.marketCap
-  if (!Number.isFinite(value)) return '—'
-  return `${value!.toLocaleString('zh-CN')} ${row.weightCoverage === 'provider-value' ? '' : (row.marketCapUnit ?? '万元')}`.trim()
-}
-
 function fmtWeight(weight: number): string {
-  return `${(weight * 100).toFixed(2)}%`
+  return `${(weight * 100).toFixed(1)}%`
 }
 
 function selectRow(row: BoardRow) {
@@ -40,6 +81,10 @@ function selectRow(row: BoardRow) {
 
 function updateQuery(kind: BoardKind, order: 'up' | 'down') {
   void router.replace({ query: boardPageQuery({ kind, order, view: 'heatmap' }) })
+}
+
+function setKind(kind: BoardKind) {
+  updateQuery(kind, state.value.order)
 }
 
 async function loadBoards() {
@@ -66,11 +111,22 @@ async function loadBoards() {
   }
 }
 
-function setKind(kind: BoardKind) {
-  updateQuery(kind, state.value.order)
-}
-
 watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true })
+
+onMounted(() => {
+  if (containerEl.value) {
+    resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        containerSize.value = { w: entry.contentRect.width, h: entry.contentRect.height }
+      }
+    })
+    resizeObserver.observe(containerEl.value)
+  }
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+})
 </script>
 
 <template>
@@ -80,285 +136,391 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
         <PhArrowLeft :size="18" />
       </RouterLink>
       <div class="boards-page__title">
-        <PhChartLine :size="18" weight="bold" />
+        <PhChartLineUp :size="18" weight="bold" />
         <div>
           <h1>板块跟踪</h1>
-          <p>概念与行业实时热力图</p>
+          <p>行业与概念实时热力图</p>
         </div>
+      </div>
+      <div v-if="stats" class="boards-page__stats">
+        <span class="boards-page__stat boards-page__stat--up">{{ stats.up }} 涨</span>
+        <span class="boards-page__stat boards-page__stat--down">{{ stats.down }} 跌</span>
+        <span class="boards-page__stat boards-page__stat--flat">{{ stats.flat }} 平</span>
+        <span class="boards-page__stat-total">共 {{ stats.total }}</span>
       </div>
     </header>
 
-    <main class="boards-page__main">
-      <div class="boards-page__legend" aria-label="热力图图例">
-        <span class="boards-page__legend-title">板块跟踪</span>
-        <span>面积 = {{ meta?.weight.weightCoverageLabel ?? '真实权重口径' }}</span>
-        <span>颜色 = 涨跌幅</span>
-        <span v-if="meta?.weight.tradeDate">交易日 {{ meta.weight.tradeDate }}</span>
-        <span v-if="meta?.weight.sourceUpdatedAt">源更新时间 {{ meta.weight.sourceUpdatedAt }}</span>
-        <span v-if="meta?.weight.status === 'available'">来源 {{ meta.weight.source }}</span>
+    <div class="boards-page__toolbar">
+      <div class="boards-page__tabs" aria-label="板块分类">
+        <button type="button" :class="{ 'boards-page__tab--active': state.kind === 'industry' }" @click="setKind('industry')">行业</button>
+        <button type="button" :class="{ 'boards-page__tab--active': state.kind === 'concept' }" @click="setKind('concept')">概念</button>
       </div>
-      <div class="boards-page__filters" aria-label="板块筛选">
-        <div class="boards-page__filter-group" aria-label="板块分类">
-          <button type="button" :class="{ 'boards-page__filter--active': state.kind === 'industry' }" @click="setKind('industry')">行业</button>
-          <button type="button" :class="{ 'boards-page__filter--active': state.kind === 'concept' }" @click="setKind('concept')">概念</button>
-        </div>
+      <div class="boards-page__legend">
+        <span class="boards-page__legend-item">
+          <i class="boards-page__legend-swatch boards-page__legend-swatch--area" />
+          面积 = {{ meta?.weight.weightCoverageLabel ?? '权重' }}
+        </span>
+        <span class="boards-page__legend-item">
+          <i class="boards-page__legend-swatch boards-page__legend-swatch--color" />
+          颜色 = 涨跌幅
+        </span>
+        <span v-if="meta?.weight.tradeDate" class="boards-page__legend-item boards-page__legend-meta">{{ meta.weight.tradeDate }}</span>
       </div>
-      <div v-if="!heatmap.available" class="boards-page__notice" role="status">
-        {{ heatmap.reason }}
-      </div>
-      <div v-if="error" class="boards-page__error" role="alert">
-        <strong>板块数据暂时不可用</strong>
+    </div>
+
+    <main class="boards-page__body">
+      <div v-if="loading" class="boards-page__loading" role="status">加载中...</div>
+      <div v-else-if="error" class="boards-page__error" role="alert">
         <span>{{ error }}</span>
         <button type="button" @click="loadBoards">重试</button>
       </div>
-      <div v-else-if="heatmap.available" class="boards-page__heatmap" aria-label="板块权重热力图">
+      <div v-else-if="!heatAvailable.available" class="boards-page__notice" role="status">{{ heatAvailable.reason }}</div>
+      <div v-else ref="containerEl" class="boards-page__treemap" aria-label="板块热力图">
         <button
-          v-for="(row, index) in heatmapRows"
-          :key="row.code"
+          v-for="entry in treemapWithRows"
+          :key="entry.row.code"
           type="button"
-          class="boards-page__heatmap-cell"
-          :class="{ 'boards-page__heatmap-cell--up': row.pct > 0, 'boards-page__heatmap-cell--down': row.pct < 0, 'boards-page__heatmap-cell--selected': row.code === selectedBoardCode }"
-          :style="{ flex: `${heatmapWeights[index] ?? 0} 1 0%` }"
-          :aria-label="`${row.name}，涨跌幅 ${fmtPct(row.pct)}，权重 ${fmtWeight(heatmapWeights[index] ?? 0)}，${row.weightCoverageLabel ?? '数值'} ${fmtValue(row)}，成员覆盖 ${row.coveredMemberCount}/${row.memberCount}，交易日 ${row.weightTradeDate}`"
-          @click="selectRow(row)"
+          class="boards-page__cell"
+          :class="{ 'boards-page__cell--selected': entry.row.code === selectedBoardCode }"
+          :style="{
+            left: `${entry.item.x}px`,
+            top: `${entry.item.y}px`,
+            width: `${entry.item.w}px`,
+            height: `${entry.item.h}px`,
+            backgroundColor: pctColor(entry.row.pct),
+          }"
+          :aria-label="`${entry.row.name}，涨跌幅 ${fmtPct(entry.row.pct)}，权重 ${fmtWeight(entry.item.weight)}${entry.row.leaderName ? '，领涨 ' + entry.row.leaderName : ''}`"
+          @click="selectRow(entry.row)"
         >
-          <strong>{{ row.name }}</strong>
-          <span>{{ fmtPct(row.pct) }}</span>
-          <small>权重 {{ fmtWeight(heatmapWeights[index] ?? 0) }}</small>
-          <small>{{ fmtValue(row) }}</small>
-          <small>{{ row.weightCoverageLabel ?? `${row.coveredMemberCount}/${row.memberCount} 成员` }} · {{ row.weightTradeDate }}</small>
+          <span class="boards-page__cell-name" :style="{ color: pctTextColor(entry.row.pct) }">{{ entry.row.name }}</span>
+          <span class="boards-page__cell-pct" :style="{ color: pctTextColor(entry.row.pct) }">{{ fmtPct(entry.row.pct) }}</span>
+          <span v-if="entry.row.leaderName && entry.item.h > 60 && entry.item.w > 80" class="boards-page__cell-leader">{{ entry.row.leaderName }}</span>
         </button>
       </div>
-      <div v-if="selectedRow" class="boards-page__selection" role="status">
-        已选择：{{ selectedRow.name }}（{{ selectedRow.code }}）
-      </div>
     </main>
+
+    <div v-if="selectedBoardCode" class="boards-page__detail">
+      <template v-for="row in rows" :key="row.code">
+        <div v-if="row.code === selectedBoardCode" class="boards-page__detail-content">
+          <span class="boards-page__detail-name">{{ row.name }}</span>
+          <span class="boards-page__detail-pct" :style="{ color: pctTextColor(row.pct) }">{{ fmtPct(row.pct) }}</span>
+          <span v-if="row.leaderName" class="boards-page__detail-leader">领涨 {{ row.leaderName }} {{ fmtPct(row.leaderPct) }}</span>
+          <span v-if="row.upCount || row.downCount" class="boards-page__detail-count">{{ row.upCount }} 涨 / {{ row.downCount }} 跌</span>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
 <style scoped lang="scss">
 .boards-page {
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg);
+  height: 100dvh;
+  background: #0d1117;
+  color: #c9d1d9;
+  overflow: hidden;
 }
 
 .boards-page__header {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  min-height: 64px;
-  padding: 0 var(--space-6);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  gap: 0.75rem;
+  padding: 0 1rem;
+  height: 52px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
 }
 
 .boards-page__back {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  color: var(--color-text-muted);
-  border-radius: var(--radius-sm);
-}
+  width: 32px;
+  height: 32px;
+  color: #8b949e;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
 
-.boards-page__back:hover {
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
+  &:hover {
+    color: #58a6ff;
+    background: rgba(56, 139, 253, 0.1);
+  }
 }
 
 .boards-page__title {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  color: var(--color-accent);
+  gap: 0.5rem;
+  color: #58a6ff;
+
+  h1 {
+    margin: 0;
+    color: #f0f6fc;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  p {
+    margin: 0;
+    color: #6e7681;
+    font-size: 0.7rem;
+  }
 }
 
-.boards-page__title h1 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 1rem;
+.boards-page__stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-size: 0.75rem;
 }
 
-.boards-page__title p {
-  margin: 0.15rem 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.72rem;
+.boards-page__stat {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+
+  &--up { color: #ff6b6b; }
+  &--down { color: #51cf66; }
+  &--flat { color: #8b949e; }
 }
 
-.boards-page__filters {
+.boards-page__stat-total {
+  color: #6e7681;
+  margin-left: 0.25rem;
+}
+
+.boards-page__toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
 }
 
-.boards-page__filter-group {
+.boards-page__tabs {
   display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.2rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
+  gap: 2px;
+  background: #0d1117;
+  border-radius: 6px;
+  padding: 2px;
 
-.boards-page__filter-group button {
-  padding: 0.35rem 0.7rem;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: 0;
-  border-radius: calc(var(--radius-sm) - 2px);
-  cursor: pointer;
-}
+  button {
+    padding: 5px 14px;
+    color: #8b949e;
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
 
-.boards-page__filter-group button:hover,
-.boards-page__filter--active {
-  color: var(--color-accent);
-  background: var(--color-accent-soft) !important;
-}
+    &:hover {
+      color: #c9d1d9;
+    }
+  }
 
-.boards-page__filter--active {
-  font-weight: 700;
-}
-
-.boards-page__main {
-  width: min(100%, 1180px);
-  flex: 1;
-  min-height: 0;
-  margin: 0 auto;
-  padding: var(--space-5);
+  .boards-page__tab--active {
+    color: #f0f6fc;
+    background: #21262d;
+    font-weight: 600;
+  }
 }
 
 .boards-page__legend {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.9rem;
-  margin-bottom: var(--space-3);
-  color: var(--color-text-muted);
-  font-size: 0.72rem;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  color: #6e7681;
 }
 
-.boards-page__legend-title {
-  color: var(--color-text);
-  font-weight: 700;
+.boards-page__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
-.boards-page__heatmap {
-  display: flex;
-  gap: 0.3rem;
-  min-height: 420px;
-  padding: 0.3rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+.boards-page__legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+
+  &--area {
+    background: linear-gradient(135deg, #21262d, #30363d);
+    border: 1px solid #484f58;
+  }
+
+  &--color {
+    background: linear-gradient(90deg, rgba(34, 160, 100, 0.6), rgba(80, 80, 90, 0.3), rgba(224, 58, 62, 0.6));
+  }
+}
+
+.boards-page__legend-meta {
+  color: #8b949e;
+  font-variant-numeric: tabular-nums;
+}
+
+.boards-page__body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
   overflow: hidden;
 }
 
-.boards-page__heatmap-cell {
+.boards-page__treemap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.boards-page__cell {
+  position: absolute;
   display: flex;
-  min-width: 0;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 0.35rem;
-  padding: 0.75rem;
-  color: var(--color-text);
-  background: var(--color-surface-2);
-  border: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  text-align: left;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
   cursor: pointer;
+  transition: border-color 0.15s, z-index 0s;
+
+  &:hover {
+    border-color: #58a6ff;
+    z-index: 10;
+  }
+
+  &--selected {
+    border-color: #58a6ff;
+    z-index: 10;
+  }
 }
 
-.boards-page__heatmap-cell--up {
-  background: color-mix(in srgb, var(--fin-up) 18%, var(--color-surface));
-}
-
-.boards-page__heatmap-cell--down {
-  background: color-mix(in srgb, var(--fin-down) 18%, var(--color-surface));
-}
-
-.boards-page__heatmap-cell:hover,
-.boards-page__heatmap-cell:focus-visible,
-.boards-page__heatmap-cell--selected {
-  border-color: var(--color-accent);
-  outline: none;
-}
-
-.boards-page__heatmap-cell strong {
+.boards-page__cell-name {
+  font-size: clamp(0.65rem, 1.2vw, 0.85rem);
+  font-weight: 600;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.boards-page__heatmap-cell span {
-  color: var(--color-text);
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
+.boards-page__cell-pct {
+  font-size: clamp(0.6rem, 1vw, 0.8rem);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.boards-page__heatmap-cell small {
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-size: 0.68rem;
-  text-overflow: ellipsis;
+.boards-page__cell-leader {
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
-.boards-page__selection {
-  margin-top: var(--space-3);
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-}
-
+.boards-page__loading,
 .boards-page__notice {
-  margin-bottom: var(--space-3);
-  padding: 0.65rem 0.8rem;
-  color: var(--color-text-muted);
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #6e7681;
+  font-size: 0.85rem;
 }
 
 .boards-page__error {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: var(--space-6);
-  color: var(--color-danger);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  text-align: center;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  height: 100%;
+  color: #f85149;
+  font-size: 0.85rem;
+
+  button {
+    padding: 6px 16px;
+    color: #58a6ff;
+    background: transparent;
+    border: 1px solid #58a6ff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+
+    &:hover {
+      background: rgba(56, 139, 253, 0.1);
+    }
+  }
 }
 
-.boards-page__error span {
-  color: var(--color-text-muted);
+.boards-page__detail {
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  background: #161b22;
+  border-top: 1px solid #21262d;
   font-size: 0.78rem;
 }
 
-.boards-page__error button {
-  align-self: center;
-  padding: 0.35rem 0.8rem;
-  color: var(--color-accent);
-  background: transparent;
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-full);
-  cursor: pointer;
+.boards-page__detail-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.boards-page__detail-name {
+  color: #f0f6fc;
+  font-weight: 600;
+}
+
+.boards-page__detail-pct {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.boards-page__detail-leader {
+  color: #8b949e;
+}
+
+.boards-page__detail-count {
+  color: #6e7681;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
 }
 
 @media (max-width: 640px) {
   .boards-page__header {
-    padding: 0 var(--space-3);
+    padding: 0 0.5rem;
+    height: 48px;
   }
 
-  .boards-page__main {
-    padding: var(--space-3);
+  .boards-page__toolbar {
+    padding: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .boards-page__legend {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .boards-page__stats {
+    font-size: 0.7rem;
+    gap: 0.3rem;
   }
 }
 </style>
