@@ -18,7 +18,7 @@ import {
   neteaseSessions,
 } from './db/schema'
 import { authenticate, login, logout, requireAuth } from './auth'
-import { registerFinanceRoutes } from './finance'
+import { registerFinanceRoutes, registerPublicFinanceRoutes } from './finance'
 
 // 单管理员模式下，所有学习数据都归属于这个固定的数据键；客户端不能提交自己的归属键。
 const USER_KEY = 'admin'
@@ -711,6 +711,10 @@ export function createApp() {
       },
     })
   })
+
+  const publicApi = new Hono()
+  registerPublicFinanceRoutes(publicApi)
+  app.route('/api', publicApi)
 
   registerFinanceRoutes(protectedApi)
 

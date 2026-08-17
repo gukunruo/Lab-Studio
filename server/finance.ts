@@ -69,6 +69,7 @@ function boardRowsFromWenyuan(snapshot: WenyuanTreemapSnapshot): BoardRow[] {
     memberCount: node.memberCount,
     coveredMemberCount: node.memberCount,
     weightCoverage: 'provider-value',
+    weightCoverageLabel: '公开热力图面积值',
   }))
 }
 
@@ -1234,23 +1235,7 @@ export function normalizeFinancePreferences(raw: unknown): FinancePreferences {
 }
 
 // ---- 路由注册 ----
-export function registerFinanceRoutes(app: Hono): void {
-  // 搜索（板块/股票/基金/ETF/指数）
-  app.get('/finance/search', async (c) => {
-    const q = c.req.query('q')?.trim() ?? ''
-    if (!q || q.length > 40) return c.json({ error: 'invalid query' }, 400)
-    const cacheKey = `search:${q}`
-    const cached = cacheGet<SearchItem[]>(cacheKey)
-    if (cached) return c.json({ items: cached })
-    try {
-      const items = await searchEastmoney(q)
-      cacheSet(cacheKey, items)
-      return c.json({ items })
-    } catch {
-      return c.json({ error: '数据源暂时不可用' }, 502)
-    }
-  })
-
+export function registerPublicFinanceRoutes(app: Hono): void {
   // 兼容旧指数条接口；板块排行仍由 /finance/boards/:kind 提供。
   app.get('/finance/boards', async (c) => {
     const cacheKey = 'boards:indices'
@@ -1268,6 +1253,45 @@ export function registerFinanceRoutes(app: Hono): void {
       }
       cacheSet(cacheKey, result, 30_000)
       return c.json(result)
+    } catch {
+      return c.json({ error: '数据源暂时不可用' }, 502)
+    }
+  })
+
+  // 板块热力图：行业 / 概念，order=up|down
+  app.get('/finance/boards/:kind', async (c) => {
+    const kind = c.req.param('kind')
+    if (kind !== 'industry' && kind !== 'concept') return c.json({ error: 'invalid kind' }, 400)
+    const order = c.req.query('order') === 'down' ? 'down' : 'up'
+    const cacheKey = `boards:${kind}:${order}`
+    const cached = cacheGet<{ items: BoardRow[]; meta: BoardResponseMeta }>(cacheKey)
+    if (cached) return c.json(cached)
+    const fetchedAt = new Date().toISOString()
+    const weighted = kind === 'industry'
+      ? await loadWenyuanIndustry(fetchedAt)
+      : await (async () => {
+          const rows = await fetchConceptBoards()
+          if (!rows.length) return { rows: [], meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, '概念板块数据暂时不可用')) }
+          return loadBoardWeights(sortBoards(rows, order), kind, fetchedAt)
+        })()
+    const result = { items: sortBoards(weighted.rows, order), meta: weighted.meta }
+    cacheSet(cacheKey, result, 30_000)
+    return c.json(result)
+  })
+}
+
+export function registerFinanceRoutes(app: Hono): void {
+  // 搜索（板块/股票/基金/ETF/指数）
+  app.get('/finance/search', async (c) => {
+    const q = c.req.query('q')?.trim() ?? ''
+    if (!q || q.length > 40) return c.json({ error: 'invalid query' }, 400)
+    const cacheKey = `search:${q}`
+    const cached = cacheGet<SearchItem[]>(cacheKey)
+    if (cached) return c.json({ items: cached })
+    try {
+      const items = await searchEastmoney(q)
+      cacheSet(cacheKey, items)
+      return c.json({ items })
     } catch {
       return c.json({ error: '数据源暂时不可用' }, 502)
     }
@@ -1299,27 +1323,6 @@ export function registerFinanceRoutes(app: Hono): void {
     } catch {
       return c.json({ error: '数据源暂时不可用' }, 502)
     }
-  })
-
-  // 板块排行：行业 / 概念，order=up|down
-  app.get('/finance/boards/:kind', async (c) => {
-    const kind = c.req.param('kind')
-    if (kind !== 'industry' && kind !== 'concept') return c.json({ error: 'invalid kind' }, 400)
-    const order = c.req.query('order') === 'down' ? 'down' : 'up'
-    const cacheKey = `boards:${kind}:${order}`
-    const cached = cacheGet<{ items: BoardRow[]; meta: BoardResponseMeta }>(cacheKey)
-    if (cached) return c.json(cached)
-    const fetchedAt = new Date().toISOString()
-    const weighted = kind === 'industry'
-      ? await loadBoardWeights([], kind, fetchedAt)
-      : await (async () => {
-          const rows = await fetchConceptBoards()
-          if (!rows.length) return { rows: [], meta: boardResponseMeta(unavailableBoardWeight(fetchedAt, WENYUAN_WEIGHT_PROVIDER, WENYUAN_WEIGHT_SOURCE, '概念板块数据暂时不可用')) }
-          return loadBoardWeights(sortBoards(rows, order), kind, fetchedAt)
-        })()
-    const result = { items: sortBoards(weighted.rows, order), meta: weighted.meta }
-    cacheSet(cacheKey, result, 30_000)
-    return c.json(result)
   })
 
   // 实时行情批量（自选列表刷新用）

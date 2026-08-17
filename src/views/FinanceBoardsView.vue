@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { PhArrowLeft, PhChartLine } from '@phosphor-icons/vue'
-import { boardPageQuery, createBoardPageState, heatmapAvailability, heatmapFlexWeights, type BoardKind, type BoardOrder, type BoardWeightMeta } from '@/apps/finance/boards'
+import { boardPageQuery, createBoardPageState, heatmapAvailability, heatmapFlexWeights, type BoardKind, type BoardWeightMeta } from '@/apps/finance/boards'
 import type { BoardResponseMeta, BoardRow } from '@/apps/finance/types'
 
 const route = useRoute()
@@ -38,7 +38,7 @@ function selectRow(row: BoardRow) {
   selectedBoardCode.value = row.code
 }
 
-function updateQuery(kind: BoardKind, order: BoardOrder) {
+function updateQuery(kind: BoardKind, order: 'up' | 'down') {
   void router.replace({ query: boardPageQuery({ kind, order, view: 'heatmap' }) })
 }
 
@@ -68,10 +68,6 @@ async function loadBoards() {
 
 function setKind(kind: BoardKind) {
   updateQuery(kind, state.value.order)
-}
-
-function setOrder(order: BoardOrder) {
-  updateQuery(state.value.kind, order)
 }
 
 watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true })
@@ -105,10 +101,6 @@ watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true
         <div class="boards-page__filter-group" aria-label="板块分类">
           <button type="button" :class="{ 'boards-page__filter--active': state.kind === 'industry' }" @click="setKind('industry')">行业</button>
           <button type="button" :class="{ 'boards-page__filter--active': state.kind === 'concept' }" @click="setKind('concept')">概念</button>
-        </div>
-        <div class="boards-page__filter-group" aria-label="涨跌排序">
-          <button type="button" :class="{ 'boards-page__filter--active': state.order === 'up' }" @click="setOrder('up')">涨幅</button>
-          <button type="button" :class="{ 'boards-page__filter--active': state.order === 'down' }" @click="setOrder('down')">跌幅</button>
         </div>
       </div>
       <div v-if="!heatmap.available" class="boards-page__notice" role="status">
