@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { PhArrowLeft, PhChartLineUp } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhChartLineUp, PhMagnifyingGlassPlus, PhMagnifyingGlassMinus, PhArrowsOutSimple } from '@phosphor-icons/vue'
 import { boardPageQuery, createBoardPageState, heatmapAvailability, squarify, type BoardKind, type TreemapItem } from '@/apps/finance/boards'
 import type { BoardResponseMeta, BoardRow } from '@/apps/finance/types'
 
@@ -17,6 +17,16 @@ const containerEl = ref<HTMLElement | null>(null)
 const containerSize = ref({ w: 1200, h: 600 })
 let sequence = 0
 let resizeObserver: ResizeObserver | null = null
+
+const MIN_ZOOM = 1
+const MAX_ZOOM = 10
+const zoom = ref(1)
+const pan = ref({ x: 0, y: 0 })
+let isDragging = false
+let dragStart = { x: 0, y: 0, panX: 0, panY: 0 }
+
+const treemapTransform = computed(() => `translate(${pan.value.x}px, ${pan.value.y}px) scale(${zoom.value})`)
+const zoomPct = computed(() => Math.round(zoom.value * 100))
 
 const weights = computed(() => rows.value.map((r) => r.weight ?? 1))
 const heatAvailable = computed(() => heatmapAvailability(rows.value, meta.value?.weight))
@@ -79,11 +89,91 @@ function selectRow(row: BoardRow) {
   selectedBoardCode.value = row.code
 }
 
+function clampPan() {
+  const { w, h } = containerSize.value
+  const maxX = 0
+  const minX = w - w * zoom.value
+  const maxY = 0
+  const minY = h - h * zoom.value
+  pan.value.x = Math.min(maxX, Math.max(minX, pan.value.x))
+  pan.value.y = Math.min(maxY, Math.max(minY, pan.value.y))
+}
+
+function setZoom(newZoom: number, centerX: number, centerY: number) {
+  const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom))
+  if (clamped === zoom.value) return
+  const { w, h } = containerSize.value
+  const scaleRatio = clamped / zoom.value
+  pan.value.x = centerX - (centerX - pan.value.x) * scaleRatio
+  pan.value.y = centerY - (centerY - pan.value.y) * scaleRatio
+  zoom.value = clamped
+  clampPan()
+}
+
+function onWheel(e: WheelEvent) {
+  e.preventDefault()
+  const rect = containerEl.value?.getBoundingClientRect()
+  if (!rect) return
+  const cx = e.clientX - rect.left
+  const cy = e.clientY - rect.top
+  const delta = -e.deltaY
+  const factor = delta > 0 ? 1.15 : 1 / 1.15
+  setZoom(zoom.value * factor, cx, cy)
+}
+
+function onPointerDown(e: PointerEvent) {
+  if (zoom.value <= 1 && e.button === 0) return
+  isDragging = true
+  dragStart = { x: e.clientX, y: e.clientY, panX: pan.value.x, panY: pan.value.y }
+  ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!isDragging) return
+  pan.value.x = dragStart.panX + (e.clientX - dragStart.x)
+  pan.value.y = dragStart.panY + (e.clientY - dragStart.y)
+  clampPan()
+}
+
+function onPointerUp(e: PointerEvent) {
+  isDragging = false
+  ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+}
+
+function onDoubleClick(e: MouseEvent) {
+  const rect = containerEl.value?.getBoundingClientRect()
+  if (!rect) return
+  const cx = e.clientX - rect.left
+  const cy = e.clientY - rect.top
+  setZoom(zoom.value >= 4 ? 1 : zoom.value * 2.5, cx, cy)
+}
+
+function zoomIn() {
+  const { w, h } = containerSize.value
+  setZoom(zoom.value * 1.4, w / 2, h / 2)
+}
+
+function zoomOut() {
+  const { w, h } = containerSize.value
+  setZoom(zoom.value / 1.4, w / 2, h / 2)
+}
+
+function resetZoom() {
+  zoom.value = 1
+  pan.value = { x: 0, y: 0 }
+}
+
+function cellVisible(item: TreemapItem): boolean {
+  if (zoom.value >= 1.5) return true
+  return item.w * item.h > 800
+}
+
 function updateQuery(kind: BoardKind, order: 'up' | 'down') {
   void router.replace({ query: boardPageQuery({ kind, order, view: 'heatmap' }) })
 }
 
 function setKind(kind: BoardKind) {
+  resetZoom()
   updateQuery(kind, state.value.order)
 }
 
@@ -99,6 +189,7 @@ async function loadBoards() {
       rows.value = data?.items ?? []
       meta.value = data?.meta ?? null
       selectedBoardCode.value = ''
+      resetZoom()
     }
   } catch (e) {
     if (current !== sequence) return
@@ -175,27 +266,41 @@ onUnmounted(() => {
         <button type="button" @click="loadBoards">重试</button>
       </div>
       <div v-else-if="!heatAvailable.available" class="boards-page__notice" role="status">{{ heatAvailable.reason }}</div>
-      <div v-else ref="containerEl" class="boards-page__treemap" aria-label="板块热力图">
-        <button
-          v-for="entry in treemapWithRows"
-          :key="entry.row.code"
-          type="button"
-          class="boards-page__cell"
-          :class="{ 'boards-page__cell--selected': entry.row.code === selectedBoardCode }"
-          :style="{
-            left: `${entry.item.x}px`,
-            top: `${entry.item.y}px`,
-            width: `${entry.item.w}px`,
-            height: `${entry.item.h}px`,
-            backgroundColor: pctColor(entry.row.pct),
-          }"
-          :aria-label="`${entry.row.name}，涨跌幅 ${fmtPct(entry.row.pct)}，权重 ${fmtWeight(entry.item.weight)}${entry.row.leaderName ? '，领涨 ' + entry.row.leaderName : ''}`"
-          @click="selectRow(entry.row)"
-        >
-          <span class="boards-page__cell-name" :style="{ color: pctTextColor(entry.row.pct) }">{{ entry.row.name }}</span>
-          <span class="boards-page__cell-pct" :style="{ color: pctTextColor(entry.row.pct) }">{{ fmtPct(entry.row.pct) }}</span>
-          <span v-if="entry.row.leaderName && entry.item.h > 60 && entry.item.w > 80" class="boards-page__cell-leader">{{ entry.row.leaderName }}</span>
-        </button>
+      <div v-else ref="containerEl" class="boards-page__treemap" :class="{ 'boards-page__treemap--zoomed': zoom > 1 }" aria-label="板块热力图" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointercancel="onPointerUp" @dblclick="onDoubleClick">
+        <div class="boards-page__treemap-content" :style="{ transform: treemapTransform }">
+          <button
+            v-for="entry in treemapWithRows"
+            :key="entry.row.code"
+            type="button"
+            class="boards-page__cell"
+            :class="{ 'boards-page__cell--selected': entry.row.code === selectedBoardCode, 'boards-page__cell--compact': !cellVisible(entry.item) }"
+            :style="{
+              left: `${entry.item.x}px`,
+              top: `${entry.item.y}px`,
+              width: `${entry.item.w}px`,
+              height: `${entry.item.h}px`,
+              backgroundColor: pctColor(entry.row.pct),
+            }"
+            :aria-label="`${entry.row.name}，涨跌幅 ${fmtPct(entry.row.pct)}，权重 ${fmtWeight(entry.item.weight)}${entry.row.leaderName ? '，领涨 ' + entry.row.leaderName : ''}`"
+            @click="selectRow(entry.row)"
+          >
+            <span class="boards-page__cell-name" :style="{ color: pctTextColor(entry.row.pct) }">{{ entry.row.name }}</span>
+            <span class="boards-page__cell-pct" :style="{ color: pctTextColor(entry.row.pct) }">{{ fmtPct(entry.row.pct) }}</span>
+            <span v-if="entry.row.leaderName && entry.item.h > 60 && entry.item.w > 80" class="boards-page__cell-leader">{{ entry.row.leaderName }}</span>
+          </button>
+        </div>
+        <div class="boards-page__zoom-controls">
+          <button type="button" class="boards-page__zoom-btn" title="放大" @click="zoomIn">
+            <PhMagnifyingGlassPlus :size="16" />
+          </button>
+          <span class="boards-page__zoom-level">{{ zoomPct }}%</span>
+          <button type="button" class="boards-page__zoom-btn" title="缩小" @click="zoomOut">
+            <PhMagnifyingGlassMinus :size="16" />
+          </button>
+          <button v-if="zoom > 1" type="button" class="boards-page__zoom-btn boards-page__zoom-btn--reset" title="重置" @click="resetZoom">
+            <PhArrowsOutSimple :size="16" />
+          </button>
+        </div>
       </div>
     </main>
 
@@ -379,6 +484,68 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  touch-action: none;
+
+  &--zoomed {
+    cursor: grab;
+  }
+
+  &--zoomed:active {
+    cursor: grabbing;
+  }
+}
+
+.boards-page__treemap-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.boards-page__zoom-controls {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(22, 27, 34, 0.92);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+}
+
+.boards-page__zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: #8b949e;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+
+  &:hover {
+    color: var(--color-accent, #2dd4bf);
+    background: rgba(45, 212, 191, 0.1);
+  }
+}
+
+.boards-page__zoom-level {
+  min-width: 42px;
+  text-align: center;
+  font-size: 0.7rem;
+  color: #8b949e;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
 .boards-page__cell {
@@ -403,6 +570,14 @@ onUnmounted(() => {
   &--selected {
     border-color: var(--color-accent, #2dd4bf);
     z-index: 10;
+  }
+
+  &--compact {
+    .boards-page__cell-name,
+    .boards-page__cell-pct,
+    .boards-page__cell-leader {
+      display: none;
+    }
   }
 }
 
