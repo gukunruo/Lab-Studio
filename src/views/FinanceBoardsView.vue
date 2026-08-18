@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { PhArrowLeft, PhChartLineUp, PhMagnifyingGlassPlus, PhMagnifyingGlassMinus, PhArrowsOutSimple } from '@phosphor-icons/vue'
 import { boardPageQuery, createBoardPageState, heatmapAvailability, squarify, type BoardKind, type TreemapItem } from '@/apps/finance/boards'
@@ -28,6 +28,19 @@ let dragStart = { x: 0, y: 0, panX: 0, panY: 0 }
 const treemapTransform = computed(() => `translate(${pan.value.x}px, ${pan.value.y}px) scale(${zoom.value})`)
 const zoomPct = computed(() => Math.round(zoom.value * 100))
 
+interface CellTextScale { showName: boolean; showPct: boolean; showLeader: boolean; nameSize: number; pctSize: number }
+const NO_TEXT: CellTextScale = { showName: false, showPct: false, showLeader: false, nameSize: 0, pctSize: 0 }
+
+function cellTextScale(w: number, h: number): CellTextScale {
+  const minDim = Math.min(w, h)
+  const area = w * h
+  if (area < 360) return NO_TEXT
+  if (minDim < 28) return { showName: false, showPct: true, showLeader: false, nameSize: 0, pctSize: Math.max(7, minDim * 0.28) }
+  const nameSize = Math.min(16, Math.max(8, minDim * 0.15))
+  const pctSize = Math.min(14, Math.max(7, minDim * 0.12))
+  return { showName: true, showPct: true, showLeader: h > 55 && w > 75, nameSize, pctSize }
+}
+
 const weights = computed(() => rows.value.map((r) => r.weight ?? 1))
 const heatAvailable = computed(() => heatmapAvailability(rows.value, meta.value?.weight))
 
@@ -40,8 +53,8 @@ const treemapItems = computed<TreemapItem[]>(() => {
 
 const treemapWithRows = computed(() =>
   treemapItems.value
-    .map((item) => ({ item, row: rows.value[item.index] }))
-    .filter((entry): entry is { item: TreemapItem; row: BoardRow } => Boolean(entry.row))
+    .map((item) => ({ item, row: rows.value[item.index], text: cellTextScale(item.w, item.h) }))
+    .filter((entry): entry is { item: TreemapItem; row: BoardRow; text: CellTextScale } => Boolean(entry.row))
     .sort((a, b) => b.row.pct - a.row.pct),
 )
 
@@ -163,11 +176,6 @@ function resetZoom() {
   pan.value = { x: 0, y: 0 }
 }
 
-function cellVisible(item: TreemapItem): boolean {
-  if (zoom.value >= 1.5) return true
-  return item.w * item.h > 800
-}
-
 function updateQuery(kind: BoardKind, order: 'up' | 'down') {
   void router.replace({ query: boardPageQuery({ kind, order, view: 'heatmap' }) })
 }
@@ -204,16 +212,18 @@ async function loadBoards() {
 
 watch(() => [state.value.kind, state.value.order], loadBoards, { immediate: true })
 
-onMounted(() => {
-  if (containerEl.value) {
+watch(containerEl, (el, oldEl) => {
+  if (oldEl && resizeObserver) resizeObserver.unobserve(oldEl)
+  if (!el) return
+  if (!resizeObserver) {
     resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         containerSize.value = { w: entry.contentRect.width, h: entry.contentRect.height }
       }
     })
-    resizeObserver.observe(containerEl.value)
   }
-})
+  resizeObserver.observe(el)
+}, { flush: 'post' })
 
 onUnmounted(() => {
   resizeObserver?.disconnect()
@@ -273,7 +283,7 @@ onUnmounted(() => {
             :key="entry.row.code"
             type="button"
             class="boards-page__cell"
-            :class="{ 'boards-page__cell--selected': entry.row.code === selectedBoardCode, 'boards-page__cell--compact': !cellVisible(entry.item) }"
+            :class="{ 'boards-page__cell--selected': entry.row.code === selectedBoardCode }"
             :style="{
               left: `${entry.item.x}px`,
               top: `${entry.item.y}px`,
@@ -284,9 +294,9 @@ onUnmounted(() => {
             :aria-label="`${entry.row.name}，涨跌幅 ${fmtPct(entry.row.pct)}，权重 ${fmtWeight(entry.item.weight)}${entry.row.leaderName ? '，领涨 ' + entry.row.leaderName : ''}`"
             @click="selectRow(entry.row)"
           >
-            <span class="boards-page__cell-name" :style="{ color: pctTextColor(entry.row.pct) }">{{ entry.row.name }}</span>
-            <span class="boards-page__cell-pct" :style="{ color: pctTextColor(entry.row.pct) }">{{ fmtPct(entry.row.pct) }}</span>
-            <span v-if="entry.row.leaderName && entry.item.h > 60 && entry.item.w > 80" class="boards-page__cell-leader">{{ entry.row.leaderName }}</span>
+            <span v-if="entry.text.showName" class="boards-page__cell-name" :style="{ color: pctTextColor(entry.row.pct), fontSize: `${entry.text.nameSize}px` }">{{ entry.row.name }}</span>
+            <span v-if="entry.text.showPct" class="boards-page__cell-pct" :style="{ color: pctTextColor(entry.row.pct), fontSize: `${entry.text.pctSize}px` }">{{ fmtPct(entry.row.pct) }}</span>
+            <span v-if="entry.row.leaderName && entry.text.showLeader" class="boards-page__cell-leader">{{ entry.row.leaderName }}</span>
           </button>
         </div>
         <div class="boards-page__zoom-controls">
@@ -571,18 +581,9 @@ onUnmounted(() => {
     border-color: var(--color-accent, #2dd4bf);
     z-index: 10;
   }
-
-  &--compact {
-    .boards-page__cell-name,
-    .boards-page__cell-pct,
-    .boards-page__cell-leader {
-      display: none;
-    }
-  }
 }
 
 .boards-page__cell-name {
-  font-size: clamp(0.65rem, 1.2vw, 0.85rem);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -592,7 +593,6 @@ onUnmounted(() => {
 }
 
 .boards-page__cell-pct {
-  font-size: clamp(0.6rem, 1vw, 0.8rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
