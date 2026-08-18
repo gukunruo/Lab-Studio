@@ -21,6 +21,11 @@ const router = createRouter({
       component: () => import('@/views/FinanceView.vue'),
     },
     {
+      path: '/ai',
+      name: 'ai-platform',
+      component: () => import('@/views/AiPlatformView.vue'),
+    },
+    {
       path: '/',
       component: LabShell,
       children: [

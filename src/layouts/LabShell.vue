@@ -2,7 +2,7 @@
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
-import { PhChartLine, PhMoon, PhStudent, PhSun, PhTranslate } from '@phosphor-icons/vue'
+import { PhChartLine, PhMoon, PhSparkle, PhStudent, PhSun, PhTranslate } from '@phosphor-icons/vue'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { usePlayerStore } from '@/stores/player'
@@ -78,6 +78,14 @@ const isLearn = computed(() => route.name === 'learn')
         >
           <PhChartLine :size="16" weight="bold" />
           <span>{{ i18n.t('nav.finance') }}</span>
+        </RouterLink>
+        <RouterLink
+          to="/ai"
+          class="shell__learn"
+          aria-label="AI Platform"
+        >
+          <PhSparkle :size="16" weight="bold" />
+          <span>AI</span>
         </RouterLink>
         <div class="shell__divider" aria-hidden="true" />
         <button
