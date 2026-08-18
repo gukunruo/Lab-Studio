@@ -47,3 +47,5 @@ __screenshots__/
 # Audio assets kept local if you want to avoid committing MP3s:
 # uncomment to ignore. Currently committed (personal experiment use).
 # public/audio/*.mp3
+
+.superpowers/
