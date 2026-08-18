@@ -83,3 +83,32 @@ export const financePreferences = sqliteTable('finance_preferences', {
   preferences: text('preferences', { mode: 'json' }).$type<unknown>().notNull().default({}),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
+
+// AI 平台模型注册表：存储所有可用模型的元信息，按 provider 路由请求协议。
+export const aiModels = sqliteTable('ai_models', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  modelId: text('model_id').notNull().unique(),
+  displayName: text('display_name').notNull(),
+  provider: text('provider').notNull(), // 'openai-compatible' | 'anthropic'
+  category: text('category').notNull(), // 'chat' | 'reasoning' | 'image'
+  vendor: text('vendor').notNull(), // 'openai' | 'anthropic' | 'deepseek' | 'zai' | 'moonshot'
+  capabilities: text('capabilities', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  contextWindow: integer('context_window'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  enabled: integer('enabled').notNull().default(1),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
+// AI 平台对话会话：按管理员身份（userKey）归属，消息以 JSON 数组存储。
+export const aiConversations = sqliteTable('ai_conversations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userKey: text('user_key').notNull(),
+  title: text('title').notNull().default('新对话'),
+  modelId: text('model_id').notNull(),
+  systemPrompt: text('system_prompt').notNull().default(''),
+  params: text('params', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
+  messages: text('messages', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
