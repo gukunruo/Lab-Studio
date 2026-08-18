@@ -1,7 +1,7 @@
 import type { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db } from './db/client'
-import { aiModels } from './db/schema'
+import { aiModels, aiConversations } from './db/schema'
 import { seedAiModels } from './ai-platform-seed'
 
 const USER_KEY = 'admin'
@@ -81,6 +81,39 @@ export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConf
     }),
     body: JSON.stringify(payload),
   }
+}
+
+export interface ConversationUpdate {
+  title?: string
+  modelId?: string
+  systemPrompt?: string
+  params?: Record<string, unknown>
+  messages?: unknown[]
+}
+
+const TITLE_MAX = 200
+const MESSAGE_MAX_AI = 500
+
+export function normalizeConversationUpdate(input: ConversationUpdate): ConversationUpdate {
+  const result: ConversationUpdate = {}
+  if (typeof input.title === 'string') {
+    result.title = input.title.slice(0, TITLE_MAX)
+  }
+  if (typeof input.modelId === 'string') {
+    result.modelId = input.modelId
+  }
+  if (typeof input.systemPrompt === 'string') {
+    result.systemPrompt = input.systemPrompt.slice(0, 10_000)
+  }
+  if (input.params !== undefined && typeof input.params === 'object' && input.params !== null) {
+    result.params = input.params
+  }
+  if (Array.isArray(input.messages)) {
+    result.messages = input.messages.slice(0, MESSAGE_MAX_AI)
+  } else {
+    result.messages = []
+  }
+  return result
 }
 
 export function registerAiPlatformRoutes(app: Hono): void {
@@ -165,6 +198,80 @@ export function registerAiPlatformRoutes(app: Hono): void {
     const id = Number(c.req.param('id'))
     if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400)
     await db.delete(aiModels).where(eq(aiModels.id, id))
+    return c.json({ ok: true })
+  })
+
+  // 会话管理 — 列出当前用户的所有会话（不含 messages 全文）
+  app.get('/ai-platform/conversations', async (c) => {
+    const rows = await db
+      .select({
+        id: aiConversations.id,
+        title: aiConversations.title,
+        modelId: aiConversations.modelId,
+        systemPrompt: aiConversations.systemPrompt,
+        params: aiConversations.params,
+        createdAt: aiConversations.createdAt,
+        updatedAt: aiConversations.updatedAt,
+      })
+      .from(aiConversations)
+      .where(eq(aiConversations.userKey, USER_KEY))
+      .orderBy(aiConversations.updatedAt)
+      .all()
+    // Drizzle orderBy is ascending by default; reverse for descending
+    return c.json(rows.reverse())
+  })
+
+  // 会话管理 — 新建空会话
+  app.post('/ai-platform/conversations', async (c) => {
+    const body = await c.req.json<{ modelId?: string; title?: string }>().catch(() => ({}) as { modelId?: string; title?: string })
+    const now = new Date()
+    const result = await db.insert(aiConversations).values({
+      userKey: USER_KEY,
+      title: body.title ?? '新对话',
+      modelId: body.modelId ?? 'claude-opus-5',
+      systemPrompt: '',
+      params: {},
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    }).returning()
+    return c.json(result[0], 201)
+  })
+
+  // 会话管理 — 获取单个会话（含 messages）
+  app.get('/ai-platform/conversations/:id', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400)
+    const row = await db.select().from(aiConversations).where(eq(aiConversations.id, id)).get()
+    if (!row || row.userKey !== USER_KEY) return c.json({ error: 'not found' }, 404)
+    return c.json(row)
+  })
+
+  // 会话管理 — 更新会话
+  app.put('/ai-platform/conversations/:id', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400)
+    const body = normalizeConversationUpdate(await c.req.json<ConversationUpdate>())
+    const existing = await db.select().from(aiConversations).where(eq(aiConversations.id, id)).get()
+    if (!existing || existing.userKey !== USER_KEY) return c.json({ error: 'not found' }, 404)
+    const update: Record<string, unknown> = { updatedAt: new Date() }
+    if (body.title !== undefined) update.title = body.title
+    if (body.modelId !== undefined) update.modelId = body.modelId
+    if (body.systemPrompt !== undefined) update.systemPrompt = body.systemPrompt
+    if (body.params !== undefined) update.params = body.params
+    if (body.messages !== undefined) update.messages = body.messages
+    await db.update(aiConversations).set(update).where(eq(aiConversations.id, id))
+    const updated = await db.select().from(aiConversations).where(eq(aiConversations.id, id)).get()
+    return c.json(updated)
+  })
+
+  // 会话管理 — 删除会话
+  app.delete('/ai-platform/conversations/:id', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400)
+    const existing = await db.select({ userKey: aiConversations.userKey }).from(aiConversations).where(eq(aiConversations.id, id)).get()
+    if (!existing || existing.userKey !== USER_KEY) return c.json({ error: 'not found' }, 404)
+    await db.delete(aiConversations).where(eq(aiConversations.id, id))
     return c.json({ ok: true })
   })
 
