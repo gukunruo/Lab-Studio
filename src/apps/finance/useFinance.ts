@@ -400,7 +400,7 @@ export function useFinance() {
   const marketSessionState = ref<MarketSession>('closed')
   const marketOpen = ref(false)
   let pollTimer: ReturnType<typeof setInterval> | null = null
-  const POLL_INTERVAL = 10_000
+  const POLL_INTERVAL = 1_000
 
   function updateMarketStatus() {
     marketSessionState.value = marketSession()
