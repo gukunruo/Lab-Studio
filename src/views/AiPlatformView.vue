@@ -12,6 +12,7 @@ const loaded = ref(false)
 const loadError = ref('')
 
 async function init() {
+  loadError.value = ''
   try {
     await Promise.all([modelsStore.load(), conversationsStore.loadList()])
     if (conversationsStore.conversations.length > 0) {
