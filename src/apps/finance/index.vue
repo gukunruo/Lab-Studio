@@ -62,6 +62,16 @@ function onRightResize(w: number) {
 
 const anyDrawerOpen = computed(() => leftDrawerOpen.value || rightDrawerOpen.value)
 
+const sessionLabel = computed(() => {
+  switch (finance.marketSessionState.value) {
+    case 'pre-open': return '集合竞价'
+    case 'morning': return '上午盘'
+    case 'lunch': return '午间休市'
+    case 'afternoon': return '下午盘'
+    default: return '已休市'
+  }
+})
+
 function openDrawer(drawer: 'left' | 'right') {
   const next = nextDrawerState(drawer, true)
   leftDrawerOpen.value = next.left
@@ -92,6 +102,7 @@ watch(anyDrawerOpen, (open) => {
 })
 
 onBeforeUnmount(() => {
+  finance.stopPolling()
   closeDrawers(false)
   document.body.style.overflow = ''
   window.removeEventListener('keydown', onKeydown)
@@ -333,11 +344,19 @@ onMounted(async () => {
   const config = await getAiConfig()
   aiAvailable.value = config.available
   colorSchemeLabel.value = document.documentElement.style.getPropertyValue('--fin-up') ? '国际' : '中国市场'
+  finance.startPolling()
 })
 </script>
 
 <template>
   <div class="fin">
+    <div class="fin__market-bar">
+      <span class="fin__market-badge" :class="`fin__market-badge--${finance.marketSessionState.value}`">
+        <i v-if="finance.marketOpen.value" class="fin__market-dot" />
+        {{ finance.marketOpen.value ? '开盘中' : '休市' }}
+      </span>
+      <span class="fin__market-session">{{ sessionLabel }}</span>
+    </div>
     <div class="fin__mobile-actions" aria-label="移动端工作区">
       <button ref="leftDrawerTrigger" type="button" class="fin__drawer-btn" @click="openDrawer('left')">自选</button>
       <button ref="rightDrawerTrigger" type="button" class="fin__drawer-btn" @click="openDrawer('right')">工作区</button>
@@ -684,6 +703,54 @@ onMounted(async () => {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   min-height: 0;
+}
+
+.fin__market-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.fin__market-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+
+  &--morning, &--afternoon, &--pre-open {
+    background: rgba(var(--fin-up-rgb, 224, 58, 62), 0.12);
+    color: var(--fin-up, #e03a3e);
+  }
+
+  &--lunch, &--closed {
+    background: rgba(139, 148, 158, 0.1);
+    color: var(--color-text-muted, #8b949e);
+  }
+}
+
+.fin__market-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: fin-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes fin-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+.fin__market-session {
+  font-size: 0.7rem;
+  color: var(--color-text-muted, #6e7681);
 }
 
 .fin__up {

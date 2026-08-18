@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import type { BoardRow, CandlePeriod, Kline, KlinePage, MarketGroup, MarketKey, MarketsResponse, MinuteInterval, MinutePoint, QuoteDetail, SearchItem } from './types'
+import { marketSession, isMarketOpen, type MarketSession } from './marketTime'
 
 export const CHART_MA_PERIODS = [5, 10, 20, 30, 60, 120, 250] as const
 export const INDEX_STRIP_HEIGHT = 64
@@ -394,6 +395,48 @@ export function useFinance() {
   const marketError = computed(() => currentMarketGroup.value?.error ?? '')
   const marketGroups = computed(() => markets.value?.markets ?? [])
   const marketRequestState = marketRequest
+
+  // 盘中状态与自动轮询
+  const marketSessionState = ref<MarketSession>('closed')
+  const marketOpen = ref(false)
+  let pollTimer: ReturnType<typeof setInterval> | null = null
+  const POLL_INTERVAL = 10_000
+
+  function updateMarketStatus() {
+    marketSessionState.value = marketSession()
+    marketOpen.value = isMarketOpen()
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  function startPolling() {
+    stopPolling()
+    updateMarketStatus()
+    if (!marketOpen.value) return
+    pollTimer = setInterval(async () => {
+      updateMarketStatus()
+      if (!marketOpen.value) {
+        stopPolling()
+        return
+      }
+      await Promise.allSettled([
+        loadMarkets(),
+        loadBoardRank(),
+        refreshQuotes(),
+      ])
+      if (selected.value) {
+        await Promise.allSettled([
+          loadDetail(selected.value),
+          loadMinute(),
+        ])
+      }
+    }, POLL_INTERVAL)
+  }
 
   async function loadMarkets() {
     const sequence = marketRequest.begin()
@@ -860,6 +903,10 @@ export function useFinance() {
     marketGroups,
     loadMarkets,
     setMarket,
+    marketSessionState,
+    marketOpen,
+    startPolling,
+    stopPolling,
     boards,
     boardsLoading,
     boardKind,
