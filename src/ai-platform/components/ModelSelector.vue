@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useModelsStore } from '../composables/useModels'
 import type { AiModel } from '../types'
+import { PhCaretDown } from '@phosphor-icons/vue'
 
 const modelsStore = useModelsStore()
 const open = ref(false)
@@ -34,7 +35,7 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
       <span class="model-selector__dot" />
       <span class="model-selector__name">{{ currentModel()?.displayName ?? currentModelId }}</span>
       <span class="model-selector__vendor">{{ currentModel()?.vendor }}</span>
-      <span class="model-selector__chevron">▾</span>
+      <PhCaretDown class="model-selector__chevron" :size="12" weight="bold" />
     </button>
     <div v-if="open" class="model-selector__dropdown">
       <div v-if="modelsStore.chatModels.length" class="model-selector__group">
@@ -102,7 +103,7 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
   height: 8px;
   border-radius: 50%;
   background: var(--color-accent);
-  box-shadow: 0 0 8px var(--color-accent-soft);
+  box-shadow: 0 0 8px var(--color-accent-glow);
   animation: ms-pulse 2.5s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -136,10 +137,10 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
   top: calc(100% + 6px);
   left: 0;
   min-width: 280px;
-  background: var(--color-bg);
+  background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   z-index: 50;
   padding: 6px;
   backdrop-filter: blur(16px) saturate(125%);

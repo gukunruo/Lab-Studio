@@ -4,8 +4,8 @@ import type { AiModel, ChatMessage, ChatParams } from '../types'
 import MessageBubble from './MessageBubble.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
-import ParameterPanel from './ParameterPanel.vue'
 import { useChat } from '../composables/useChat'
+import { PhGearSix, PhX, PhLightning } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -13,6 +13,7 @@ const props = defineProps<{
   systemPrompt: string
   params: ChatParams
   currentModel: AiModel | undefined
+  panelOpen: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,9 +21,10 @@ const emit = defineEmits<{
   'update:params': [params: ChatParams]
   'update:systemPrompt': [prompt: string]
   'update:messages': [messages: ChatMessage[]]
+  'toggle-panel': []
+  'clear-messages': []
 }>()
 
-const panelOpen = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
 const streamingContent = ref('')
 
@@ -79,7 +81,7 @@ async function handleSend(content: string) {
         streamingContent.value = ''
       },
       onError: (err) => {
-        const errorMsg: ChatMessage = { role: 'assistant', content: `⚠️ 错误: ${err}`, createdAt: new Date().toISOString() }
+        const errorMsg: ChatMessage = { role: 'assistant', content: `错误: ${err}`, createdAt: new Date().toISOString() }
         emit('update:messages', [...newMessages, errorMsg])
         streamingContent.value = ''
       },
@@ -93,12 +95,30 @@ async function handleSend(content: string) {
     <header class="chat__header">
       <ModelSelector :current-model-id="modelId" @select="emit('select-model', $event)" />
       <div class="chat__header-right">
-        <button class="chat__icon-btn" type="button" title="参数面板" @click="panelOpen = !panelOpen">⚙</button>
+        <button
+          class="chat__icon-btn"
+          :class="{ 'chat__icon-btn--active': panelOpen }"
+          type="button"
+          title="参数面板"
+          aria-label="参数面板"
+          @click="emit('toggle-panel')"
+        >
+          <PhGearSix :size="16" weight="regular" />
+        </button>
+        <button
+          class="chat__icon-btn"
+          type="button"
+          title="清空对话"
+          aria-label="清空对话"
+          @click="emit('clear-messages')"
+        >
+          <PhX :size="16" weight="regular" />
+        </button>
       </div>
     </header>
 
     <div v-if="!messages.length && !streaming" class="chat__empty">
-      <div class="chat__empty-icon">⚡</div>
+      <div class="chat__empty-icon"><PhLightning :size="28" weight="duotone" /></div>
       <h2 class="chat__empty-title">开始对话</h2>
       <p class="chat__empty-subtitle">选择模型，输入消息开始与 AI 对话</p>
       <div class="chat__suggestions">
@@ -131,14 +151,6 @@ async function handleSend(content: string) {
       @abort="abort"
     />
 
-    <ParameterPanel
-      :open="panelOpen"
-      :params="params"
-      :system-prompt="systemPrompt"
-      @update:params="emit('update:params', $event)"
-      @update:system-prompt="emit('update:systemPrompt', $event)"
-      @close="panelOpen = false"
-    />
   </main>
 </template>
 
@@ -148,6 +160,7 @@ async function handleSend(content: string) {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   position: relative;
 }
 
@@ -158,7 +171,9 @@ async function handleSend(content: string) {
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: color-mix(in srgb, var(--color-bg) 80%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 .chat__header-right {
@@ -181,10 +196,11 @@ async function handleSend(content: string) {
   transition: all 0.2s;
 }
 
-.chat__icon-btn:hover {
-  background: var(--color-surface-2);
-  border-color: var(--color-border);
-  color: var(--color-text);
+.chat__icon-btn:hover,
+.chat__icon-btn--active {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent-strong);
 }
 
 .chat__messages {
@@ -207,13 +223,27 @@ async function handleSend(content: string) {
   width: 64px;
   height: 64px;
   border-radius: var(--radius-lg);
-  background: var(--color-accent-soft);
+  background: linear-gradient(135deg, var(--color-accent-soft), transparent);
   border: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 28px;
   margin-bottom: 24px;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: var(--radius-lg);
+    padding: 1px;
+    background: linear-gradient(135deg, var(--color-accent), transparent 60%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
 }
 
 .chat__empty-title {
@@ -241,7 +271,7 @@ async function handleSend(content: string) {
 
 .chat__suggestion {
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   padding: 14px 16px;
   cursor: pointer;

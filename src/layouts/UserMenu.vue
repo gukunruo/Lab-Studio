@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { PhCaretDown } from '@phosphor-icons/vue'
 
 const root = ref<HTMLElement | null>(null)
 
@@ -57,7 +58,7 @@ async function signOut() {
       <img v-if="auth.avatarUrl" :src="auth.avatarUrl" alt="" class="user-menu__avatar" />
       <span v-else class="user-menu__avatar user-menu__avatar--fallback">{{ auth.username.slice(0, 1).toUpperCase() }}</span>
       <span class="user-menu__name">{{ auth.username }}</span>
-      <span aria-hidden="true">⌄</span>
+      <PhCaretDown :size="12" aria-hidden="true" />
     </button>
     <div v-if="open" class="user-menu__panel" role="menu">
       <div v-if="!editing" class="user-menu__summary">

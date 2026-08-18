@@ -62,7 +62,7 @@ async function copyContent() {
 }
 
 .message__avatar--assistant {
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  background: linear-gradient(135deg, var(--color-accent), #0f766e);
   color: var(--color-bg);
 }
 

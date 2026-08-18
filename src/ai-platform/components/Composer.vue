@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 import type { ChatParams } from '../types'
+import { PhLightning, PhPaperPlaneRight, PhStop } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -54,7 +55,7 @@ function onKeydown(e: KeyboardEvent) {
       <div class="composer__bar">
         <div class="composer__tools">
           <span v-if="params.reasoningEffort" class="composer__tool composer__tool--active">
-            ⚡ {{ params.reasoningEffort }}
+            <PhLightning :size="12" weight="fill" /> {{ params.reasoningEffort }}
           </span>
           <span v-if="params.maxTokens" class="composer__tool">
             max {{ params.maxTokens }}
@@ -68,7 +69,7 @@ function onKeydown(e: KeyboardEvent) {
           title="发送"
           @click="submit"
         >
-          ➤
+          <PhPaperPlaneRight :size="15" weight="fill" />
         </button>
         <button
           v-else
@@ -77,7 +78,7 @@ function onKeydown(e: KeyboardEvent) {
           title="停止"
           @click="emit('abort')"
         >
-          ■
+          <PhStop :size="14" weight="fill" />
         </button>
       </div>
     </div>
@@ -86,8 +87,12 @@ function onKeydown(e: KeyboardEvent) {
 
 <style scoped lang="scss">
 .composer-wrap {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   flex-shrink: 0;
-  padding: 0 24px 20px;
+  padding: 16px 24px 20px;
+  background: linear-gradient(to bottom, transparent, var(--color-bg) 28%);
 }
 
 .composer {
@@ -98,11 +103,31 @@ function onKeydown(e: KeyboardEvent) {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: var(--radius-lg);
+    padding: 1px;
+    background: linear-gradient(135deg, var(--color-accent), transparent 50%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
 }
 
 .composer:focus-within {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  box-shadow: 0 0 0 3px var(--color-accent-soft), 0 8px 32px rgba(0, 0, 0, 0.3);
+
+  &::before {
+    opacity: 1;
+  }
 }
 
 .composer__input {
@@ -170,6 +195,7 @@ function onKeydown(e: KeyboardEvent) {
   justify-content: center;
   font-size: 14px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 12px var(--color-accent-glow);
 }
 
 .composer__send:hover:not(:disabled) {

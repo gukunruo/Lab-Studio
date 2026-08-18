@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import type { ChatParams } from '../types'
+import { computed } from 'vue'
+import { useModelsStore } from '../composables/useModels'
+import type { AiModel, ChatParams } from '../types'
+import { PhX } from '@phosphor-icons/vue'
+
+const modelsStore = useModelsStore()
 
 const props = defineProps<{
   open: boolean
   params: ChatParams
   systemPrompt: string
+  currentModel: AiModel | undefined
 }>()
 
 const emit = defineEmits<{
   'update:params': [params: ChatParams]
   'update:systemPrompt': [prompt: string]
+  'select-model': [model: AiModel]
   close: []
 }>()
 
@@ -20,6 +27,13 @@ function setReasoningEffort(level: 'low' | 'medium' | 'high') {
 function setMaxTokens(value: number) {
   emit('update:params', { ...props.params, maxTokens: value })
 }
+
+const selectableModels = computed(() => [...modelsStore.chatModels, ...modelsStore.reasoningModels])
+
+function selectModel(modelId: string) {
+  const model = selectableModels.value.find((item) => item.modelId === modelId)
+  if (model) emit('select-model', model)
+}
 </script>
 
 <template>
@@ -27,7 +41,24 @@ function setMaxTokens(value: number) {
     <div class="param-panel__inner">
       <div class="param-panel__title">
         模型参数
-        <button class="param-panel__close" type="button" @click="emit('close')">×</button>
+        <button class="param-panel__close" type="button" aria-label="关闭参数面板" @click="emit('close')"><PhX :size="16" /></button>
+      </div>
+
+      <div class="param-panel__group">
+        <label class="param-panel__label">当前模型</label>
+        <select
+          class="param-panel__select"
+          :value="currentModel?.modelId"
+          @change="selectModel(($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="model in selectableModels" :key="model.modelId" :value="model.modelId">
+            {{ model.displayName }}
+          </option>
+        </select>
+        <div v-if="currentModel" class="param-panel__badge">
+          <span class="param-panel__badge-dot" />
+          {{ currentModel.vendor }} · {{ currentModel.contextWindow ? `${Math.round(currentModel.contextWindow / 1000)}k context` : 'context' }}
+        </div>
       </div>
 
       <div class="param-panel__group">
@@ -79,8 +110,8 @@ function setMaxTokens(value: number) {
 .param-panel {
   width: 0;
   flex-shrink: 0;
-  background: var(--color-bg);
-  border-left: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  border-left: 1px solid var(--color-border-subtle);
   overflow: hidden;
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -113,18 +144,67 @@ function setMaxTokens(value: number) {
 .param-panel__close {
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 
 .param-panel__close:hover {
+  background: var(--color-surface-2);
   color: var(--color-text);
 }
 
 .param-panel__group {
   margin-bottom: 20px;
+}
+
+.param-panel__select {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.param-panel__select:focus {
+  border-color: var(--color-accent);
+}
+
+.param-panel__select option {
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+}
+
+
+.param-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.param-panel__badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
 }
 
 .param-panel__label {
