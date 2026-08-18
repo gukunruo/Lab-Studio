@@ -19,6 +19,7 @@ import {
 } from './db/schema'
 import { authenticate, login, logout, requireAuth } from './auth'
 import { registerFinanceRoutes, registerPublicFinanceRoutes } from './finance'
+import { registerAiPlatformRoutes } from './ai-platform'
 
 // 单管理员模式下，所有学习数据都归属于这个固定的数据键；客户端不能提交自己的归属键。
 const USER_KEY = 'admin'
@@ -717,6 +718,7 @@ export function createApp() {
   app.route('/api', publicApi)
 
   registerFinanceRoutes(protectedApi)
+  registerAiPlatformRoutes(protectedApi)
 
   app.route('/api', protectedApi)
   app.notFound((c) => c.req.path.startsWith('/api/')

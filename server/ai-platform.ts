@@ -1,0 +1,104 @@
+import type { Hono } from 'hono'
+import { eq } from 'drizzle-orm'
+import { db } from './db/client'
+import { aiModels } from './db/schema'
+import { seedAiModels } from './ai-platform-seed'
+
+const USER_KEY = 'admin'
+
+let seeded = false
+async function ensureSeeded(): Promise<void> {
+  if (seeded) return
+  seeded = true
+  try {
+    await seedAiModels()
+  } catch (e) {
+    console.error('AI platform seed failed:', e)
+  }
+}
+
+export function registerAiPlatformRoutes(app: Hono): void {
+  // 模型库 — 列出所有启用的模型，按 category 分组返回
+  app.get('/ai-platform/models', async (c) => {
+    await ensureSeeded()
+    const rows = await db.select().from(aiModels).where(eq(aiModels.enabled, 1)).all()
+    const grouped: Record<string, typeof rows> = { chat: [], reasoning: [], image: [] }
+    for (const row of rows) {
+      const cat = row.category
+      if (!grouped[cat]) grouped[cat] = []
+      grouped[cat].push(row)
+    }
+    for (const cat of Object.keys(grouped)) {
+      grouped[cat].sort((a, b) => a.sortOrder - b.sortOrder)
+    }
+    return c.json(grouped)
+  })
+
+  // 模型库 — 新增
+  app.post('/ai-platform/models', async (c) => {
+    const body = await c.req.json<{
+      modelId: string
+      displayName: string
+      provider: string
+      category: string
+      vendor: string
+      capabilities?: string[]
+      contextWindow?: number | null
+      sortOrder?: number
+    }>()
+    if (!body.modelId || !body.displayName || !body.provider || !body.category || !body.vendor) {
+      return c.json({ error: 'modelId, displayName, provider, category, vendor are required' }, 400)
+    }
+    const now = new Date()
+    const result = await db.insert(aiModels).values({
+      modelId: body.modelId,
+      displayName: body.displayName,
+      provider: body.provider as 'openai-compatible' | 'anthropic',
+      category: body.category as 'chat' | 'reasoning' | 'image',
+      vendor: body.vendor,
+      capabilities: body.capabilities ?? [],
+      contextWindow: body.contextWindow ?? null,
+      sortOrder: body.sortOrder ?? 99,
+      enabled: 1,
+      createdAt: now,
+      updatedAt: now,
+    }).returning()
+    return c.json(result[0], 201)
+  })
+
+  // 模型库 — 编辑
+  app.put('/ai-platform/models/:id', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400)
+    const body = await c.req.json<Partial<{
+      displayName: string
+      provider: string
+      category: string
+      vendor: string
+      capabilities: string[]
+      contextWindow: number | null
+      sortOrder: number
+      enabled: number
+    }>>()
+    const update: Record<string, unknown> = { updatedAt: new Date() }
+    if (body.displayName !== undefined) update.displayName = body.displayName
+    if (body.provider !== undefined) update.provider = body.provider
+    if (body.category !== undefined) update.category = body.category
+    if (body.vendor !== undefined) update.vendor = body.vendor
+    if (body.capabilities !== undefined) update.capabilities = body.capabilities
+    if (body.contextWindow !== undefined) update.contextWindow = body.contextWindow
+    if (body.sortOrder !== undefined) update.sortOrder = body.sortOrder
+    if (body.enabled !== undefined) update.enabled = body.enabled
+    await db.update(aiModels).set(update).where(eq(aiModels.id, id))
+    const updated = await db.select().from(aiModels).where(eq(aiModels.id, id)).get()
+    return c.json(updated)
+  })
+
+  // 模型库 — 删除
+  app.delete('/ai-platform/models/:id', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400)
+    await db.delete(aiModels).where(eq(aiModels.id, id))
+    return c.json({ ok: true })
+  })
+}
