@@ -424,13 +424,7 @@ export function useFinance() {
         stopPolling()
         return
       }
-      void loadMarkets()
-      void loadBoardRank()
-      void refreshQuotes()
-      if (selected.value) {
-        void loadDetail(selected.value)
-        void loadMinute()
-      }
+      void syncRefresh()
     }, POLL_INTERVAL)
   }
 
@@ -869,6 +863,109 @@ export function useFinance() {
       klines.value = []
     } finally {
       if (seq === loadSeq) loading.value = false
+    }
+  }
+
+  // --- 同步刷新：所有实时数据并行拉取，统一提交 ---
+  let syncGen = 0
+
+  async function fetchMarketsData(): Promise<MarketsResponse | null> {
+    try {
+      const res = await fetch('/api/finance/markets', { credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as MarketsResponse | { error?: string } | null
+      if (!res.ok) throw new Error((data as { error?: string })?.error ?? '加载失败')
+      return data as MarketsResponse
+    } catch {
+      return null
+    }
+  }
+
+  async function fetchBoardRankData(): Promise<BoardRow[] | null> {
+    try {
+      const res = await fetch(
+        `/api/finance/boards/${boardKind.value}?order=${boardOrder.value}`,
+        { credentials: 'include' },
+      )
+      const data = (await res.json().catch(() => null)) as { items?: BoardRow[]; error?: string } | null
+      if (!res.ok) throw new Error(data?.error ?? '加载失败')
+      return data?.items ?? []
+    } catch {
+      return null
+    }
+  }
+
+  async function fetchQuotesData(): Promise<Record<string, Quote> | null> {
+    const symbols = watchlist.value
+      .map((w) => itemToSymbol(w))
+      .filter((s): s is string => s != null)
+    if (!symbols.length) return null
+    try {
+      const res = await fetch(`/api/finance/quote?symbols=${encodeURIComponent(symbols.join(','))}`, {
+        credentials: 'include',
+      })
+      const data = (await res.json().catch(() => null)) as { quotes?: Quote[] } | null
+      const map: Record<string, Quote> = {}
+      for (const q of data?.quotes ?? []) map[q.symbol] = q
+      return map
+    } catch {
+      return null
+    }
+  }
+
+  async function fetchDetailData(item: SearchItem): Promise<QuoteDetail | null> {
+    const symbol = detailSymbolOf(item)
+    if (!symbol) return null
+    try {
+      const res = await fetch(`/api/finance/detail?symbol=${encodeURIComponent(symbol)}`, {
+        credentials: 'include',
+      })
+      const data = (await res.json().catch(() => null)) as QuoteDetail | { error?: string } | null
+      if (!res.ok) throw new Error((data as { error?: string })?.error ?? '加载失败')
+      return data as QuoteDetail
+    } catch {
+      return null
+    }
+  }
+
+  async function fetchMinuteData(item: SearchItem): Promise<MinutePoint[] | null> {
+    if (item.type === 'OTCFUND') return null
+    const params = new URLSearchParams()
+    if (selectedPlatecode.value) {
+      params.set('platecode', selectedPlatecode.value)
+    } else if (selectedSymbol.value) {
+      params.set('symbol', selectedSymbol.value)
+    } else {
+      const symbol = itemToSymbol(item)
+      if (!symbol) return null
+      params.set('symbol', symbol)
+    }
+    try {
+      const res = await fetch(`/api/finance/minute?${params.toString()}`, { credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as { points?: MinutePoint[]; error?: string } | null
+      if (!res.ok) throw new Error(data?.error ?? '加载失败')
+      return data?.points ?? []
+    } catch {
+      return null
+    }
+  }
+
+  async function syncRefresh() {
+    const gen = ++syncGen
+    const item = selected.value
+    const [marketsData, boardData, quotesData, detailData, minuteData] = await Promise.all([
+      fetchMarketsData(),
+      fetchBoardRankData(),
+      fetchQuotesData(),
+      item ? fetchDetailData(item) : Promise.resolve(null),
+      item ? fetchMinuteData(item) : Promise.resolve(null),
+    ])
+    if (gen !== syncGen) return
+    if (marketsData) markets.value = marketsData
+    if (boardData) boardRows.value = boardData
+    if (quotesData) quotes.value = quotesData
+    if (item && selected.value === item) {
+      if (detailData) detail.value = detailData
+      if (minuteData) minutePoints.value = minuteData
     }
   }
 
