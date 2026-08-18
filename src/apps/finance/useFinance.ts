@@ -418,22 +418,18 @@ export function useFinance() {
     stopPolling()
     updateMarketStatus()
     if (!marketOpen.value) return
-    pollTimer = setInterval(async () => {
+    pollTimer = setInterval(() => {
       updateMarketStatus()
       if (!marketOpen.value) {
         stopPolling()
         return
       }
-      await Promise.allSettled([
-        loadMarkets(),
-        loadBoardRank(),
-        refreshQuotes(),
-      ])
+      void loadMarkets()
+      void loadBoardRank()
+      void refreshQuotes()
       if (selected.value) {
-        await Promise.allSettled([
-          loadDetail(selected.value),
-          loadMinute(),
-        ])
+        void loadDetail(selected.value)
+        void loadMinute()
       }
     }, POLL_INTERVAL)
   }

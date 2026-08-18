@@ -1301,7 +1301,7 @@ export function registerPublicFinanceRoutes(app: Hono): void {
         domestic: normalizeMarketQuotes(domestic, LEGACY_DOMESTIC_INDICES, fetchedAt),
         overseas: normalizeMarketQuotes(overseas, LEGACY_OVERSEAS_INDICES, fetchedAt),
       }
-      cacheSet(cacheKey, result, 3_000)
+      cacheSet(cacheKey, result, 1_000)
       return c.json(result)
     } catch {
       return c.json({ error: '数据源暂时不可用' }, 502)
@@ -1321,7 +1321,7 @@ export function registerPublicFinanceRoutes(app: Hono): void {
       ? await loadWenyuanIndustry(fetchedAt)
       : await loadConceptBoards(fetchedAt)
     const result = { items: sortBoards(weighted.rows, order), meta: weighted.meta }
-    cacheSet(cacheKey, result, 3_000)
+    cacheSet(cacheKey, result, 1_000)
     return c.json(result)
   })
 }
@@ -1364,7 +1364,7 @@ export function registerFinanceRoutes(app: Hono): void {
         ]),
       ) as Record<MarketKey, MarketQuote[]>
       const result = buildMarketsResponse(quotesByMarket, fetchedAt)
-      cacheSet(cacheKey, result, 30_000)
+      cacheSet(cacheKey, result, 1_000)
       return c.json(result)
     } catch {
       return c.json({ error: '数据源暂时不可用' }, 502)
@@ -1511,7 +1511,7 @@ export function registerFinanceRoutes(app: Hono): void {
       }
       if (!points) return c.json({ error: '数据源暂时不可用' }, 502)
       const result = { points }
-      cacheSet(cacheKey, result, 2_000)
+      cacheSet(cacheKey, result, 1_000)
       return c.json(result)
     } catch {
       return c.json({ error: '数据源暂时不可用' }, 502)
