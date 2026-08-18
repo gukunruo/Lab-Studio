@@ -23,7 +23,8 @@ function timeLabel(updatedAt: string): string {
 }
 
 async function newConversation() {
-  await store.create('claude-opus-5')
+  const modelId = store.activeConversation?.modelId ?? 'claude-opus-5'
+  await store.create(modelId)
 }
 
 async function selectConversation(id: number) {

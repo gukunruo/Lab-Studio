@@ -1,4 +1,4 @@
-import type { AiModel, ModelsByCategory, AiConversation, AiConversationSummary, ChatMessage, ChatParams } from './types'
+import type { ModelsByCategory, AiConversation, AiConversationSummary, ChatMessage, ChatParams } from './types'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
   const res = await fetch('/api/ai-platform/models', { credentials: 'include' })
@@ -139,18 +139,26 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
     }
   }
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    let sep: number
-    while ((sep = buffer.indexOf('\n\n')) >= 0) {
-      const block = buffer.slice(0, sep)
-      buffer = buffer.slice(sep + 2)
-      processBlock(block)
-      if (finished) return
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let sep: number
+      while ((sep = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, sep)
+        buffer = buffer.slice(sep + 2)
+        processBlock(block)
+        if (finished) return
+      }
     }
+    if (buffer.trim()) processBlock(buffer)
+    finish()
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      finish()
+      return
+    }
+    throw e
   }
-  if (buffer.trim()) processBlock(buffer)
-  finish()
 }

@@ -23,29 +23,28 @@ export function useChat() {
     error.value = ''
     abortController = new AbortController()
 
-    await streamChat({
-      modelId,
-      messages,
-      system,
-      params,
-      onToken: callbacks.onToken,
-      onDone: callbacks.onDone,
-      onError: (err) => {
-        error.value = err
-        callbacks.onError(err)
-      },
-      signal: abortController.signal,
-    })
-
-    streaming.value = false
-    abortController = null
+    try {
+      await streamChat({
+        modelId,
+        messages,
+        system,
+        params,
+        onToken: callbacks.onToken,
+        onDone: callbacks.onDone,
+        onError: (err) => {
+          error.value = err
+          callbacks.onError(err)
+        },
+        signal: abortController.signal,
+      })
+    } finally {
+      streaming.value = false
+      abortController = null
+    }
   }
 
   function abort() {
-    if (abortController) {
-      abortController.abort()
-      streaming.value = false
-    }
+    abortController?.abort()
   }
 
   return { streaming, error, send, abort }

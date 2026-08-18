@@ -13,7 +13,6 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
   const conversations = ref<AiConversationSummary[]>([])
   const activeId = ref<number | null>(null)
   const activeConversation = ref<AiConversation | null>(null)
-  const loading = ref(false)
 
   async function loadList() {
     conversations.value = await fetchConversations()
@@ -81,7 +80,6 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     conversations,
     activeId,
     activeConversation,
-    loading,
     loadList,
     select,
     create,

@@ -1,20 +1,19 @@
 import type { Hono } from 'hono'
-import { eq } from 'drizzle-orm'
+import { eq, desc } from 'drizzle-orm'
 import { db } from './db/client'
 import { aiModels, aiConversations } from './db/schema'
 import { seedAiModels } from './ai-platform-seed'
 
 const USER_KEY = 'admin'
 
-let seeded = false
-async function ensureSeeded(): Promise<void> {
-  if (seeded) return
-  seeded = true
-  try {
-    await seedAiModels()
-  } catch (e) {
-    console.error('AI platform seed failed:', e)
+let seedPromise: Promise<void> | null = null
+function ensureSeeded(): Promise<void> {
+  if (!seedPromise) {
+    seedPromise = seedAiModels().catch((e) => {
+      console.error('AI platform seed failed:', e)
+    })
   }
+  return seedPromise
 }
 
 export interface ChatRequestBody {
@@ -215,10 +214,9 @@ export function registerAiPlatformRoutes(app: Hono): void {
       })
       .from(aiConversations)
       .where(eq(aiConversations.userKey, USER_KEY))
-      .orderBy(aiConversations.updatedAt)
+      .orderBy(desc(aiConversations.updatedAt))
       .all()
-    // Drizzle orderBy is ascending by default; reverse for descending
-    return c.json(rows.reverse())
+    return c.json(rows)
   })
 
   // 会话管理 — 新建空会话
@@ -298,12 +296,17 @@ export function registerAiPlatformRoutes(app: Hono): void {
       appKey,
     })
 
-    const upstream = await fetch(upstreamReq.url, {
-      method: 'POST',
-      headers: upstreamReq.headers,
-      body: upstreamReq.body,
-      signal: c.req.raw.signal,
-    })
+    let upstream: Response
+    try {
+      upstream = await fetch(upstreamReq.url, {
+        method: 'POST',
+        headers: upstreamReq.headers,
+        body: upstreamReq.body,
+        signal: c.req.raw.signal,
+      })
+    } catch {
+      return c.json({ error: 'upstream connection failed' }, 502)
+    }
 
     if (!upstream.ok || !upstream.body) {
       const errText = await upstream.text().catch(() => upstream.statusText)
