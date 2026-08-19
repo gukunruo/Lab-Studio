@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import { useModelsStore } from '@/ai-platform/composables/useModels'
 import { useConversationsStore } from '@/ai-platform/composables/useConversations'
 import ConversationSidebar from '@/ai-platform/components/ConversationSidebar.vue'
@@ -11,29 +11,50 @@ const modelsStore = useModelsStore()
 const conversationsStore = useConversationsStore()
 const loaded = ref(false)
 const loadError = ref('')
-const panelOpen = ref(true)
+const panelOpen = ref(false)
+const sidebarCollapsed = ref(false)
 
 async function init() {
+  loaded.value = false
   loadError.value = ''
   try {
     await Promise.all([modelsStore.load(), conversationsStore.loadList()])
     if (conversationsStore.conversations.length > 0) {
       await conversationsStore.select(conversationsStore.conversations[0]!.id)
+    } else {
+      await conversationsStore.create('claude-opus-5')
     }
+    loaded.value = true
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载失败'
   }
-  loaded.value = true
 }
 
-onMounted(init)
+onMounted(() => {
+  document.documentElement.classList.add('ai-platform-page')
+  document.body.classList.add('ai-platform-page')
+  init()
+})
+
+onBeforeUnmount(() => {
+  document.documentElement.classList.remove('ai-platform-page')
+  document.body.classList.remove('ai-platform-page')
+})
 
 const activeConv = computed(() => conversationsStore.activeConversation)
 const messages = computed(() => activeConv.value?.messages ?? [])
 const modelId = computed(() => activeConv.value?.modelId ?? 'claude-opus-5')
 const systemPrompt = computed(() => activeConv.value?.systemPrompt || 'You are a helpful assistant.')
-const params = computed(() => activeConv.value?.params ?? { reasoningEffort: 'high', maxTokens: 4096 })
+const params = computed(() => ({
+  reasoningEffort: 'high' as const,
+  maxTokens: 4096,
+  ...(activeConv.value?.params ?? {}),
+}))
 const currentModel = computed(() => modelsStore.findById(modelId.value))
+
+async function newConversation() {
+  await conversationsStore.create(modelId.value)
+}
 
 function onSelectModel(model: AiModel) {
   conversationsStore.updateActiveModel(model.modelId)
@@ -59,7 +80,7 @@ function onUpdateSystemPrompt(prompt: string) {
 <template>
   <div class="ai-platform">
     <template v-if="loaded">
-      <ConversationSidebar />
+      <ConversationSidebar :collapsed="sidebarCollapsed" @toggle-collapse="sidebarCollapsed = !sidebarCollapsed" />
       <ChatArea
         :messages="messages"
         :model-id="modelId"
@@ -67,8 +88,11 @@ function onUpdateSystemPrompt(prompt: string) {
         :params="params"
         :current-model="currentModel"
         :panel-open="panelOpen"
+        :sidebar-collapsed="sidebarCollapsed"
         @select-model="onSelectModel"
         @toggle-panel="panelOpen = !panelOpen"
+        @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+        @new-conversation="newConversation"
         @clear-messages="onUpdateMessages([])"
         @update:messages="onUpdateMessages"
       />
@@ -80,7 +104,6 @@ function onUpdateSystemPrompt(prompt: string) {
         @update:params="onUpdateParams"
         @update:system-prompt="onUpdateSystemPrompt"
         @select-model="onSelectModel"
-        @close="panelOpen = false"
       />
     </template>
     <div v-else class="ai-platform__loading">
@@ -95,6 +118,16 @@ function onUpdateSystemPrompt(prompt: string) {
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+html.ai-platform-page,
+body.ai-platform-page {
+  overflow: hidden;
+}
+
+body.ai-platform-page #app {
+  height: 100dvh;
+  overflow: hidden;
+}
 </style>
 
 <style scoped lang="scss">

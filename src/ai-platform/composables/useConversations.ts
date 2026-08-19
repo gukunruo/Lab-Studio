@@ -18,12 +18,9 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     conversations.value = await fetchConversations()
   }
 
-  async function select(id: number) {
-    activeId.value = id
-    activeConversation.value = await fetchConversation(id)
-  }
-
   async function create(modelId: string, title?: string) {
+    cancelPendingPersist()
+    if (activeConversation.value) await flushPersist(activeConversation.value)
     const conv = await apiCreate(modelId, title)
     activeId.value = conv.id
     activeConversation.value = conv
@@ -55,19 +52,69 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     }
   }
 
+  let persistTimer: ReturnType<typeof setTimeout> | null = null
+  let persistInFlight = false
+  let queuedConversation: AiConversation | null = null
+  let pendingConversation: AiConversation | null = null
+
   async function persistActive() {
     if (!activeConversation.value) return
-    await apiUpdate(activeConversation.value.id, {
-      title: activeConversation.value.title,
-      modelId: activeConversation.value.modelId,
-      systemPrompt: activeConversation.value.systemPrompt,
-      params: activeConversation.value.params,
-      messages: activeConversation.value.messages,
-    })
-    await loadList()
+    pendingConversation = {
+      ...activeConversation.value,
+      params: { ...activeConversation.value.params },
+      messages: [...activeConversation.value.messages],
+    }
+    if (persistTimer) clearTimeout(persistTimer)
+    persistTimer = setTimeout(() => {
+      const conversation = pendingConversation
+      pendingConversation = null
+      if (conversation) void flushPersist(conversation)
+    }, 250)
+  }
+
+  async function flushPersist(conversation: AiConversation) {
+    if (persistInFlight) {
+      queuedConversation = conversation
+      return
+    }
+    persistInFlight = true
+    try {
+      await apiUpdate(conversation.id, {
+        title: conversation.title,
+        modelId: conversation.modelId,
+        systemPrompt: conversation.systemPrompt,
+        params: conversation.params,
+        messages: conversation.messages,
+      })
+      await loadList()
+    } finally {
+      persistInFlight = false
+      if (queuedConversation) {
+        const nextConversation = queuedConversation
+        queuedConversation = null
+        void flushPersist(nextConversation)
+      }
+    }
+  }
+
+  function cancelPendingPersist() {
+    if (persistTimer) clearTimeout(persistTimer)
+    persistTimer = null
+    pendingConversation = null
+  }
+
+  async function select(id: number) {
+    cancelPendingPersist()
+    if (activeConversation.value) await flushPersist(activeConversation.value)
+    activeId.value = id
+    activeConversation.value = await fetchConversation(id)
   }
 
   async function remove(id: number) {
+    cancelPendingPersist()
+    if (activeConversation.value?.id === id) {
+      await flushPersist(activeConversation.value)
+    }
     await apiDelete(id)
     if (activeId.value === id) {
       activeId.value = null

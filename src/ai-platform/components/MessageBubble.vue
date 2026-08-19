@@ -1,12 +1,46 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { marked } from 'marked'
 import type { ChatMessage } from '../types'
+
+marked.use({
+  gfm: true,
+  breaks: true,
+})
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+const markdownRenderer = new marked.Renderer()
+markdownRenderer.html = ({ text }) => escapeHtml(text)
+markdownRenderer.link = ({ href, title, text }) => {
+  const safeHref = /^(https?:|mailto:|#)/i.test(href) ? href : '#'
+  const titleAttribute = title ? ` title="${escapeHtml(title)}"` : ''
+  return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noreferrer">${text}</a>`
+}
 
 const props = defineProps<{
   message: ChatMessage
   streaming?: boolean
+  modelName?: string
 }>()
 
+function renderMarkdown(value: string): string {
+  return marked.parse(value, {
+    async: false,
+    renderer: markdownRenderer,
+  }) as string
+}
+
+const renderedContent = computed(() => renderMarkdown(props.message.content))
+const isAssistant = computed(() => props.message.role === 'assistant')
+const isStreaming = computed(() => Boolean(props.streaming))
 const copied = ref(false)
 
 async function copyContent() {
@@ -18,13 +52,12 @@ async function copyContent() {
 
 <template>
   <div class="message" :class="`message--${message.role}`">
-    <div class="message__avatar" :class="`message__avatar--${message.role}`">
-      {{ message.role === 'user' ? '我' : 'AI' }}
-    </div>
     <div class="message__body">
-      <div class="message__role">{{ message.role === 'user' ? '我' : 'Assistant' }}</div>
+      <div class="message__role">{{ message.role === 'user' ? '我' : (modelName ?? 'Assistant') }}</div>
       <div class="message__content">
-        {{ message.content }}<span v-if="streaming" class="message__cursor" />
+        <div v-if="isAssistant" class="message__markdown" v-html="renderedContent" />
+        <div v-else class="message__plain">{{ message.content }}</div>
+        <span v-if="isStreaming" class="message__cursor" />
       </div>
       <div v-if="!streaming" class="message__actions">
         <button class="message__action" type="button" @click="copyContent">
@@ -37,33 +70,40 @@ async function copyContent() {
 
 <style scoped lang="scss">
 .message {
-  max-width: 780px;
+  width: min(100%, 780px);
   margin: 0 auto;
   padding: 12px 24px;
   display: flex;
   gap: 16px;
 }
 
-.message__avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
+.message--user {
+  justify-content: flex-end;
 }
 
-.message__avatar--user {
-  background: linear-gradient(135deg, #6366f1, #818cf8);
-  color: #fff;
+.message--user .message__body {
+  flex: 0 1 auto;
+  max-width: min(78%, 620px);
 }
 
-.message__avatar--assistant {
-  background: linear-gradient(135deg, var(--color-accent), #0f766e);
-  color: var(--color-bg);
+.message--user .message__role,
+.message--user .message__content {
+  text-align: right;
+}
+
+.message--user .message__content {
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px 4px 16px 16px;
+  background: var(--color-accent-soft);
+}
+
+.message--user .message__actions {
+  justify-content: flex-end;
+}
+
+.message--assistant .message__body {
+  min-width: 0;
 }
 
 .message__body {
@@ -82,9 +122,31 @@ async function copyContent() {
   font-size: 14px;
   color: var(--color-text-muted);
   line-height: 1.7;
-  white-space: pre-wrap;
   word-break: break-word;
 }
+
+.message__plain { white-space: pre-wrap; }
+.message__markdown :deep(p) { margin: 0 0 0.8em; }
+.message__markdown :deep(p:last-child) { margin-bottom: 0; }
+.message__markdown :deep(h1),
+.message__markdown :deep(h2),
+.message__markdown :deep(h3) { margin: 1.1em 0 0.55em; color: var(--color-text); line-height: 1.35; }
+.message__markdown :deep(h1) { font-size: 1.35em; }
+.message__markdown :deep(h2) { font-size: 1.2em; }
+.message__markdown :deep(h3) { font-size: 1.08em; }
+.message__markdown :deep(ul),
+.message__markdown :deep(ol) { margin: 0.55em 0 0.8em; padding-left: 1.5em; }
+.message__markdown :deep(li + li) { margin-top: 0.25em; }
+.message__markdown :deep(blockquote) { margin: 0.8em 0; padding: 0.2em 0 0.2em 1em; border-left: 3px solid var(--color-accent); color: var(--color-text-muted); background: var(--color-surface); }
+.message__markdown :deep(hr) { margin: 1em 0; border: 0; border-top: 1px solid var(--color-border); }
+.message__markdown :deep(a) { color: var(--color-accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.message__markdown :deep(code) { padding: 0.12em 0.35em; border: 1px solid var(--color-border); border-radius: 5px; background: var(--color-surface-2); color: var(--color-accent-strong); font-family: var(--font-mono); font-size: 0.88em; }
+.message__markdown :deep(pre) { margin: 0.8em 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: #09090b; padding: 12px 14px; }
+.message__markdown :deep(pre code) { display: block; padding: 0; border: 0; background: transparent; color: var(--color-text); font-size: 12px; line-height: 1.65; white-space: pre; }
+.message__markdown :deep(table) { width: 100%; margin: 0.8em 0; border-collapse: collapse; font-size: 0.92em; }
+.message__markdown :deep(th),
+.message__markdown :deep(td) { padding: 7px 9px; border: 1px solid var(--color-border); text-align: left; }
+.message__markdown :deep(th) { color: var(--color-text); background: var(--color-surface); }
 
 .message__cursor {
   display: inline-block;
@@ -110,9 +172,7 @@ async function copyContent() {
   transition: opacity 0.2s;
 }
 
-.message:hover .message__actions {
-  opacity: 1;
-}
+.message:hover .message__actions { opacity: 1; }
 
 .message__action {
   font-size: 11px;

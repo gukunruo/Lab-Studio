@@ -28,6 +28,16 @@ body {
   height: 100%;
 }
 
+html.ai-platform-page,
+body.ai-platform-page {
+  overflow: hidden;
+}
+
+body.ai-platform-page #app {
+  height: 100dvh;
+  overflow: hidden;
+}
+
 img,
 svg,
 video {

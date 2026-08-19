@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
 import type { AiModel, ChatMessage, ChatParams } from '../types'
 import MessageBubble from './MessageBubble.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
 import { useChat } from '../composables/useChat'
-import { PhGearSix, PhX, PhLightning } from '@phosphor-icons/vue'
+import { PhGearSix, PhLightning, PhTrashSimple, PhSidebarSimple, PhPlus } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -14,6 +14,7 @@ const props = defineProps<{
   params: ChatParams
   currentModel: AiModel | undefined
   panelOpen: boolean
+  sidebarCollapsed: boolean
 }>()
 
 const emit = defineEmits<{
@@ -23,10 +24,13 @@ const emit = defineEmits<{
   'update:messages': [messages: ChatMessage[]]
   'toggle-panel': []
   'clear-messages': []
+  'toggle-sidebar': []
+  'new-conversation': []
 }>()
 
 const messagesContainer = ref<HTMLElement | null>(null)
 const streamingContent = ref('')
+const userScrolledAway = ref(false)
 
 const { streaming, send, abort } = useChat()
 
@@ -38,15 +42,47 @@ const displayMessages = computed(() => {
   return msgs
 })
 
-async function scrollToBottom() {
-  await nextTick()
+const showLatestButton = computed(() =>
+  userScrolledAway.value && displayMessages.value.length > 0,
+)
+
+function isNearBottom(element: HTMLElement): boolean {
+  return element.scrollHeight - element.scrollTop - element.clientHeight < 48
+}
+
+function onMessagesScroll() {
   if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    userScrolledAway.value = !isNearBottom(messagesContainer.value)
   }
 }
 
-watch(() => displayMessages.value.length, scrollToBottom)
-watch(streamingContent, scrollToBottom)
+async function scrollToBottom(force = false) {
+  await nextTick()
+  const element = messagesContainer.value
+  if (!element || (!force && userScrolledAway.value)) return
+  element.scrollTop = element.scrollHeight
+}
+
+function jumpToLatest() {
+  userScrolledAway.value = false
+  void scrollToBottom(true)
+}
+
+watch(() => displayMessages.value.length, () => scrollToBottom())
+watch(streamingContent, () => scrollToBottom())
+watch(streaming, (value) => {
+  if (value) {
+    userScrolledAway.value = false
+    void scrollToBottom(true)
+  }
+})
+
+function onViewportChange() {
+  if (!userScrolledAway.value) void scrollToBottom()
+}
+
+onMounted(() => window.addEventListener('resize', onViewportChange))
+onBeforeUnmount(() => window.removeEventListener('resize', onViewportChange))
 
 const suggestions = [
   { title: '解释多模型架构', desc: '统一代理层如何工作' },
@@ -93,7 +129,15 @@ async function handleSend(content: string) {
 <template>
   <main class="chat">
     <header class="chat__header">
-      <ModelSelector :current-model-id="modelId" @select="emit('select-model', $event)" />
+      <div class="chat__header-left">
+        <button class="chat__icon-btn" type="button" :title="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'" :aria-label="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'" @click="emit('toggle-sidebar')">
+          <PhSidebarSimple :size="16" weight="regular" />
+        </button>
+        <button class="chat__icon-btn" type="button" title="新对话" aria-label="新对话" @click="emit('new-conversation')">
+          <PhPlus :size="16" weight="regular" />
+        </button>
+        <ModelSelector :current-model-id="modelId" @select="emit('select-model', $event)" />
+      </div>
       <div class="chat__header-right">
         <button
           class="chat__icon-btn"
@@ -112,7 +156,7 @@ async function handleSend(content: string) {
           aria-label="清空对话"
           @click="emit('clear-messages')"
         >
-          <PhX :size="16" weight="regular" />
+          <PhTrashSimple :size="16" weight="regular" />
         </button>
       </div>
     </header>
@@ -135,11 +179,21 @@ async function handleSend(content: string) {
       </div>
     </div>
 
-    <div v-else ref="messagesContainer" class="chat__messages">
+    <div v-else ref="messagesContainer" class="chat__messages" @scroll.passive="onMessagesScroll">
+      <button
+        v-if="showLatestButton"
+        class="chat__latest-button"
+        :class="{ 'chat__latest-button--streaming': streaming }"
+        type="button"
+        @click="jumpToLatest"
+      >
+        {{ streaming ? '正在生成 · 跳转到最新' : '跳转到最新消息' }}
+      </button>
       <MessageBubble
         v-for="(msg, i) in displayMessages"
         :key="i"
         :message="msg"
+        :model-name="currentModel?.displayName"
         :streaming="streaming && i === displayMessages.length - 1 && msg.role === 'assistant'"
       />
     </div>
@@ -176,8 +230,10 @@ async function handleSend(content: string) {
   backdrop-filter: blur(12px);
 }
 
+.chat__header-left,
 .chat__header-right {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -204,9 +260,60 @@ async function handleSend(content: string) {
 }
 
 .chat__messages {
-  flex: 1;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 24px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.chat__messages::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.chat__messages::-webkit-scrollbar-track { background: transparent; }
+
+.chat__messages::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--color-border-strong);
+}
+
+.chat__messages::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
+.chat__latest-button {
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  display: block;
+  margin: -12px auto 12px;
+  padding: 7px 13px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
+  color: var(--color-text);
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(12px);
+}
+
+.chat__latest-button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-strong);
+}
+
+.chat__latest-button--streaming {
+  border-color: var(--color-accent);
+  animation: latest-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes latest-pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24), 0 0 0 0 var(--color-accent-glow); }
+  50% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24), 0 0 0 5px transparent; }
 }
 
 .chat__empty {

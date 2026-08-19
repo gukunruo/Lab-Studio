@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useModelsStore } from '../composables/useModels'
 import type { AiModel, ChatParams } from '../types'
-import { PhX } from '@phosphor-icons/vue'
 
 const modelsStore = useModelsStore()
 
@@ -17,7 +16,6 @@ const emit = defineEmits<{
   'update:params': [params: ChatParams]
   'update:systemPrompt': [prompt: string]
   'select-model': [model: AiModel]
-  close: []
 }>()
 
 function setReasoningEffort(level: 'low' | 'medium' | 'high') {
@@ -39,10 +37,7 @@ function selectModel(modelId: string) {
 <template>
   <aside class="param-panel" :class="{ 'param-panel--open': open }">
     <div class="param-panel__inner">
-      <div class="param-panel__title">
-        模型参数
-        <button class="param-panel__close" type="button" aria-label="关闭参数面板" @click="emit('close')"><PhX :size="16" /></button>
-      </div>
+      <div class="param-panel__title">模型参数</div>
 
       <div class="param-panel__group">
         <label class="param-panel__label">当前模型</label>
@@ -109,6 +104,8 @@ function selectModel(modelId: string) {
 <style scoped lang="scss">
 .param-panel {
   width: 0;
+  height: 100%;
+  min-height: 0;
   flex-shrink: 0;
   background: var(--color-bg-elevated);
   border-left: 1px solid var(--color-border-subtle);
@@ -122,8 +119,14 @@ function selectModel(modelId: string) {
 
 .param-panel__inner {
   width: 300px;
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 20px;
   opacity: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
   transition: opacity 0.3s 0.1s;
 }
 
@@ -138,24 +141,6 @@ function selectModel(modelId: string) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: var(--color-text);
-}
-
-.param-panel__close {
-  color: var(--color-text-muted);
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  transition: color 0.15s, background 0.15s;
-}
-
-.param-panel__close:hover {
-  background: var(--color-surface-2);
   color: var(--color-text);
 }
 

@@ -1,10 +1,45 @@
 import type { Hono } from 'hono'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { eq, desc } from 'drizzle-orm'
 import { db } from './db/client'
 import { aiModels, aiConversations } from './db/schema'
 import { seedAiModels } from './ai-platform-seed'
 
 const USER_KEY = 'admin'
+
+type AnthropicConfig = {
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
+function readAnthropicConfig(): AnthropicConfig | null {
+  const envConfig = {
+    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    baseUrl: process.env.ANTHROPIC_BASE_URL ?? '',
+    model: process.env.ANTHROPIC_MODEL ?? '',
+  }
+  if (envConfig.apiKey && envConfig.baseUrl) {
+    return { ...envConfig, model: envConfig.model || 'claude-sonnet-4.6' }
+  }
+
+  try {
+    const raw = readFileSync(join(homedir(), '.claude', 'settings.json'), 'utf8')
+    const env = (JSON.parse(raw) as { env?: Record<string, string> }).env ?? {}
+    const apiKey = envConfig.apiKey || env.ANTHROPIC_API_KEY || ''
+    const baseUrl = envConfig.baseUrl || env.ANTHROPIC_BASE_URL || ''
+    if (!apiKey || !baseUrl) return null
+    return {
+      apiKey,
+      baseUrl,
+      model: envConfig.model || env.ANTHROPIC_MODEL || 'claude-sonnet-4.6',
+    }
+  } catch {
+    return null
+  }
+}
 
 let seedPromise: Promise<void> | null = null
 function ensureSeeded(): Promise<void> {
@@ -283,18 +318,41 @@ export function registerAiPlatformRoutes(app: Hono): void {
     const modelRow = await db.select().from(aiModels).where(eq(aiModels.modelId, body.modelId)).get()
     if (!modelRow) return c.json({ error: 'model not found' }, 404)
 
-    const appId = process.env.TAL_MLOPS_APP_ID ?? ''
-    const appKey = process.env.TAL_MLOPS_APP_KEY ?? ''
-    const baseUrl = process.env.TAL_AI_BASE_URL ?? 'http://ai-service.tal.com'
-    if (!appId || !appKey) return c.json({ error: 'AI credentials not configured' }, 503)
-
-    const upstreamReq = buildUpstreamRequest(body, {
-      provider: modelRow.provider,
-      modelId: modelRow.modelId,
-      baseUrl,
-      appId,
-      appKey,
-    })
+    let upstreamReq: UpstreamRequest
+    if (modelRow.provider === 'anthropic') {
+      const config = readAnthropicConfig()
+      if (!config) return c.json({ error: 'AI credentials not configured' }, 503)
+      upstreamReq = {
+        url: `${config.baseUrl.replace(/\/$/, '')}/v1/messages`,
+        headers: new Headers({
+          'x-api-key': config.apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+          'User-Agent': 'claude-cli/2.0.0 (external, cli)',
+          'x-app': 'cli',
+          'x-stainless-lang': 'js',
+          'x-stainless-runtime': 'node',
+        }),
+        body: JSON.stringify({
+          model: config.model,
+          messages: body.messages,
+          max_tokens: body.params?.maxTokens ?? 4096,
+          stream: true,
+          ...(body.system ? { system: body.system } : {}),
+        }),
+      }
+    } else {
+      const appId = process.env.TAL_MLOPS_APP_ID ?? ''
+      const appKey = process.env.TAL_MLOPS_APP_KEY ?? ''
+      if (!appId || !appKey) return c.json({ error: 'OpenAI-compatible credentials not configured' }, 503)
+      upstreamReq = buildUpstreamRequest(body, {
+        provider: modelRow.provider,
+        modelId: modelRow.modelId,
+        baseUrl: process.env.TAL_AI_BASE_URL ?? 'http://ai-service.tal.com',
+        appId,
+        appKey,
+      })
+    }
 
     let upstream: Response
     try {

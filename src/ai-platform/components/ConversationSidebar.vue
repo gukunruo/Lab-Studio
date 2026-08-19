@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useConversationsStore } from '../composables/useConversations'
-import { useAuthStore } from '@/stores/auth'
 import UserMenu from '@/layouts/UserMenu.vue'
-import { PhPlus } from '@phosphor-icons/vue'
+
+const props = defineProps<{ collapsed: boolean }>()
 
 const store = useConversationsStore()
-const auth = useAuthStore()
 const searchQuery = ref('')
 
 const filtered = computed(() => {
@@ -15,20 +14,31 @@ const filtered = computed(() => {
   return store.conversations.filter((c) => c.title.toLowerCase().includes(q))
 })
 
+function dayBucket(updatedAt: string): '今天' | '昨天' | '7 天内' {
+  const updated = new Date(updatedAt)
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const diffDays = Math.floor((startOfToday - new Date(updated.getFullYear(), updated.getMonth(), updated.getDate()).getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays <= 0) return '今天'
+  if (diffDays === 1) return '昨天'
+  return '7 天内'
+}
+
+const groups = computed(() => {
+  const order: Array<'今天' | '昨天' | '7 天内'> = ['今天', '昨天', '7 天内']
+  return order
+    .map((label) => ({ label, conversations: filtered.value.filter((conversation) => dayBucket(conversation.updatedAt) === label) }))
+    .filter((group) => group.conversations.length > 0)
+})
+
 function timeLabel(updatedAt: string): string {
   const d = new Date(updatedAt)
   const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const diffDays = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / (1000 * 60 * 60 * 24))
   if (diffDays === 0) return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
   if (diffDays === 1) return '昨天'
-  if (diffDays < 7) return `${diffDays}天前`
+  if (diffDays < 7) return `周${['日', '一', '二', '三', '四', '五', '六'][d.getDay()]}`
   return `${d.getMonth() + 1}/${d.getDate()}`
-}
-
-async function newConversation() {
-  const modelId = store.activeConversation?.modelId ?? 'claude-opus-5'
-  await store.create(modelId)
 }
 
 async function selectConversation(id: number) {
@@ -37,13 +47,14 @@ async function selectConversation(id: number) {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="{ 'sidebar--collapsed': props.collapsed }">
     <div class="sidebar__header">
       <div class="sidebar__logo">
-        <span class="sidebar__logo-dot" />
-        <span>AI Studio</span>
+        <span class="sidebar__logo-dot" aria-hidden="true">
+          <span class="sidebar__logo-mark" />
+        </span>
+        <span class="sidebar__logo-text">AI Studio</span>
       </div>
-      <button class="sidebar__new-btn" type="button" title="新对话" aria-label="新对话" @click="newConversation"><PhPlus :size="18" /></button>
     </div>
 
     <div class="sidebar__search">
@@ -51,18 +62,21 @@ async function selectConversation(id: number) {
     </div>
 
     <div class="sidebar__list">
-      <button
-        v-for="conv in filtered"
-        :key="conv.id"
-        class="sidebar__item"
-        :class="{ 'sidebar__item--active': conv.id === store.activeId }"
-        type="button"
-        @click="selectConversation(conv.id)"
-      >
-        <span class="sidebar__item-dot" />
-        <span class="sidebar__item-text">{{ conv.title }}</span>
-        <span class="sidebar__item-meta">{{ timeLabel(conv.updatedAt) }}</span>
-      </button>
+      <template v-for="group in groups" :key="group.label">
+        <div class="sidebar__group-label">{{ group.label }}</div>
+        <button
+          v-for="conv in group.conversations"
+          :key="conv.id"
+          class="sidebar__item"
+          :class="{ 'sidebar__item--active': conv.id === store.activeId }"
+          type="button"
+          @click="selectConversation(conv.id)"
+        >
+          <span class="sidebar__item-dot" />
+          <span class="sidebar__item-text">{{ conv.title }}</span>
+          <span class="sidebar__item-meta">{{ timeLabel(conv.updatedAt) }}</span>
+        </button>
+      </template>
       <div v-if="!filtered.length" class="sidebar__empty">
         暂无对话
       </div>
@@ -70,220 +84,94 @@ async function selectConversation(id: number) {
 
     <div class="sidebar__footer">
       <UserMenu />
-      <div class="sidebar__footer-info">
-        <div class="sidebar__footer-name">{{ auth.username }}</div>
-        <div class="sidebar__footer-role">Lab Studio</div>
-      </div>
     </div>
   </aside>
 </template>
 
 <style scoped lang="scss">
 .sidebar {
+  position: relative;
   width: 264px;
+  height: 100%;
+  min-height: 0;
   flex-shrink: 0;
   background: var(--color-bg-elevated);
   border-right: 1px solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
+.sidebar--collapsed { width: 64px; }
+
+.sidebar--collapsed .sidebar__header { visibility: hidden; }
+
 .sidebar__header {
+  min-width: 232px;
   padding: 16px 16px 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.sidebar__logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--color-text);
-}
-
-.sidebar__logo-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-strong) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 12px var(--color-accent-glow);
-
-  &::after {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-bg-elevated);
-  }
-}
-
+.sidebar__header-actions { display: flex; align-items: center; gap: 4px; }
+.sidebar__collapse-btn,
 .sidebar__new-btn {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s;
 }
+.sidebar__new-btn { background: var(--color-surface-2); border-color: var(--color-border); color: var(--color-text); }
+.sidebar__collapse-btn:hover,
+.sidebar__new-btn:hover { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent-strong); }
 
-.sidebar__new-btn:hover {
-  background: var(--color-accent-soft);
-  border-color: var(--color-accent);
-  color: var(--color-accent-strong);
-}
+.sidebar--collapsed .sidebar__header { min-width: 64px; padding-inline: 16px; }
+.sidebar--collapsed .sidebar__logo,
+.sidebar--collapsed .sidebar__search,
+.sidebar--collapsed .sidebar__list { display: none; }
+.sidebar--collapsed .sidebar__footer { justify-content: center; padding-inline: 0; }
+.sidebar--collapsed :deep(.user-menu__trigger) { padding: 0; }
 
-.sidebar__search {
-  padding: 0 16px 12px;
-}
+.sidebar__logo { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; color: var(--color-text); }
+.sidebar__logo-dot { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong)); display: grid; place-items: center; box-shadow: 0 0 12px var(--color-accent-glow); }
+.sidebar__logo-mark { width: 10px; height: 10px; border: 3px solid var(--color-bg-elevated); border-radius: 50%; box-shadow: 0 0 0 1px var(--color-bg-elevated); }
 
-.sidebar__search-input {
-  width: 100%;
-  height: 32px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-family: var(--font-sans);
-  padding: 0 12px;
-  outline: none;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-.sidebar__search-input::placeholder {
-  color: var(--color-text-muted);
-  opacity: 0.6;
-}
-
-.sidebar__search-input:focus {
-  border-color: var(--color-accent);
-  background: var(--color-surface-2);
-}
-
+.sidebar__search { padding: 0 16px 12px; }
+.sidebar__search-input { width: 100%; height: 32px; background: var(--color-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); color: var(--color-text-muted); font-size: 12px; font-family: var(--font-sans); padding: 0 12px; outline: none; }
+.sidebar__search-input::placeholder { color: var(--color-text-muted); opacity: 0.6; }
+.sidebar__search-input:focus { border-color: var(--color-accent); background: var(--color-surface-2); }
 .sidebar__list {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 4px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
-.sidebar__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  margin-bottom: 1px;
-  text-align: left;
-}
-
-.sidebar__item:hover {
-  background: var(--color-surface);
-}
-
-.sidebar__item--active {
-  background: var(--color-accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.15);
-}
-
-.sidebar__item-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-text-muted);
-  flex-shrink: 0;
-  opacity: 0.5;
-}
-
-.sidebar__item--active .sidebar__item-dot {
-  background: var(--color-accent);
-  opacity: 1;
-  box-shadow: 0 0 6px var(--color-accent-glow);
-}
-
-.sidebar__item-text {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-}
-
-.sidebar__item--active .sidebar__item-text {
-  color: var(--color-text);
-}
-
-.sidebar__item-meta {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  opacity: 0.5;
-  font-family: var(--font-mono);
-  flex-shrink: 0;
-}
-
-.sidebar__empty {
-  padding: 24px 16px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.sidebar__footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border-subtle);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.sidebar__footer :deep(.user-menu__trigger) {
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.sidebar__footer :deep(.user-menu__avatar) {
-  width: 28px;
-  height: 28px;
-}
-
-.sidebar__footer :deep(.user-menu__name),
-.sidebar__footer :deep(.user-menu__trigger > span:last-child) {
-  display: none;
-}
-
-.sidebar__footer-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.sidebar__footer-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.sidebar__footer-role {
-  font-size: 10px;
-  color: var(--color-text-muted);
-}
+.sidebar__list::-webkit-scrollbar { width: 6px; }
+.sidebar__list::-webkit-scrollbar-track { background: transparent; }
+.sidebar__list::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--color-border-strong); }
+.sidebar__list::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+.sidebar__group-label { padding: 12px 8px 6px; color: var(--color-text-muted); opacity: 0.55; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.sidebar__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; margin-bottom: 1px; text-align: left; }
+.sidebar__item:hover { background: var(--color-surface); }
+.sidebar__item--active { background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.15); }
+.sidebar__item-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-muted); flex-shrink: 0; opacity: 0.5; }
+.sidebar__item--active .sidebar__item-dot { background: var(--color-accent); opacity: 1; box-shadow: 0 0 6px var(--color-accent-glow); }
+.sidebar__item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--color-text-muted); }
+.sidebar__item--active .sidebar__item-text { color: var(--color-text); }
+.sidebar__item-meta { flex-shrink: 0; font-size: 10px; color: var(--color-text-muted); opacity: 0.5; font-family: var(--font-mono); }
+.sidebar__empty { padding: 24px 16px; text-align: center; font-size: 12px; color: var(--color-text-muted); }
+.sidebar__footer { padding: 12px 16px; border-top: 1px solid var(--color-border-subtle); display: flex; align-items: center; gap: 10px; }
 </style>
