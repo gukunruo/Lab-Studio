@@ -51,9 +51,7 @@ async function selectConversation(id: number) {
     <div class="sidebar__header">
       <div class="sidebar__logo">
         <span class="sidebar__logo-badge" aria-hidden="true">
-          <span class="sidebar__logo-orbit sidebar__logo-orbit--one" />
-          <span class="sidebar__logo-orbit sidebar__logo-orbit--two" />
-          <span class="sidebar__logo-core" />
+          <span class="sidebar__logo-letter">AI</span>
         </span>
         <span class="sidebar__logo-copy">
           <span class="sidebar__logo-text">AI Studio</span>
@@ -96,7 +94,8 @@ async function selectConversation(id: number) {
 <style scoped lang="scss">
 .sidebar {
   position: relative;
-  width: 264px;
+  width: 264px !important;
+  flex: 0 0 264px;
   height: 100%;
   min-height: 0;
   flex-shrink: 0;
@@ -108,7 +107,11 @@ async function selectConversation(id: number) {
   overflow: hidden;
 }
 
-.sidebar--collapsed { width: 64px; }
+.sidebar--collapsed { width: 64px !important; flex-basis: 64px; }
+.sidebar--collapsed .sidebar__footer,
+.sidebar--collapsed .sidebar__header,
+.sidebar--collapsed .sidebar__logo { min-width: 64px; } .sidebar--collapsed .sidebar__footer { width: 64px; } .sidebar--collapsed .sidebar__header { width: 64px; } .sidebar--collapsed .sidebar__logo { width: 64px; }
+.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar']) { margin-inline: auto; }
 
 .sidebar--collapsed .sidebar__header { visibility: visible; }
 
@@ -140,7 +143,7 @@ async function selectConversation(id: number) {
 .sidebar__new-btn:hover { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent-strong); }
 
 .sidebar--collapsed .sidebar__header { min-width: 64px; padding-inline: 16px; }
-.sidebar--collapsed .sidebar__logo,
+.sidebar--collapsed .sidebar__logo-copy,
 .sidebar--collapsed .sidebar__search,
 .sidebar--collapsed .sidebar__list { display: none; }
 .sidebar--collapsed .sidebar__footer { justify-content: center; padding-inline: 0; }
@@ -170,45 +173,29 @@ async function selectConversation(id: number) {
     0 8px 20px rgba(45, 212, 191, 0.16);
 }
 
-.sidebar__logo-badge::before {
+.sidebar__logo-letter {
   position: absolute;
-  inset: 5px;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #b5fff2;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.08em;
+  text-indent: -0.08em;
+  text-shadow: 0 0 10px rgba(109, 246, 223, 0.8);
+}
+
+.sidebar__logo-letter::after {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(125, 244, 226, 0.38);
+  border-radius: 6px;
   content: '';
-  border: 1px solid rgba(125, 244, 226, 0.3);
-  border-radius: 50%;
 }
 
-.sidebar__logo-orbit {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 23px;
-  height: 9px;
-  border: 1px solid var(--color-accent);
-  border-radius: 50%;
-  box-shadow: 0 0 8px var(--color-accent-glow);
-}
-
-.sidebar__logo-orbit--one {
-  transform: translate(-50%, -50%) rotate(42deg);
-}
-
-.sidebar__logo-orbit--two {
-  border-color: var(--color-accent-strong);
-  transform: translate(-50%, -50%) rotate(-42deg);
-}
-
-.sidebar__logo-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 6px;
-  height: 6px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: #b5fff2;
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.18), 0 0 12px #6df6df;
-}
+.sidebar__logo-core { display: none; }
 
 .sidebar__logo-copy {
   display: grid;
