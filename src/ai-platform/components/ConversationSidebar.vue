@@ -50,10 +50,15 @@ async function selectConversation(id: number) {
   <aside class="sidebar" :class="{ 'sidebar--collapsed': props.collapsed }">
     <div class="sidebar__header">
       <div class="sidebar__logo">
-        <span class="sidebar__logo-dot" aria-hidden="true">
-          <span class="sidebar__logo-mark" />
+        <span class="sidebar__logo-badge" aria-hidden="true">
+          <span class="sidebar__logo-orbit sidebar__logo-orbit--one" />
+          <span class="sidebar__logo-orbit sidebar__logo-orbit--two" />
+          <span class="sidebar__logo-core" />
         </span>
-        <span class="sidebar__logo-text">AI Studio</span>
+        <span class="sidebar__logo-copy">
+          <span class="sidebar__logo-text">AI Studio</span>
+          <span class="sidebar__logo-caption">PLAYGROUND</span>
+        </span>
       </div>
     </div>
 
@@ -83,7 +88,7 @@ async function selectConversation(id: number) {
     </div>
 
     <div class="sidebar__footer">
-      <UserMenu />
+      <UserMenu variant="ai-sidebar" />
     </div>
   </aside>
 </template>
@@ -105,7 +110,7 @@ async function selectConversation(id: number) {
 
 .sidebar--collapsed { width: 64px; }
 
-.sidebar--collapsed .sidebar__header { visibility: hidden; }
+.sidebar--collapsed .sidebar__header { visibility: visible; }
 
 .sidebar__header {
   min-width: 232px;
@@ -139,11 +144,111 @@ async function selectConversation(id: number) {
 .sidebar--collapsed .sidebar__search,
 .sidebar--collapsed .sidebar__list { display: none; }
 .sidebar--collapsed .sidebar__footer { justify-content: center; padding-inline: 0; }
-.sidebar--collapsed :deep(.user-menu__trigger) { padding: 0; }
+.sidebar--collapsed :deep([data-variant='ai-sidebar'] .user-menu__trigger) { padding: 0; }
 
-.sidebar__logo { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; color: var(--color-text); }
-.sidebar__logo-dot { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong)); display: grid; place-items: center; box-shadow: 0 0 12px var(--color-accent-glow); }
-.sidebar__logo-mark { width: 10px; height: 10px; border: 3px solid var(--color-bg-elevated); border-radius: 50%; box-shadow: 0 0 0 1px var(--color-bg-elevated); }
+.sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text);
+}
+
+.sidebar__logo-badge {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 70%, white 10%);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.3), transparent 22%),
+    linear-gradient(145deg, #123b43 0%, #0b242d 48%, #07171e 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(45, 212, 191, 0.08),
+    0 8px 20px rgba(45, 212, 191, 0.16);
+}
+
+.sidebar__logo-badge::before {
+  position: absolute;
+  inset: 5px;
+  content: '';
+  border: 1px solid rgba(125, 244, 226, 0.3);
+  border-radius: 50%;
+}
+
+.sidebar__logo-orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 23px;
+  height: 9px;
+  border: 1px solid var(--color-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--color-accent-glow);
+}
+
+.sidebar__logo-orbit--one {
+  transform: translate(-50%, -50%) rotate(42deg);
+}
+
+.sidebar__logo-orbit--two {
+  border-color: var(--color-accent-strong);
+  transform: translate(-50%, -50%) rotate(-42deg);
+}
+
+.sidebar__logo-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #b5fff2;
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.18), 0 0 12px #6df6df;
+}
+
+.sidebar__logo-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.sidebar__logo-text {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sidebar__logo-caption {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  opacity: 0.72;
+}
+
+.sidebar--collapsed .sidebar__logo-copy { display: none; }
+
+.sidebar--collapsed .sidebar__logo-badge {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+
+.sidebar--collapsed .sidebar__logo { justify-content: center; }
+.sidebar--collapsed .sidebar__header { display: grid; place-items: center; }
+.sidebar--collapsed .sidebar__logo { width: 100%; }
+.sidebar--collapsed .sidebar__logo-badge { margin: 0 auto; }
+.sidebar--collapsed .sidebar__header { padding-inline: 0; }
+.sidebar--collapsed .sidebar__logo { gap: 0; }
+.sidebar--collapsed .sidebar__logo-caption { display: none; }
+.sidebar--collapsed .sidebar__logo-text { display: none; }
+.sidebar--collapsed .sidebar__logo-copy { display: none; }
+.sidebar--collapsed .sidebar__logo-badge { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(45, 212, 191, 0.08), 0 6px 16px rgba(45, 212, 191, 0.14); }
 
 .sidebar__search { padding: 0 16px 12px; }
 .sidebar__search-input { width: 100%; height: 32px; background: var(--color-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); color: var(--color-text-muted); font-size: 12px; font-family: var(--font-sans); padding: 0 12px; outline: none; }
