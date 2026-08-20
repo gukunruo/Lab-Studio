@@ -107,38 +107,16 @@ async function selectConversation(id: number) {
   overflow: hidden;
 }
 
-.sidebar--collapsed { width: 64px !important; flex-basis: 64px; }
-.sidebar--collapsed .sidebar__footer,
-.sidebar--collapsed .sidebar__header,
-.sidebar--collapsed .sidebar__logo { min-width: 64px; } .sidebar--collapsed .sidebar__footer { width: 64px; } .sidebar--collapsed .sidebar__header { width: 64px; } .sidebar--collapsed .sidebar__logo { width: 64px; }
-.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar']) {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  margin-inline: auto;
+.sidebar--collapsed {
+  width: 0 !important;
+  flex-basis: 0;
+  border-right: 0;
 }
 
-.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__trigger) {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  justify-content: center;
+.sidebar--collapsed > * {
+  visibility: hidden;
+  pointer-events: none;
 }
-
-.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__avatar) {
-  position: absolute;
-  inset: 6px;
-  width: 28px;
-  height: 28px;
-}
-
-.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__name),
-.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__trigger > svg) {
-  display: none;
-}
-
-.sidebar--collapsed .sidebar__header { visibility: visible; }
 
 .sidebar__header {
   min-width: 232px;
@@ -166,13 +144,6 @@ async function selectConversation(id: number) {
 .sidebar__new-btn { background: var(--color-surface-2); border-color: var(--color-border); color: var(--color-text); }
 .sidebar__collapse-btn:hover,
 .sidebar__new-btn:hover { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent-strong); }
-
-.sidebar--collapsed .sidebar__header { min-width: 64px; padding-inline: 16px; }
-.sidebar--collapsed .sidebar__logo-copy,
-.sidebar--collapsed .sidebar__search,
-.sidebar--collapsed .sidebar__list { display: none; }
-.sidebar--collapsed .sidebar__footer { justify-content: center; padding-inline: 0; }
-.sidebar--collapsed :deep([data-variant='ai-sidebar'] .user-menu__trigger) { padding: 0; }
 
 .sidebar__logo {
   display: flex;

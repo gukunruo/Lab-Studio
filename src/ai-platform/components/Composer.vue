@@ -87,6 +87,7 @@ function onKeydown(e: KeyboardEvent) {
 
 <style scoped lang="scss">
 .composer-wrap {
+  --composer-height: 112px;
   position: sticky;
   bottom: 0;
   z-index: 2;

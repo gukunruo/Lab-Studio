@@ -5,7 +5,7 @@ import MessageBubble from './MessageBubble.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
 import { useChat } from '../composables/useChat'
-import { PhGearSix, PhLightning, PhTrashSimple, PhSidebarSimple, PhPlus } from '@phosphor-icons/vue'
+import { PhGearSix, PhLightning, PhTrashSimple, PhSidebarSimple, PhNotePencil, PhArrowDown } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -15,6 +15,7 @@ const props = defineProps<{
   currentModel: AiModel | undefined
   panelOpen: boolean
   sidebarCollapsed: boolean
+  locale: 'zh' | 'en'
 }>()
 
 const emit = defineEmits<{
@@ -134,7 +135,7 @@ async function handleSend(content: string) {
           <PhSidebarSimple :size="16" weight="regular" />
         </button>
         <button class="chat__icon-btn" type="button" title="新对话" aria-label="新对话" @click="emit('new-conversation')">
-          <PhPlus :size="16" weight="regular" />
+          <PhNotePencil :size="16" weight="regular" />
         </button>
         <ModelSelector :current-model-id="modelId" @select="emit('select-model', $event)" />
       </div>
@@ -180,15 +181,6 @@ async function handleSend(content: string) {
     </div>
 
     <div v-else ref="messagesContainer" class="chat__messages" @scroll.passive="onMessagesScroll">
-      <button
-        v-if="showLatestButton"
-        class="chat__latest-button"
-        :class="{ 'chat__latest-button--streaming': streaming }"
-        type="button"
-        @click="jumpToLatest"
-      >
-        {{ streaming ? '正在生成 · 跳转到最新' : '跳转到最新消息' }}
-      </button>
       <MessageBubble
         v-for="(msg, i) in displayMessages"
         :key="i"
@@ -197,6 +189,17 @@ async function handleSend(content: string) {
         :streaming="streaming && i === displayMessages.length - 1 && msg.role === 'assistant'"
       />
     </div>
+
+    <button
+      v-if="showLatestButton"
+      class="chat__latest-button"
+      :class="{ 'chat__latest-button--streaming': streaming }"
+      type="button"
+      :aria-label="locale === 'zh' ? '跳转到最新消息' : 'Jump to latest message'"
+      @click="jumpToLatest"
+    >
+      <PhArrowDown :size="16" weight="bold" />
+    </button>
 
     <Composer
       :streaming="streaming"
@@ -210,6 +213,7 @@ async function handleSend(content: string) {
 
 <style scoped lang="scss">
 .chat {
+  --composer-height: 130px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -286,17 +290,22 @@ async function handleSend(content: string) {
 .chat__messages::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
 
 .chat__latest-button {
-  position: sticky;
-  top: 8px;
-  z-index: 3;
-  display: block;
-  margin: -12px auto 12px;
-  padding: 7px 13px;
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--composer-height) + 10px);
+  transform: translateX(-50%);
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-full);
+  border-radius: 50%;
   background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
   color: var(--color-text);
-  font-size: 12px;
+  cursor: pointer;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(12px);
 }
