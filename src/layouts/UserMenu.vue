@@ -177,8 +177,4 @@ async function signOut() {
 .user-menu[data-variant='ai-sidebar'] .user-menu__logout { border: 0; background: transparent; color: var(--color-accent-strong); cursor: pointer; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__edit { flex-shrink: 0; padding: 4px 2px; font-size: 0.78rem; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__logout { margin-top: 14px; padding: 12px 0 0; border-top-color: var(--color-border-subtle); font-size: 0.82rem; }
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] { width: 40px; flex: 0 0 40px; }
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] .user-menu__trigger { width: 40px; height: 40px; padding: 0; justify-content: center; }
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] .user-menu__name,
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] .user-menu__trigger > svg { display: none; }
 </style>

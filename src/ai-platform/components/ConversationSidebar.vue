@@ -111,7 +111,32 @@ async function selectConversation(id: number) {
 .sidebar--collapsed .sidebar__footer,
 .sidebar--collapsed .sidebar__header,
 .sidebar--collapsed .sidebar__logo { min-width: 64px; } .sidebar--collapsed .sidebar__footer { width: 64px; } .sidebar--collapsed .sidebar__header { width: 64px; } .sidebar--collapsed .sidebar__logo { width: 64px; }
-.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar']) { margin-inline: auto; }
+.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar']) {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  margin-inline: auto;
+}
+
+.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__trigger) {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
+.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__avatar) {
+  position: absolute;
+  inset: 6px;
+  width: 28px;
+  height: 28px;
+}
+
+.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__name),
+.sidebar--collapsed .sidebar__footer :deep([data-variant='ai-sidebar'] .user-menu__trigger > svg) {
+  display: none;
+}
 
 .sidebar--collapsed .sidebar__header { visibility: visible; }
 
