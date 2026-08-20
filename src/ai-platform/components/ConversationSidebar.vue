@@ -157,45 +157,25 @@ async function selectConversation(id: number) {
 }
 
 .sidebar__logo-badge {
-  position: relative;
+  display: grid;
   width: 30px;
   height: 30px;
   flex: 0 0 30px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 70%, white 10%);
-  border-radius: 10px;
-  background:
-    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.3), transparent 22%),
-    linear-gradient(145deg, #123b43 0%, #0b242d 48%, #07171e 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 0 0 1px rgba(45, 212, 191, 0.08),
-    0 8px 20px rgba(45, 212, 191, 0.16);
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 7px;
+  background: transparent;
 }
 
 .sidebar__logo-letter {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #b5fff2;
+  color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: -0.08em;
+  line-height: 1;
   text-indent: -0.08em;
-  text-shadow: 0 0 10px rgba(109, 246, 223, 0.8);
 }
-
-.sidebar__logo-letter::after {
-  position: absolute;
-  inset: 7px;
-  border: 1px solid rgba(125, 244, 226, 0.38);
-  border-radius: 6px;
-  content: '';
-}
-
-.sidebar__logo-core { display: none; }
 
 .sidebar__logo-copy {
   display: grid;
@@ -235,7 +215,7 @@ async function selectConversation(id: number) {
 .sidebar--collapsed .sidebar__logo-caption { display: none; }
 .sidebar--collapsed .sidebar__logo-text { display: none; }
 .sidebar--collapsed .sidebar__logo-copy { display: none; }
-.sidebar--collapsed .sidebar__logo-badge { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(45, 212, 191, 0.08), 0 6px 16px rgba(45, 212, 191, 0.14); }
+.sidebar--collapsed .sidebar__logo-badge { width: 28px; height: 28px; flex-basis: 28px; }
 
 .sidebar__search { padding: 0 16px 12px; }
 .sidebar__search-input { width: 100%; height: 32px; background: var(--color-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); color: var(--color-text-muted); font-size: 12px; font-family: var(--font-sans); padding: 0 12px; outline: none; }
