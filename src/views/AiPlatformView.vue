@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
+import { useThemeStore } from '@/stores/theme'
+import { useLocaleStore } from '@/stores/locale'
 import { useModelsStore } from '@/ai-platform/composables/useModels'
 import { useConversationsStore } from '@/ai-platform/composables/useConversations'
 import ConversationSidebar from '@/ai-platform/components/ConversationSidebar.vue'
@@ -7,6 +9,10 @@ import ChatArea from '@/ai-platform/components/ChatArea.vue'
 import ParameterPanel from '@/ai-platform/components/ParameterPanel.vue'
 import type { AiModel, ChatMessage, ChatParams } from '@/ai-platform/types'
 
+const themeStore = useThemeStore()
+const localeStore = useLocaleStore()
+const aiTheme = ref<'light' | 'dark'>(themeStore.theme)
+const aiLocale = ref<'zh' | 'en'>(localeStore.locale)
 const modelsStore = useModelsStore()
 const conversationsStore = useConversationsStore()
 const loaded = ref(false)
@@ -75,10 +81,18 @@ function onUpdateSystemPrompt(prompt: string) {
   conversationsStore.updateActiveSystemPrompt(prompt)
   conversationsStore.persistActive()
 }
+
+function onAiThemeChange(theme: 'light' | 'dark') {
+  aiTheme.value = theme
+}
+
+function onAiLocaleChange(locale: 'zh' | 'en') {
+  aiLocale.value = locale
+}
 </script>
 
 <template>
-  <div class="ai-platform">
+  <div class="ai-platform" :data-theme="aiTheme" :data-locale="aiLocale">
     <template v-if="loaded">
       <ConversationSidebar :collapsed="sidebarCollapsed" @toggle-collapse="sidebarCollapsed = !sidebarCollapsed" />
       <ChatArea
@@ -89,6 +103,7 @@ function onUpdateSystemPrompt(prompt: string) {
         :current-model="currentModel"
         :panel-open="panelOpen"
         :sidebar-collapsed="sidebarCollapsed"
+        :locale="aiLocale"
         @select-model="onSelectModel"
         @toggle-panel="panelOpen = !panelOpen"
         @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
@@ -101,6 +116,10 @@ function onUpdateSystemPrompt(prompt: string) {
         :params="params"
         :system-prompt="systemPrompt"
         :current-model="currentModel"
+        :theme="aiTheme"
+        :locale="aiLocale"
+        @update:theme="onAiThemeChange"
+        @update:locale="onAiLocaleChange"
         @update:params="onUpdateParams"
         @update:system-prompt="onUpdateSystemPrompt"
         @select-model="onSelectModel"
@@ -136,25 +155,43 @@ body.ai-platform-page #app {
   width: 100%;
   overflow: hidden;
   display: flex;
-  background: #0a0a0a;
-  color-scheme: dark;
+  background: var(--color-bg);
+  color-scheme: light;
 
-  // Dark glassmorphism theme — matches the high-fidelity mockup.
-  // Overrides project tokens for this subtree only; global theme is untouched.
-  --color-bg: #0a0a0a;
-  --color-bg-elevated: #111113;
-  --color-surface: rgba(255, 255, 255, 0.045);
-  --color-surface-2: rgba(255, 255, 255, 0.07);
-  --color-text: #f4f4f5;
-  --color-text-muted: #a1a1aa;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-subtle: rgba(255, 255, 255, 0.05);
-  --color-border-strong: rgba(255, 255, 255, 0.13);
-  --color-accent: #2dd4bf;
-  --color-accent-strong: #5eead4;
-  --color-accent-soft: rgba(45, 212, 191, 0.12);
-  --color-accent-glow: rgba(45, 212, 191, 0.22);
-  --color-danger: #f87171;
+  --color-bg: #ffffff;
+  --color-bg-elevated: #f7f7f8;
+  --color-surface: #f7f7f8;
+  --color-surface-2: #efefef;
+  --color-text: #18181b;
+  --color-text-muted: #71717a;
+  --color-border: rgba(24, 24, 27, 0.08);
+  --color-border-subtle: rgba(24, 24, 27, 0.06);
+  --color-border-strong: rgba(24, 24, 27, 0.14);
+  --color-accent: #0d9488;
+  --color-accent-strong: #0f766e;
+  --color-accent-soft: #ccfbf1;
+  --color-accent-glow: rgba(13, 148, 136, 0.22);
+  --color-danger: #dc2626;
+
+  &[data-theme='dark'] {
+    color-scheme: dark;
+    --color-bg: #0a0a0a;
+    --color-bg-elevated: #111113;
+    --color-surface: rgba(255, 255, 255, 0.045);
+    --color-surface-2: rgba(255, 255, 255, 0.07);
+    --color-text: #f4f4f5;
+    --color-text-muted: #a1a1aa;
+    --color-border: rgba(255, 255, 255, 0.08);
+    --color-border-subtle: rgba(255, 255, 255, 0.05);
+    --color-border-strong: rgba(255, 255, 255, 0.13);
+    --color-accent: #2dd4bf;
+    --color-accent-strong: #5eead4;
+    --color-accent-soft: rgba(45, 212, 191, 0.12);
+    --color-accent-glow: rgba(45, 212, 191, 0.22);
+    --color-danger: #f87171;
+  }
+
+  // Shared typography and shape tokens stay scoped to the AI page.
   --font-sans: 'DM Sans', system-ui, -apple-system, 'PingFang SC', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   --radius-sm: 10px;

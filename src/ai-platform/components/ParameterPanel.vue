@@ -10,12 +10,16 @@ const props = defineProps<{
   params: ChatParams
   systemPrompt: string
   currentModel: AiModel | undefined
+  theme: 'light' | 'dark'
+  locale: 'zh' | 'en'
 }>()
 
 const emit = defineEmits<{
   'update:params': [params: ChatParams]
   'update:systemPrompt': [prompt: string]
   'select-model': [model: AiModel]
+  'update:theme': [theme: 'light' | 'dark']
+  'update:locale': [locale: 'zh' | 'en']
 }>()
 
 function setReasoningEffort(level: 'low' | 'medium' | 'high') {
@@ -37,10 +41,34 @@ function selectModel(modelId: string) {
 <template>
   <aside class="param-panel" :class="{ 'param-panel--open': open }">
     <div class="param-panel__inner">
-      <div class="param-panel__title">模型参数</div>
+      <div class="param-panel__title">{{ locale === 'zh' ? '设置' : 'Settings' }}</div>
 
-      <div class="param-panel__group">
-        <label class="param-panel__label">当前模型</label>
+      <section class="param-panel__section">
+        <div class="param-panel__section-title">{{ locale === 'zh' ? '外观与语言' : 'Appearance & language' }}</div>
+        <div class="param-panel__group">
+          <label class="param-panel__label">{{ locale === 'zh' ? '主题' : 'Theme' }}</label>
+          <div class="param-panel__pills">
+            <button class="param-panel__pill" :class="{ 'param-panel__pill--active': theme === 'dark' }" type="button" @click="emit('update:theme', 'dark')">
+              {{ locale === 'zh' ? '深色' : 'Dark' }}
+            </button>
+            <button class="param-panel__pill" :class="{ 'param-panel__pill--active': theme === 'light' }" type="button" @click="emit('update:theme', 'light')">
+              {{ locale === 'zh' ? '浅色' : 'Light' }}
+            </button>
+          </div>
+        </div>
+        <div class="param-panel__group">
+          <label class="param-panel__label">{{ locale === 'zh' ? '语言' : 'Language' }}</label>
+          <div class="param-panel__pills">
+            <button class="param-panel__pill" :class="{ 'param-panel__pill--active': locale === 'zh' }" type="button" @click="emit('update:locale', 'zh')">中文</button>
+            <button class="param-panel__pill" :class="{ 'param-panel__pill--active': locale === 'en' }" type="button" @click="emit('update:locale', 'en')">English</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="param-panel__section param-panel__section--model">
+        <div class="param-panel__section-title">{{ locale === 'zh' ? '模型参数' : 'Model parameters' }}</div>
+        <div class="param-panel__group">
+          <label class="param-panel__label">{{ locale === 'zh' ? '当前模型' : 'Current model' }}</label>
         <select
           class="param-panel__select"
           :value="currentModel?.modelId"
@@ -57,7 +85,7 @@ function selectModel(modelId: string) {
       </div>
 
       <div class="param-panel__group">
-        <label class="param-panel__label">推理强度</label>
+        <label class="param-panel__label">{{ locale === 'zh' ? '推理强度' : 'Reasoning effort' }}</label>
         <div class="param-panel__pills">
           <button
             v-for="level in ['low', 'medium', 'high'] as const"
@@ -74,7 +102,7 @@ function selectModel(modelId: string) {
 
       <div class="param-panel__group">
         <label class="param-panel__label">
-          最大 Tokens
+          {{ locale === 'zh' ? '最大 Tokens' : 'Max tokens' }}
           <span class="param-panel__value">{{ params.maxTokens ?? 4096 }}</span>
         </label>
         <input
@@ -89,7 +117,7 @@ function selectModel(modelId: string) {
       </div>
 
       <div class="param-panel__group">
-        <label class="param-panel__label">System Prompt</label>
+        <label class="param-panel__label">{{ locale === 'zh' ? 'System Prompt' : 'System prompt' }}</label>
         <textarea
           class="param-panel__textarea"
           placeholder="输入系统提示词…"
@@ -97,6 +125,7 @@ function selectModel(modelId: string) {
           @input="emit('update:systemPrompt', ($event.target as HTMLTextAreaElement).value)"
         />
       </div>
+      </section>
     </div>
   </aside>
 </template>
@@ -142,6 +171,25 @@ function selectModel(modelId: string) {
   justify-content: space-between;
   align-items: center;
   color: var(--color-text);
+}
+
+.param-panel__section {
+  margin-bottom: 24px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.param-panel__section--model {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.param-panel__section-title {
+  margin-bottom: 16px;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .param-panel__group {
