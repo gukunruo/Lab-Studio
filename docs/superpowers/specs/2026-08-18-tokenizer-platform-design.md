@@ -21,13 +21,14 @@
 2. **API 精确（Claude / Kimi）**：前端 → 后端 Hono 代理 → 官方 count API，保护 API Key。用户可选输入 API Key 启用精确模式；不输入 Key 时降级为估算
 3. **本地估算（Doubao / DeepSeek / GLM / Qianwen）**：字符数 × 模型系数估算，UI 明确标注"近似值"
 
-### 全屏入口模式
+### App 页面模式
 
-利用 `_registry.ts` 中已有的 `entry?: 'frame' | 'direct'` 字段：
+不增加 `entry` 或其他“模板/直出”开关。卡片点击后直接进入对应 app 的自定义页面，每个 app 自己负责完整的全屏布局和页面级交互。
 
-- **框架改动**：`AppView.vue` 当 `entry === 'direct'` 时，跳过标题栏和 stage 包装，直接全屏渲染组件。默认 `frame` 行为不变，不影响其他 app。
-- **tokenizer app**：`meta.ts` 设 `entry: 'direct'`，UI 按全屏布局设计，自带精简返回按钮（左上角悬浮）。
-- 向后兼容，不影响其他 app（如另一个 agent 正在做的 AI 平台默认走 `frame`）。
+- **框架改动**：`AppView.vue` 降为极薄的全屏组件加载器，只负责根据 slug 查找并渲染 app 组件，不再提供通用标题栏、stage 容器、文档按钮或浏览器全屏切换。
+- **app 自定义**：每个 app 自己实现返回入口、顶部操作区、内容布局、错误状态和响应式行为。卡片仍通过现有的 slug 路由进入 app，不经过额外中间页。
+- **tokenizer app**：直接在 `index.vue` 中实现全屏页面，自带左上角返回按钮和自己的页面工具栏。
+- `_registry.ts` 删除 `entry` 类型字段，避免继续维护模板分支。另一个 agent 的 AI 平台也按同样方式由自己的页面组件负责布局。
 
 ## 模型分组
 
@@ -51,8 +52,8 @@
 
 ```
 src/apps/tokenizer/
-├── meta.ts              # app 元信息，entry: 'direct'
-├── index.vue            # 主界面入口
+├── meta.ts              # app 元信息
+├── index.vue            # 主界面入口（自定义全屏页面）
 ├── components/
 │   ├── ModelSelector.vue    # 模型分组下拉选择
 │   ├── TextInput.vue        # 文本输入区
@@ -180,6 +181,12 @@ POST /api/tokenizer/count
 - 单元测试：估算系数计算、tiktoken 编码结果
 - 集成测试：后端代理路由（mock 官方 API）
 - E2E：输入文本 → 实时显示 token 数 → 切换模型 → 可视化高亮
+
+## 框架改动
+
+- `src/apps/_registry.ts`：删除 `AppMetaInput` 和相关类型中的 `entry` 字段。
+- `src/views/AppView.vue`：移除通用标题栏、stage 容器、文档弹窗和浏览器全屏切换逻辑，保留 slug 对应组件的异步加载，并让根容器占满视口。
+- `src/apps/tokenizer/index.vue`：实现完整的自定义全屏页面，包括返回按钮、工具栏、主体布局、API Key 状态和响应式适配。
 
 ## 依赖
 
