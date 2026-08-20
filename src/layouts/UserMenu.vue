@@ -160,7 +160,7 @@ async function signOut() {
 .user-menu__logout { width: 100%; margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--color-border); text-align: left; color: var(--color-danger); }
 
 .user-menu[data-variant='ai-sidebar'] { width: 100%; }
-.user-menu[data-variant='ai-sidebar'] .user-menu__trigger { align-items: center; width: 100%; gap: 0.55rem; padding: 0.3rem 0.7rem 0.3rem 0.3rem; transition: border-color 0.2s, background 0.2s; }
+.user-menu[data-variant='ai-sidebar'] .user-menu__trigger { position: relative; align-items: center; width: 100%; gap: 0.55rem; padding: 0.3rem 2rem 0.3rem 0.3rem; transition: border-color 0.2s, background 0.2s; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger > svg { flex-shrink: 0; color: var(--color-text-muted); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger:hover,
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger[aria-expanded='true'] { border-color: var(--color-border-strong); background: var(--color-surface-2); }
@@ -168,6 +168,7 @@ async function signOut() {
 .user-menu[data-variant='ai-sidebar'] .user-menu__avatar--large { width: 38px; height: 38px; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__avatar--fallback { background: var(--color-accent); color: var(--color-bg); font-size: 0.78rem; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__name { min-width: 0; flex: 1; text-align: left; font-size: 0.82rem; }
+.user-menu[data-variant='ai-sidebar'] .user-menu__caret { position: absolute; top: 50%; right: 0.7rem; flex-shrink: 0; color: var(--color-text-muted); transform: translateY(-50%); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger > svg { flex-shrink: 0; color: var(--color-text-muted); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__panel { position: fixed; width: min(280px, calc(100vw - 24px)); max-height: min(420px, calc(100dvh - 24px)); overflow-y: auto; padding: 14px; border-color: var(--color-border-strong); border-radius: 18px; background: var(--color-bg-elevated); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__profile { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--color-border-subtle); }
