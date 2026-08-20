@@ -111,7 +111,7 @@ async function signOut() {
       <img v-if="auth.avatarUrl" :src="auth.avatarUrl" alt="" class="user-menu__avatar" />
       <span v-else class="user-menu__avatar user-menu__avatar--fallback">{{ auth.username.slice(0, 1).toUpperCase() }}</span>
       <span class="user-menu__name">{{ auth.username }}</span>
-      <PhCaretDown :size="12" aria-hidden="true" />
+      <PhCaretDown class="user-menu__caret" :size="12" aria-hidden="true" />
     </button>
     <div v-if="open" class="user-menu__panel" :style="isAiSidebar ? panelStyle : undefined" role="menu">
       <div v-if="!editing && props.variant === 'ai-sidebar'" class="user-menu__profile">
@@ -144,7 +144,9 @@ async function signOut() {
 
 <style scoped lang="scss">
 .user-menu { position: relative; }
-.user-menu__trigger { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.25rem 0.5rem 0.25rem 0.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); color: var(--color-text); }
+.user-menu__trigger { display: flex; align-items: center; gap: 0.45rem; min-width: 0; padding: 0.25rem 2rem 0.25rem 0.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); color: var(--color-text); position: relative; }
+.user-menu:not([data-variant='ai-sidebar']) .user-menu__name { min-width: 0; }
+.user-menu:not([data-variant='ai-sidebar']) :deep(.user-menu__caret) { position: absolute; top: 50%; right: 0.75rem; color: var(--color-text-muted); transform: translateY(-50%); }
 .user-menu__avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
 .user-menu__avatar--fallback { display: grid; place-items: center; background: var(--color-accent); color: var(--color-on-accent); font-size: 0.72rem; font-weight: 700; }
 .user-menu__name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; }
