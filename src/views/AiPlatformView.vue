@@ -37,6 +37,7 @@ const loadError = ref('')
 const panelOpen = ref(false)
 const sidebarCollapsed = ref(false)
 const suggestions = ref<AiRecommendation[]>(dailyFallbackRecommendations())
+let creatingConversation = false
 
 async function init() {
   loaded.value = false
@@ -52,7 +53,12 @@ async function init() {
     const fallback = dailyFallbackRecommendations()
     const merged = [...personalized, ...fallback.filter((item) => !personalized.some((candidate) => candidate.query === item.query))]
     suggestions.value = merged.slice(0, 4)
-    await newConversation()
+    const latestConversation = conversationsStore.conversations[0]
+    if (latestConversation) {
+      await conversationsStore.select(latestConversation.id)
+    } else {
+      await newConversation()
+    }
     loaded.value = true
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载失败'
@@ -82,7 +88,13 @@ const params = computed(() => ({
 const currentModel = computed(() => modelsStore.findById(modelId.value))
 
 async function newConversation() {
-  await conversationsStore.create(modelId.value)
+  if (creatingConversation) return
+  creatingConversation = true
+  try {
+    await conversationsStore.create(modelId.value)
+  } finally {
+    creatingConversation = false
+  }
 }
 
 function onSelectModel(model: AiModel) {
