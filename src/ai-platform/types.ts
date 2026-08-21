@@ -37,6 +37,7 @@ export interface AiConversation {
   systemPrompt: string
   params: ChatParams
   messages: ChatMessage[]
+  pinned: boolean
   createdAt: string
   updatedAt: string
 }
@@ -47,6 +48,7 @@ export interface AiConversationSummary {
   modelId: string
   systemPrompt: string
   params: ChatParams
+  pinned: boolean
   createdAt: string
   updatedAt: string
 }

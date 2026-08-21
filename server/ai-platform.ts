@@ -123,6 +123,7 @@ export interface ConversationUpdate {
   systemPrompt?: string
   params?: Record<string, unknown>
   messages?: unknown[]
+  pinned?: boolean
 }
 
 const TITLE_MAX = 200
@@ -146,6 +147,9 @@ export function normalizeConversationUpdate(input: ConversationUpdate): Conversa
     result.messages = input.messages.slice(0, MESSAGE_MAX_AI)
   } else {
     result.messages = []
+  }
+  if (typeof input.pinned === 'boolean') {
+    result.pinned = input.pinned
   }
   return result
 }
@@ -244,6 +248,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
         modelId: aiConversations.modelId,
         systemPrompt: aiConversations.systemPrompt,
         params: aiConversations.params,
+        pinned: aiConversations.pinned,
         createdAt: aiConversations.createdAt,
         updatedAt: aiConversations.updatedAt,
       })
@@ -265,6 +270,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
       systemPrompt: '',
       params: {},
       messages: [],
+      pinned: 0,
       createdAt: now,
       updatedAt: now,
     }).returning()
@@ -293,6 +299,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
     if (body.systemPrompt !== undefined) update.systemPrompt = body.systemPrompt
     if (body.params !== undefined) update.params = body.params
     if (body.messages !== undefined) update.messages = body.messages
+    if (body.pinned !== undefined) update.pinned = body.pinned ? 1 : 0
     await db.update(aiConversations).set(update).where(eq(aiConversations.id, id))
     const updated = await db.select().from(aiConversations).where(eq(aiConversations.id, id)).get()
     return c.json(updated)

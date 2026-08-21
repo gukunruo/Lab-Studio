@@ -25,11 +25,7 @@ async function init() {
   loadError.value = ''
   try {
     await Promise.all([modelsStore.load(), conversationsStore.loadList()])
-    if (conversationsStore.conversations.length > 0) {
-      await conversationsStore.select(conversationsStore.conversations[0]!.id)
-    } else {
-      await conversationsStore.create('claude-opus-5')
-    }
+    await newConversation()
     loaded.value = true
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : '加载失败'
@@ -108,7 +104,6 @@ function onAiLocaleChange(locale: 'zh' | 'en') {
         @toggle-panel="panelOpen = !panelOpen"
         @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
         @new-conversation="newConversation"
-        @clear-messages="onUpdateMessages([])"
         @update:messages="onUpdateMessages"
       />
       <ParameterPanel

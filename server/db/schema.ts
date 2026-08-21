@@ -109,6 +109,7 @@ export const aiConversations = sqliteTable('ai_conversations', {
   systemPrompt: text('system_prompt').notNull().default(''),
   params: text('params', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
   messages: text('messages', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  pinned: integer('pinned').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })

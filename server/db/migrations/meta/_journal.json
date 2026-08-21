@@ -57,6 +57,15 @@
       "when": 1787042197270,
       "tag": "0007_free_dorian_gray",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787356800000,
+      "tag": "0008_add_conversation_pinned",
+      "breakpoints": true
     }
+  ]
+}
   ]
 }

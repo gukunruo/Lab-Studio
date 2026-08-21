@@ -5,7 +5,7 @@ import MessageBubble from './MessageBubble.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
 import { useChat } from '../composables/useChat'
-import { PhGearSix, PhLightning, PhTrashSimple, PhSidebarSimple, PhNotePencil, PhArrowDown } from '@phosphor-icons/vue'
+import { PhGearSix, PhLightning, PhSidebarSimple, PhNotePencil, PhArrowDown } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -24,7 +24,6 @@ const emit = defineEmits<{
   'update:systemPrompt': [prompt: string]
   'update:messages': [messages: ChatMessage[]]
   'toggle-panel': []
-  'clear-messages': []
   'toggle-sidebar': []
   'new-conversation': []
 }>()
@@ -149,15 +148,6 @@ async function handleSend(content: string) {
           @click="emit('toggle-panel')"
         >
           <PhGearSix :size="16" weight="regular" />
-        </button>
-        <button
-          class="chat__icon-btn"
-          type="button"
-          title="清空对话"
-          aria-label="清空对话"
-          @click="emit('clear-messages')"
-        >
-          <PhTrashSimple :size="16" weight="regular" />
         </button>
       </div>
     </header>

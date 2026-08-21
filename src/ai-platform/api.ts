@@ -31,7 +31,7 @@ export async function createConversation(modelId: string, title?: string): Promi
 
 export async function updateConversation(
   id: number,
-  data: { title?: string; modelId?: string; systemPrompt?: string; params?: ChatParams; messages?: ChatMessage[] },
+  data: { title?: string; modelId?: string; systemPrompt?: string; params?: ChatParams; messages?: ChatMessage[]; pinned?: boolean },
 ): Promise<AiConversation> {
   const res = await fetch(`/api/ai-platform/conversations/${id}`, {
     credentials: 'include',
