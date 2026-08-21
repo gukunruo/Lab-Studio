@@ -6,6 +6,10 @@ import UserMenu from '@/layouts/UserMenu.vue'
 
 const props = defineProps<{ collapsed: boolean }>()
 
+const emit = defineEmits<{
+  'new-conversation': []
+}>()
+
 const store = useConversationsStore()
 const searchQuery = ref('')
 
@@ -75,7 +79,7 @@ async function togglePinned(id: number, event: MouseEvent) {
 
     <div class="sidebar__list">
       <div class="sidebar__group-label">功能区</div>
-      <button class="sidebar__new-entry" type="button" @click="store.create('claude-opus-5')">
+      <button class="sidebar__new-entry" type="button" @click="emit('new-conversation')">
         <PhNotePencil :size="17" weight="regular" />
         <span>新对话</span>
       </button>
@@ -101,8 +105,10 @@ async function togglePinned(id: number, event: MouseEvent) {
         </div>
       </template>
 
-      <template v-for="group in recentGroups" :key="group.label">
-        <div class="sidebar__group-label">{{ group.label === '7 天内' ? '最近对话' : group.label }}</div>
+      <template v-if="recentGroups.length">
+        <div class="sidebar__group-label">最近对话</div>
+        <template v-for="group in recentGroups" :key="group.label">
+          <div class="sidebar__group-label sidebar__group-label--date">{{ group.label }}</div>
         <div
           v-for="conv in group.conversations"
           :key="conv.id"
@@ -120,6 +126,7 @@ async function togglePinned(id: number, event: MouseEvent) {
             </button>
           </span>
         </div>
+        </template>
       </template>
 
       <div v-if="!filtered.length" class="sidebar__empty">暂无对话</div>

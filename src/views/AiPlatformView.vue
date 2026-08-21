@@ -90,7 +90,11 @@ function onAiLocaleChange(locale: 'zh' | 'en') {
 <template>
   <div class="ai-platform" :data-theme="aiTheme" :data-locale="aiLocale">
     <template v-if="loaded">
-      <ConversationSidebar :collapsed="sidebarCollapsed" @toggle-collapse="sidebarCollapsed = !sidebarCollapsed" />
+      <ConversationSidebar
+        :collapsed="sidebarCollapsed"
+        @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
+        @new-conversation="newConversation"
+      />
       <ChatArea
         :messages="messages"
         :model-id="modelId"
