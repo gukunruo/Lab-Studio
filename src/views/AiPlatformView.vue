@@ -4,10 +4,27 @@ import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { useModelsStore } from '@/ai-platform/composables/useModels'
 import { useConversationsStore } from '@/ai-platform/composables/useConversations'
+import { fetchRecommendations } from '@/ai-platform/api'
 import ConversationSidebar from '@/ai-platform/components/ConversationSidebar.vue'
 import ChatArea from '@/ai-platform/components/ChatArea.vue'
 import ParameterPanel from '@/ai-platform/components/ParameterPanel.vue'
-import type { AiModel, ChatMessage, ChatParams } from '@/ai-platform/types'
+import type { AiModel, AiRecommendation, ChatMessage, ChatParams } from '@/ai-platform/types'
+
+const fallbackRecommendations: AiRecommendation[] = [
+  { title: '解释多模型架构', desc: '统一代理层如何工作', query: '解释多模型架构，以及统一代理层如何工作' },
+  { title: '对比模型能力', desc: '不同模型的推理差异', query: '对比不同模型的能力和推理差异' },
+  { title: '写一段代码', desc: '流式 SSE 解析器', query: '写一段健壮的流式 SSE 解析器代码' },
+  { title: '设计 prompt 模板', desc: '提升输出稳定性', query: '帮我设计一个可复用的 prompt 模板' },
+  { title: '分析今日热点', desc: '快速梳理事件脉络', query: '帮我分析今天值得关注的热点，并梳理事件脉络' },
+  { title: '制定学习计划', desc: '从目标拆解到执行', query: '根据一个明确目标帮我制定可执行的学习计划' },
+]
+
+function dailyFallbackRecommendations(): AiRecommendation[] {
+  const now = new Date()
+  const dayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`
+  const hash = [...dayKey].reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  return Array.from({ length: 4 }, (_, index) => fallbackRecommendations[(hash + index) % fallbackRecommendations.length]!)
+}
 
 const themeStore = useThemeStore()
 const localeStore = useLocaleStore()
@@ -19,12 +36,22 @@ const loaded = ref(false)
 const loadError = ref('')
 const panelOpen = ref(false)
 const sidebarCollapsed = ref(false)
+const suggestions = ref<AiRecommendation[]>(dailyFallbackRecommendations())
 
 async function init() {
   loaded.value = false
   loadError.value = ''
+  suggestions.value = dailyFallbackRecommendations()
   try {
-    await Promise.all([modelsStore.load(), conversationsStore.loadList()])
+    const [, , recommendations] = await Promise.all([
+      modelsStore.load(),
+      conversationsStore.loadList(),
+      fetchRecommendations().catch(() => []),
+    ])
+    const personalized = recommendations.filter((item) => item.query.trim())
+    const fallback = dailyFallbackRecommendations()
+    const merged = [...personalized, ...fallback.filter((item) => !personalized.some((candidate) => candidate.query === item.query))]
+    suggestions.value = merged.slice(0, 4)
     await newConversation()
     loaded.value = true
   } catch (e) {
@@ -104,6 +131,7 @@ function onAiLocaleChange(locale: 'zh' | 'en') {
         :panel-open="panelOpen"
         :sidebar-collapsed="sidebarCollapsed"
         :locale="aiLocale"
+        :suggestions="suggestions"
         @select-model="onSelectModel"
         @toggle-panel="panelOpen = !panelOpen"
         @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
-import type { AiModel, ChatMessage, ChatParams } from '../types'
+import type { AiModel, AiRecommendation, ChatMessage, ChatParams } from '../types'
 import MessageBubble from './MessageBubble.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
@@ -16,6 +16,7 @@ const props = defineProps<{
   panelOpen: boolean
   sidebarCollapsed: boolean
   locale: 'zh' | 'en'
+  suggestions: AiRecommendation[]
 }>()
 
 const emit = defineEmits<{
@@ -84,15 +85,8 @@ function onViewportChange() {
 onMounted(() => window.addEventListener('resize', onViewportChange))
 onBeforeUnmount(() => window.removeEventListener('resize', onViewportChange))
 
-const suggestions = [
-  { title: '解释多模型架构', desc: '统一代理层如何工作' },
-  { title: '对比模型能力', desc: '不同模型的推理差异' },
-  { title: '写一段代码', desc: '流式 SSE 解析器' },
-  { title: '设计 prompt 模板', desc: 'reasoning_effort 研究' },
-]
-
-function useSuggestion(text: string) {
-  handleSend(text)
+function useSuggestion(suggestion: AiRecommendation) {
+  handleSend(suggestion.query)
 }
 
 async function handleSend(content: string) {
@@ -154,15 +148,15 @@ async function handleSend(content: string) {
 
     <div v-if="!messages.length && !streaming" class="chat__empty">
       <div class="chat__empty-icon"><PhLightning :size="28" weight="duotone" /></div>
-      <h2 class="chat__empty-title">开始对话</h2>
-      <p class="chat__empty-subtitle">选择模型，输入消息开始与 AI 对话</p>
+      <h2 class="chat__empty-title">今日推荐</h2>
+      <p class="chat__empty-subtitle">基于你的提问和今日话题，点击即可开始与 AI 对话</p>
       <div class="chat__suggestions">
         <button
           v-for="s in suggestions"
-          :key="s.title"
+          :key="s.query"
           class="chat__suggestion"
           type="button"
-          @click="useSuggestion(s.title)"
+          @click="useSuggestion(s)"
         >
           <div class="chat__suggestion-title">{{ s.title }}</div>
           <div class="chat__suggestion-desc">{{ s.desc }}</div>

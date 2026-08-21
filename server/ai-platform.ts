@@ -259,6 +259,37 @@ export function registerAiPlatformRoutes(app: Hono): void {
     return c.json(rows)
   })
 
+  // 首页推荐 — 从当前用户最近的提问中提取可再次发起的话题
+  app.get('/ai-platform/recommendations', async (c) => {
+    const rows = await db
+      .select({ messages: aiConversations.messages, updatedAt: aiConversations.updatedAt })
+      .from(aiConversations)
+      .where(eq(aiConversations.userKey, USER_KEY))
+      .orderBy(desc(aiConversations.updatedAt))
+      .all()
+
+    const seen = new Set<string>()
+    const recommendations: Array<{ title: string; desc: string; query: string }> = []
+    for (const row of rows) {
+      const messages = Array.isArray(row.messages) ? row.messages : []
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index]
+        if (!message || typeof message !== 'object' || !('role' in message) || !('content' in message)) continue
+        if (message.role !== 'user' || typeof message.content !== 'string') continue
+        const query = message.content.replace(/\s+/g, ' ').trim().slice(0, 120)
+        if (!query || seen.has(query)) continue
+        seen.add(query)
+        recommendations.push({
+          title: query.length > 28 ? `${query.slice(0, 28)}…` : query,
+          desc: '基于你最近的提问',
+          query,
+        })
+        if (recommendations.length >= 4) return c.json(recommendations)
+      }
+    }
+    return c.json(recommendations)
+  })
+
   // 会话管理 — 新建空会话
   app.post('/ai-platform/conversations', async (c) => {
     const body = await c.req.json<{ modelId?: string; title?: string }>().catch(() => ({}) as { modelId?: string; title?: string })

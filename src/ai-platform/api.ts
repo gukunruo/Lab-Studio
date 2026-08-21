@@ -1,4 +1,4 @@
-import type { ModelsByCategory, AiConversation, AiConversationSummary, ChatMessage, ChatParams } from './types'
+import type { ModelsByCategory, AiConversation, AiConversationSummary, AiRecommendation, ChatMessage, ChatParams } from './types'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
   const res = await fetch('/api/ai-platform/models', { credentials: 'include' })
@@ -9,6 +9,12 @@ export async function fetchModels(): Promise<ModelsByCategory> {
 export async function fetchConversations(): Promise<AiConversationSummary[]> {
   const res = await fetch('/api/ai-platform/conversations', { credentials: 'include' })
   if (!res.ok) throw new Error('Failed to fetch conversations')
+  return res.json()
+}
+
+export async function fetchRecommendations(): Promise<AiRecommendation[]> {
+  const res = await fetch('/api/ai-platform/recommendations', { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch recommendations')
   return res.json()
 }
 

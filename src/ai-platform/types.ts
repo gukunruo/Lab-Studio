@@ -16,6 +16,12 @@ export interface AiModel {
   updatedAt: string
 }
 
+export interface AiRecommendation {
+  title: string
+  desc: string
+  query: string
+}
+
 export type ModelsByCategory = Partial<Record<ModelCategory, AiModel[]>>
 
 export interface ChatMessage {
