@@ -316,8 +316,40 @@ async function handleSend(content: string) {
 }
 
 .chat__latest-button--streaming {
-  border-color: var(--color-accent);
+  border-color: transparent;
   animation: latest-pulse 1.8s ease-in-out infinite;
+}
+
+.chat__latest-button--streaming::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--color-accent) 90deg,
+    transparent 180deg,
+    var(--color-accent-strong) 270deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: latest-border-spin 1.2s linear infinite;
+}
+
+.chat__latest-button--streaming :deep(svg) {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes latest-border-spin {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes latest-pulse {

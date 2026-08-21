@@ -53,7 +53,7 @@ async function copyContent() {
 <template>
   <div class="message" :class="`message--${message.role}`">
     <div class="message__body">
-      <div class="message__role">{{ message.role === 'user' ? '我' : (modelName ?? 'Assistant') }}</div>
+      <div v-if="isAssistant" class="message__role">{{ modelName ?? 'Assistant' }}</div>
       <div class="message__content">
         <div v-if="isAssistant" class="message__markdown" v-html="renderedContent" />
         <div v-else class="message__plain">{{ message.content }}</div>
