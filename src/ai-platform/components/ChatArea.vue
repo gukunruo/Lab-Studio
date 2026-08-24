@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
-import type { AiModel, AiRecommendation, ChatMessage, ChatParams } from '../types'
+import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from '../types'
+import { isTextMessage, parseConversationDigest } from '../api'
 import MessageBubble from './MessageBubble.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
 import { useChat } from '../composables/useChat'
-import { PhGearSix, PhLightning, PhSidebarSimple, PhNotePencil, PhArrowDown } from '@phosphor-icons/vue'
+import { useImageGeneration } from '../composables/useImageGeneration'
+import { useModelsStore } from '../composables/useModels'
+import { PhGearSix, PhLightning, PhSidebarSimple, PhNotePencil, PhArrowDown, PhListBullets, PhX } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -13,10 +16,13 @@ const props = defineProps<{
   systemPrompt: string
   params: ChatParams
   currentModel: AiModel | undefined
+  conversationKey: object | null
   panelOpen: boolean
   sidebarCollapsed: boolean
   locale: 'zh' | 'en'
   suggestions: AiRecommendation[]
+  digest: ConversationDigest | null
+  branchCreating: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,16 +30,53 @@ const emit = defineEmits<{
   'update:params': [params: ChatParams]
   'update:systemPrompt': [prompt: string]
   'update:messages': [messages: ChatMessage[]]
+  branch: [index: number]
+  'update:digest': [digest: ConversationDigest]
+  'digest-error': [message: string]
+  'clear-digest': []
   'toggle-panel': []
   'toggle-sidebar': []
   'new-conversation': []
 }>()
 
 const messagesContainer = ref<HTMLElement | null>(null)
+const composerRef = ref<InstanceType<typeof Composer> | null>(null)
+const composerHeight = ref(130)
 const streamingContent = ref('')
+const waitingForFirstToken = ref(false)
+const generatingDigest = ref(false)
+const digestError = ref('')
+const digestMenuOpen = ref(false)
 const userScrolledAway = ref(false)
 
 const { streaming, send, abort } = useChat()
+const { send: sendDigest } = useChat()
+const { generating: imageGenerating, generate: generateImage, abort: abortImage } = useImageGeneration()
+const modelsStore = useModelsStore()
+function isImageModelId(value: string): value is ImageModelId {
+  return value === 'gpt-image-2' || value === 'gemini-3-pro-image'
+}
+
+const imageModels = computed(() => modelsStore.imageModels.flatMap((model) => (
+  isImageModelId(model.modelId) ? [{ modelId: model.modelId, displayName: model.displayName }] : []
+)))
+let requestGeneration = 0
+let imageRequestGeneration = 0
+let activeRequestConversation: object | number | null = null
+let composerObserver: ResizeObserver | null = null
+
+function isCurrentConversation(key: object | number | null): boolean {
+  return key === (props.conversationKey ?? props.messages)
+}
+
+function invalidateRequest() {
+  requestGeneration += 1
+  imageRequestGeneration += 1
+  abort()
+  abortImage()
+  streamingContent.value = ''
+  waitingForFirstToken.value = false
+}
 
 const displayMessages = computed(() => {
   const msgs = [...props.messages]
@@ -82,46 +125,286 @@ function onViewportChange() {
   if (!userScrolledAway.value) void scrollToBottom()
 }
 
-onMounted(() => window.addEventListener('resize', onViewportChange))
-onBeforeUnmount(() => window.removeEventListener('resize', onViewportChange))
+onMounted(() => {
+  window.addEventListener('resize', onViewportChange)
+  const element = composerRef.value?.composerWrapRef
+  if (!element) return
+  composerObserver = new ResizeObserver((entries) => {
+    const entry = entries[0]
+    if (entry) composerHeight.value = Math.ceil(entry.contentRect.height)
+  })
+  composerObserver.observe(element)
+  composerHeight.value = Math.ceil(element.getBoundingClientRect().height)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onViewportChange)
+  composerObserver?.disconnect()
+})
 
 function useSuggestion(suggestion: AiRecommendation) {
-  handleSend(suggestion.query)
+  void handleSend(suggestion.query)
+}
+
+function digestSystemPrompt(): string {
+  return `${props.systemPrompt}\n\n已整理的早期上下文（以原消息为准）：\n${props.digest?.summary ?? ''}`
+}
+
+function activeDigest(): ConversationDigest | null {
+  const digest = props.digest
+  return digest && digest.sourceMessageCount > 0 && digest.sourceMessageCount <= props.messages.length
+    ? digest
+    : null
+}
+
+async function requestReply(messages: ChatMessage[]) {
+  const generation = ++requestGeneration
+  activeRequestConversation = props.conversationKey ?? props.messages
+  streamingContent.value = ''
+  waitingForFirstToken.value = true
+
+  try {
+    await send(
+      messages,
+      props.modelId,
+      activeDigest() ? digestSystemPrompt() : props.systemPrompt,
+      props.params,
+      {
+        onToken: (token) => {
+          if (generation === requestGeneration && activeRequestConversation === (props.conversationKey ?? props.messages)) {
+            waitingForFirstToken.value = false
+            streamingContent.value += token
+          }
+        },
+        onDone: (full) => {
+          if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
+          waitingForFirstToken.value = false
+          emit('update:messages', [...messages, { role: 'assistant', content: full, createdAt: new Date().toISOString() }])
+          streamingContent.value = ''
+        },
+        onAbort: (full) => {
+          if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
+          waitingForFirstToken.value = false
+          const content = full || streamingContent.value
+          if (content) {
+            emit('update:messages', [...messages, { role: 'assistant', content, status: 'interrupted', createdAt: new Date().toISOString() }])
+          }
+          streamingContent.value = ''
+        },
+        onError: () => {
+          if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
+          waitingForFirstToken.value = false
+          emit('update:messages', [...messages, { role: 'assistant', content: '无法完成本次回复，请检查网络或稍后重试。', status: 'error', createdAt: new Date().toISOString() }])
+          streamingContent.value = ''
+        },
+      },
+    )
+  } finally {
+    if (generation === requestGeneration) waitingForFirstToken.value = false
+  }
 }
 
 async function handleSend(content: string) {
+  if (streaming.value) return
   const userMsg: ChatMessage = { role: 'user', content, createdAt: new Date().toISOString() }
   const newMessages = [...props.messages, userMsg]
   emit('update:messages', newMessages)
-
-  streamingContent.value = ''
-
-  await send(
-    newMessages,
-    props.modelId,
-    props.systemPrompt,
-    props.params,
-    {
-      onToken: (token) => {
-        streamingContent.value += token
-      },
-      onDone: (full) => {
-        const assistantMsg: ChatMessage = { role: 'assistant', content: full, createdAt: new Date().toISOString() }
-        emit('update:messages', [...newMessages, assistantMsg])
-        streamingContent.value = ''
-      },
-      onError: (err) => {
-        const errorMsg: ChatMessage = { role: 'assistant', content: `错误: ${err}`, createdAt: new Date().toISOString() }
-        emit('update:messages', [...newMessages, errorMsg])
-        streamingContent.value = ''
-      },
-    },
-  )
+  await requestReply(newMessages)
 }
+
+function updateImageResult(requestId: string, update: (message: ImageResultMessage) => ImageResultMessage) {
+  emit('update:messages', props.messages.map((message) => (
+    message.type === 'image-result' && message.requestId === requestId && message.status === 'generating'
+      ? update(message)
+      : message
+  )))
+}
+
+async function handleGenerateImage(input: { prompt: string; aspectRatio: ImageAspectRatio; modelId: ImageModelId }) {
+  if (streaming.value || generatingDigest.value || imageGenerating.value) return
+  const requestId = crypto.randomUUID()
+  const createdAt = new Date().toISOString()
+  const requestMessage: ChatMessage = {
+    type: 'image-request',
+    role: 'user',
+    requestId,
+    prompt: input.prompt,
+    modelId: input.modelId,
+    aspectRatio: input.aspectRatio,
+    createdAt,
+  }
+  const resultMessage: ImageResultMessage = {
+    type: 'image-result',
+    role: 'assistant',
+    requestId,
+    prompt: input.prompt,
+    modelId: input.modelId,
+    aspectRatio: input.aspectRatio,
+    status: 'generating',
+    createdAt,
+  }
+  const conversation = props.conversationKey ?? props.messages
+  const generation = ++imageRequestGeneration
+  emit('clear-digest')
+  emit('update:messages', [...props.messages, requestMessage, resultMessage])
+  await generateImage(input, {
+    onDone: (result) => {
+      if (generation !== imageRequestGeneration || !isCurrentConversation(conversation)) return
+      updateImageResult(requestId, (message) => ({
+        ...message,
+        modelId: result.modelId,
+        status: 'completed',
+        imageUrl: result.imageUrl,
+        completedAt: new Date().toISOString(),
+      }))
+    },
+    onError: (errorMessage) => {
+      if (generation !== imageRequestGeneration || !isCurrentConversation(conversation)) return
+      updateImageResult(requestId, (message) => ({ ...message, status: 'error', errorMessage }))
+    },
+    onAbort: () => {
+      if (generation !== imageRequestGeneration || !isCurrentConversation(conversation)) return
+      updateImageResult(requestId, (message) => ({ ...message, status: 'cancelled' }))
+    },
+  })
+}
+
+function abortImageGeneration() {
+  abortImage()
+}
+
+function imageRequestForResult(result: ImageResultMessage) {
+  const request = props.messages.find((message) => (
+    message.type === 'image-request' && message.requestId === result.requestId
+  ))
+  return request?.type === 'image-request' ? request : null
+}
+
+function retryImage(index: number) {
+  const result = props.messages[index]
+  if (!result || result.type !== 'image-result' || imageGenerating.value) return
+  const request = imageRequestForResult(result)
+  if (!request) return
+  void handleGenerateImage({
+    prompt: request.prompt,
+    aspectRatio: request.aspectRatio,
+    modelId: request.modelId,
+  })
+}
+
+function editImage(index: number) {
+  const result = props.messages[index]
+  if (!result || result.type !== 'image-result') return
+  const request = imageRequestForResult(result)
+  if (!request) return
+  composerRef.value?.restoreImageDraft({
+    prompt: request.prompt,
+    aspectRatio: request.aspectRatio,
+    modelId: request.modelId,
+  })
+}
+
+async function retryMessage(index: number) {
+  if (streaming.value || imageGenerating.value) return
+  const messages = props.messages.slice(0, index)
+  const previousUserMessage = [...messages].reverse().find((message) => isTextMessage(message) && message.role === 'user')
+  if (!previousUserMessage) return
+  emit('update:messages', messages)
+  await requestReply(messages)
+}
+
+async function regenerateMessage(index: number) {
+  if (streaming.value || imageGenerating.value) return
+  const messages = props.messages.slice(0, index)
+  const previousUserMessage = [...messages].reverse().find((message) => isTextMessage(message) && message.role === 'user')
+  if (!previousUserMessage) return
+  emit('update:messages', messages)
+  await requestReply(messages)
+}
+
+async function editMessage(index: number, content: string) {
+  const original = props.messages[index]
+  if (streaming.value || imageGenerating.value || generatingDigest.value || !original || !isTextMessage(original) || original.role !== 'user') return
+  invalidateRequest()
+  const messages: ChatMessage[] = [
+    ...props.messages.slice(0, index),
+    { ...original, content, createdAt: new Date().toISOString() },
+  ]
+  emit('clear-digest')
+  emit('update:messages', messages)
+  await requestReply(messages)
+}
+
+async function generateDigest() {
+  if (streaming.value || imageGenerating.value || generatingDigest.value || props.messages.length < 2) return
+  generatingDigest.value = true
+  digestError.value = ''
+  let content = ''
+  try {
+    await sendDigest(
+      props.messages,
+      props.modelId,
+      `${props.systemPrompt}\n\n请整理这段对话，不要回答对话内容。只输出 JSON，不要使用 Markdown 代码块：{"summary":"不超过 500 字的关键上下文与结论","outline":[{"messageIndex":0,"title":"不超过 30 字标题","detail":"不超过 120 字说明"}]}。outline 仅列出 3 到 8 个关键节点，messageIndex 必须是原消息的 0 起始索引。`,
+      props.params,
+      {
+        onToken: (token) => { content += token },
+        onDone: (full) => { content = full || content },
+        onAbort: () => { digestError.value = '已取消对话整理。' },
+        onError: () => { digestError.value = '生成对话整理失败，请稍后重试。' },
+      },
+    )
+    if (!digestError.value) {
+      const digest = parseConversationDigest(content, props.messages.length)
+      if (!digest) digestError.value = '未能解析对话整理结果，请稍后重试。'
+      else emit('update:digest', digest)
+    }
+  } finally {
+    generatingDigest.value = false
+    if (digestError.value) emit('digest-error', digestError.value)
+  }
+}
+
+function scrollToMessage(index: number) {
+  const target = messagesContainer.value?.querySelector<HTMLElement>(`[data-message-index="${index}"]`)
+  target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  digestMenuOpen.value = false
+}
+
+function toggleDigestMenu() {
+  digestMenuOpen.value = !digestMenuOpen.value
+}
+
+function clearDigest() {
+  digestMenuOpen.value = false
+  emit('clear-digest')
+}
+
+defineExpose({ generateDigest, scrollToMessage, isDigestGenerating: generatingDigest })
+
+function canRegenerate(index: number, message: ChatMessage): boolean {
+  return isTextMessage(message)
+    && message.role === 'assistant'
+    && !message.status
+    && index === props.messages.length - 1
+}
+
+function textMessageFailed(message: ChatMessage): boolean {
+  return isTextMessage(message) && message.status === 'error'
+}
+
+function isImageResult(message: ChatMessage): message is ImageResultMessage {
+  return message.type === 'image-result'
+}
+
+watch(() => props.conversationKey, (key, previousKey) => {
+  if ((streaming.value || imageGenerating.value) && key !== previousKey) invalidateRequest()
+}, { flush: 'sync' })
+
+onBeforeUnmount(() => invalidateRequest())
 </script>
 
 <template>
-  <main class="chat">
+  <main class="chat" :style="{ '--composer-height': `${composerHeight}px` }">
     <header class="chat__header">
       <div class="chat__header-left">
         <button class="chat__icon-btn" type="button" :title="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'" :aria-label="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'" @click="emit('toggle-sidebar')">
@@ -133,6 +416,64 @@ async function handleSend(content: string) {
         <ModelSelector :current-model-id="modelId" @select="emit('select-model', $event)" />
       </div>
       <div class="chat__header-right">
+        <div class="chat__digest">
+          <button
+            class="chat__icon-btn"
+            :class="{ 'chat__icon-btn--active': digestMenuOpen || digest }"
+            type="button"
+            title="对话整理"
+            aria-label="对话整理"
+            :aria-expanded="digestMenuOpen"
+            :disabled="generatingDigest || imageGenerating"
+            @click="toggleDigestMenu"
+          >
+            <PhListBullets :size="16" weight="regular" />
+          </button>
+          <section v-if="digestMenuOpen" class="chat__digest-menu" aria-label="对话整理">
+            <div class="chat__digest-menu-header">
+              <div>
+                <strong>对话整理</strong>
+                <p>摘要和大纲不会替代原始消息。</p>
+              </div>
+              <button class="chat__digest-close" type="button" aria-label="关闭对话整理" @click="digestMenuOpen = false">
+                <PhX :size="15" weight="regular" />
+              </button>
+            </div>
+            <div class="chat__digest-actions">
+              <button
+                class="chat__digest-button"
+                type="button"
+                :disabled="messages.length < 2 || generatingDigest || imageGenerating"
+                :aria-busy="generatingDigest"
+                @click="generateDigest"
+              >
+                {{ generatingDigest ? '整理中…' : digest ? '更新整理' : '生成整理' }}
+              </button>
+              <button v-if="digest" class="chat__digest-button chat__digest-button--secondary" type="button" @click="clearDigest">
+                清除整理
+              </button>
+            </div>
+            <p v-if="messages.length < 2" class="chat__digest-note">至少需要两条消息才能生成整理。</p>
+            <template v-else-if="digest">
+              <p class="chat__digest-covered">已整理至第 {{ digest.sourceMessageCount }} 条消息</p>
+              <p class="chat__digest-summary">{{ digest.summary }}</p>
+              <div class="chat__digest-outline">
+                <span>会话大纲</span>
+                <button
+                  v-for="item in digest.outline"
+                  :key="`${item.messageIndex}-${item.title}`"
+                  class="chat__digest-outline-item"
+                  type="button"
+                  :disabled="item.messageIndex >= messages.length"
+                  @click="scrollToMessage(item.messageIndex)"
+                >
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.detail }}</small>
+                </button>
+              </div>
+            </template>
+          </section>
+        </div>
         <button
           class="chat__icon-btn"
           :class="{ 'chat__icon-btn--active': panelOpen }"
@@ -146,32 +487,41 @@ async function handleSend(content: string) {
       </div>
     </header>
 
-    <div v-if="!messages.length && !streaming" class="chat__empty">
-      <div class="chat__empty-icon"><PhLightning :size="28" weight="duotone" /></div>
-      <h2 class="chat__empty-title">今日推荐</h2>
-      <p class="chat__empty-subtitle">基于你的提问和今日话题，点击即可开始与 AI 对话</p>
-      <div class="chat__suggestions">
-        <button
-          v-for="s in suggestions"
-          :key="s.query"
-          class="chat__suggestion"
-          type="button"
-          @click="useSuggestion(s)"
-        >
-          <div class="chat__suggestion-title">{{ s.title }}</div>
-          <div class="chat__suggestion-desc">{{ s.desc }}</div>
-        </button>
+    <div ref="messagesContainer" class="chat__messages" :class="{ 'chat__messages--empty': !messages.length && !streaming }" @scroll.passive="onMessagesScroll">
+      <div v-if="!messages.length && !streaming" class="chat__empty">
+        <div class="chat__empty-icon"><PhLightning :size="28" weight="duotone" /></div>
+        <h2 class="chat__empty-title">开始新的对话</h2>
+        <p class="chat__empty-subtitle">选择下方推荐话题，或直接输入你想了解的内容</p>
       </div>
-    </div>
 
-    <div v-else ref="messagesContainer" class="chat__messages" @scroll.passive="onMessagesScroll">
       <MessageBubble
         v-for="(msg, i) in displayMessages"
-        :key="i"
+        :key="`${msg.createdAt ?? 'streaming'}-${i}`"
         :message="msg"
+        :message-index="i"
         :model-name="currentModel?.displayName"
+        :data-message-index="i"
+        :retryable="textMessageFailed(msg) && !streaming && !generatingDigest && !imageGenerating"
+        :regenerable="canRegenerate(i, msg) && !streaming && !generatingDigest"
+        :branchable="i < messages.length && !streaming && !imageGenerating && !generatingDigest && !branchCreating"
         :streaming="streaming && i === displayMessages.length - 1 && msg.role === 'assistant'"
+        @retry="retryMessage(i)"
+        @retry-image="retryImage(i)"
+        @edit-image="editImage(i)"
+        @abort-image="abortImageGeneration"
+        @regenerate="regenerateMessage(i)"
+        @edit="editMessage"
+        @branch="emit('branch', $event)"
       />
+
+      <div v-if="waitingForFirstToken" class="chat__assistant-loading" aria-live="polite" aria-label="AI 正在思考">
+        <div class="chat__assistant-loading-role">{{ currentModel?.displayName ?? 'Assistant' }}</div>
+        <div class="chat__assistant-loading-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      </div>
     </div>
 
     <button
@@ -186,18 +536,39 @@ async function handleSend(content: string) {
     </button>
 
     <Composer
+      ref="composerRef"
       :streaming="streaming"
+      :image-generating="imageGenerating"
+      :busy="generatingDigest"
       :params="params"
+      :image-models="imageModels"
       @send="handleSend"
+      @generate-image="handleGenerateImage"
       @abort="abort"
-    />
+      @abort-image="abortImageGeneration"
+    >
+      <template #suggestions>
+        <div v-if="!messages.length && !streaming" class="chat__suggestions" aria-label="推荐话题">
+          <div class="chat__suggestions-label">为你推荐</div>
+          <button
+            v-for="s in suggestions"
+            :key="s.query"
+            class="chat__suggestion"
+            type="button"
+            @click="useSuggestion(s)"
+          >
+            <span class="chat__suggestion-title">{{ s.title }}</span>
+          </button>
+        </div>
+      </template>
+    </Composer>
 
   </main>
 </template>
 
 <style scoped lang="scss">
 .chat {
-  --composer-height: 130px;
+  --composer-height: 112px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -207,6 +578,8 @@ async function handleSend(content: string) {
 }
 
 .chat__header {
+  position: relative;
+  z-index: 20;
   height: 56px;
   flex-shrink: 0;
   display: flex;
@@ -223,6 +596,149 @@ async function handleSend(content: string) {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.chat__digest {
+  position: relative;
+}
+
+.chat__digest-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 30;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(560px, calc(100dvh - 86px));
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.2);
+}
+
+.chat__digest-menu-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat__digest-menu-header strong {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.chat__digest-menu-header p,
+.chat__digest-note,
+.chat__digest-covered {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.chat__digest-covered {
+  color: var(--color-accent-strong);
+}
+
+.chat__digest-close {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.chat__digest-close:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.chat__digest-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.chat__digest-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
+  font: 600 12px var(--font-sans);
+}
+
+.chat__digest-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.chat__digest-button--secondary {
+  border-color: var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text);
+}
+
+.chat__digest-summary {
+  margin: 12px 0 0;
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.chat__digest-outline {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.chat__digest-outline > span {
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chat__digest-outline-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat__digest-outline-item:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+}
+
+.chat__digest-outline-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.chat__digest-outline-item strong {
+  font-size: 12px;
+}
+
+.chat__digest-outline-item small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .chat__icon-btn {
@@ -259,6 +775,12 @@ async function handleSend(content: string) {
   scrollbar-color: var(--color-border-strong) transparent;
 }
 
+.chat__messages--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .chat__messages::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -272,6 +794,42 @@ async function handleSend(content: string) {
 }
 
 .chat__messages::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
+.chat__assistant-loading {
+  width: min(100%, 780px);
+  margin: 0 auto;
+  padding: 12px 24px;
+}
+
+.chat__assistant-loading-role {
+  margin-bottom: 7px;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chat__assistant-loading-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+}
+
+.chat__assistant-loading-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: assistant-loading-dot 1.2s ease-in-out infinite;
+}
+
+.chat__assistant-loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+.chat__assistant-loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes assistant-loading-dot {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
 
 .chat__latest-button {
   position: absolute;
@@ -342,11 +900,9 @@ async function handleSend(content: string) {
 }
 
 .chat__empty {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   text-align: center;
   padding: 40px;
 }
@@ -363,6 +919,12 @@ async function handleSend(content: string) {
   font-size: 28px;
   margin-bottom: 24px;
   position: relative;
+  color: var(--color-accent-strong);
+
+  :deep(svg) {
+    position: relative;
+    z-index: 1;
+  }
 
   &::before {
     content: '';
@@ -394,38 +956,48 @@ async function handleSend(content: string) {
 }
 
 .chat__suggestions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  max-width: 520px;
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chat__suggestions-label {
+  padding-left: 3px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.68;
 }
 
 .chat__suggestion {
-  background: var(--color-surface);
+  display: block;
+  width: fit-content;
+  max-width: min(100%, 640px);
+  min-height: 40px;
+  padding: 9px 14px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 78%, transparent);
+  color: var(--color-text-muted);
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: left;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
 }
 
 .chat__suggestion:hover {
   background: var(--color-surface-2);
   border-color: var(--color-border-strong);
-  transform: translateY(-1px);
+  color: var(--color-text);
+  transform: translateX(2px);
 }
 
 .chat__suggestion-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text);
-  margin-bottom: 4px;
-}
-
-.chat__suggestion-desc {
-  font-size: 11px;
-  color: var(--color-text-muted);
+  line-height: 1.55;
 }
 </style>
