@@ -133,7 +133,7 @@ export function serializeResult(result: BenchmarkResult): BenchmarkResult {
 
 export async function extractHttpErrorTelemetry(response: Response): Promise<{ providerCode?: string; retryAfterMs?: number }> {
   const retryAfter = response.headers.get('Retry-After')?.trim()
-  const numericRetryAfter = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter) : null
+  const numericRetryAfter = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : null
   const httpDate = retryAfter?.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/)
   const dateRetryAfter = httpDate ? Date.parse(retryAfter) : NaN
   const parsedDate = Number.isFinite(dateRetryAfter) ? new Date(dateRetryAfter) : null

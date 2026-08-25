@@ -68,12 +68,14 @@ test('extracts provider code and Retry-After telemetry from an HTTP error respon
 })
 
 test('omits error messages and invalid Retry-After values from telemetry', async () => {
-  const telemetry = await extractHttpErrorTelemetry(new Response(
-    JSON.stringify({ error: { code: 'rate_limit_exceeded', message: 'account quota details' } }),
-    { status: 429, headers: { 'Retry-After': '-1', 'Content-Type': 'application/json' } },
-  ))
+  for (const retryAfter of ['-1', '2.5']) {
+    const telemetry = await extractHttpErrorTelemetry(new Response(
+      JSON.stringify({ error: { code: 'rate_limit_exceeded', message: 'account quota details' } }),
+      { status: 429, headers: { 'Retry-After': retryAfter, 'Content-Type': 'application/json' } },
+    ))
 
-  assert.deepEqual(telemetry, { providerCode: 'rate_limit_exceeded' })
+    assert.deepEqual(telemetry, { providerCode: 'rate_limit_exceeded' })
+  }
 })
 
 test('omits untrusted provider error codes while retaining safe retry telemetry', async () => {
