@@ -23,6 +23,10 @@ type BenchmarkResult = {
   qualityScore: number | null
   errorCategory?: 'credentials_missing' | 'http_error' | 'timeout' | 'network_error' | 'stream_error'
   errorStatus?: number
+  httpError?: {
+    providerCode?: string
+    retryAfterMs?: number
+  }
   outputPreview?: string
 }
 
@@ -119,6 +123,29 @@ export function scoreStructuredOutput(output: string): number {
 export function serializeResult(result: BenchmarkResult): BenchmarkResult {
   const { outputPreview, ...safe } = result
   return outputPreview ? { ...safe, outputPreview: outputPreview.slice(0, OUTPUT_PREVIEW_MAX) } : safe
+}
+
+export async function extractHttpErrorTelemetry(response: Response): Promise<{ providerCode?: string; retryAfterMs?: number }> {
+  const retryAfter = response.headers.get('Retry-After')
+  const numericRetryAfter = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter.trim()) ? Number(retryAfter) : null
+  const dateRetryAfter = retryAfter && numericRetryAfter === null ? Date.parse(retryAfter) : NaN
+  const retryAfterMs = numericRetryAfter !== null && Number.isFinite(numericRetryAfter)
+    ? numericRetryAfter * 1000
+    : Number.isFinite(dateRetryAfter) && dateRetryAfter > Date.now()
+      ? Math.max(0, dateRetryAfter - Date.now())
+      : undefined
+
+  try {
+    const body = await response.json() as { error?: { code?: unknown; type?: unknown } }
+    const providerCode = typeof body.error?.code === 'string'
+      ? body.error.code
+      : typeof body.error?.type === 'string'
+        ? body.error.type
+        : undefined
+    return { ...(providerCode === undefined ? {} : { providerCode }), ...(retryAfterMs === undefined ? {} : { retryAfterMs }) }
+  } catch {
+    return retryAfterMs === undefined ? {} : { retryAfterMs }
+  }
 }
 
 function average(values: number[]): number | null {
@@ -304,7 +331,19 @@ async function benchmarkTask(model: SeedModel, task: BenchmarkTask, credentials:
   try {
     const response = await fetch(built.request, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
     if (!response.ok) {
-      return { modelId: model.modelId, taskId: task.id, status: 'failed', ttftMs: null, totalMs: performance.now() - startedAt, outputChars: 0, qualityScore: null, errorCategory: 'http_error', errorStatus: response.status }
+      const httpError = await extractHttpErrorTelemetry(response)
+      return {
+        modelId: model.modelId,
+        taskId: task.id,
+        status: 'failed',
+        ttftMs: null,
+        totalMs: performance.now() - startedAt,
+        outputChars: 0,
+        qualityScore: null,
+        errorCategory: 'http_error',
+        errorStatus: response.status,
+        ...(Object.keys(httpError).length ? { httpError } : {}),
+      }
     }
     const { output, ttftMs } = await consumeStream(response, startedAt)
     if (!output) {
