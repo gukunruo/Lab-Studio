@@ -590,6 +590,15 @@ git push origin main
 
 Expected: 推送成功，且只包含本任务文件。
 
+## 执行记录
+
+- [x] Task 1：服务端私有参考图与上游请求适配已完成并提交。
+- [x] Task 2：多模态客户端契约与 Composer 键盘语义已完成。
+- [x] Task 3：会话编排、结果渲染与参考图控制已完成。
+- [x] Task 4：规格同步与最终回归已完成。
+
+最终验证已执行：图片、Composer、聊天流、代理契约测试；`pnpm type-check`；`pnpm build-only`；以及 `git diff --check`。浏览器验收确认图片工具入口、GPT 图片模式、Gemini 创作模式切换、Escape 退出保留草稿和多行输入的自适应高度。未在验收中泄露或记录图片二进制、`data:` URI、上游地址、认证头或凭证。
+
 ### Task 4: 规格同步与最终回归
 
 **Files:**

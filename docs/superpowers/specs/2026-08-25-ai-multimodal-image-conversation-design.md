@@ -1,7 +1,16 @@
 # AI Playground Gemini 多模态创作对话设计
 
 > 日期：2026-08-25
-> 状态：待用户审阅
+> 状态：已实现
+
+## 实现结果
+
+- `POST /api/ai-platform/images/generations` 仅承载 `gpt-image-2` 的生成与私有参考图编辑；携带受控参考图时，服务端使用图像编辑契约。
+- `POST /api/ai-platform/images/gemini` 承载 Gemini 创作请求，并规范化为文字与可选受控图片路径；纯文字响应按成功处理。
+- 会话通过 `gemini-multimodal-user` 与 `gemini-multimodal-assistant` 两类结构化消息保存 Gemini 创作过程。普通聊天上游只接收文本消息。
+- Composer 分为聊天、GPT 图片工具、Gemini 创作三个模式；三者均使用 `Enter` 发送、`Shift + Enter` 换行，图片模式可用 `Escape` 退出并保留各自草稿。
+- 当前会话最近一张已完成的受控图片默认作为参考图。用户可以明确选择历史结果或移除参考图，移除后不会在同一会话中自动恢复。
+- 已执行图片、Composer、聊天流与代理契约测试，以及 TypeScript 检查、生产构建和差异空白检查。浏览器已验证图片工具入口、Gemini 模式切换、草稿退出与多行输入扩展；真实模型调用仍由受控 API 契约测试覆盖，未在验收期间重复发起消耗型请求。
 
 ## 1. 目标
 
