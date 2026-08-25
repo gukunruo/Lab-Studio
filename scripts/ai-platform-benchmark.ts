@@ -63,6 +63,7 @@ export function getBenchmarkMaxTokens(model: { modelId: string }): number {
 
 const REQUEST_TIMEOUT_MS = 90_000
 const OUTPUT_PREVIEW_MAX = 600
+const SAFE_PROVIDER_CODE = /^(?!.*(?:api|key|token|secret|password|credential|auth))[a-z0-9_]{1,64}$/i
 
 export const BENCHMARK_TASKS: BenchmarkTask[] = [
   {
@@ -148,11 +149,12 @@ export async function extractHttpErrorTelemetry(response: Response): Promise<{ p
 
   try {
     const body = await response.json() as { error?: { code?: unknown; type?: unknown } }
-    const providerCode = typeof body.error?.code === 'string'
+    const candidate = typeof body.error?.code === 'string'
       ? body.error.code
       : typeof body.error?.type === 'string'
         ? body.error.type
         : undefined
+    const providerCode = candidate && SAFE_PROVIDER_CODE.test(candidate) ? candidate : undefined
     return { ...(providerCode === undefined ? {} : { providerCode }), ...(retryAfterMs === undefined ? {} : { retryAfterMs }) }
   } catch {
     return retryAfterMs === undefined ? {} : { retryAfterMs }
@@ -262,7 +264,7 @@ export function readCredentials(): Credentials {
   return credentials
 }
 
-function buildRequest(model: SeedModel, prompt: string, credentials: Credentials): { request?: Request; skip?: BenchmarkResult['errorCategory'] } {
+export function buildRequest(model: SeedModel, prompt: string, credentials: Credentials): { request?: Request; skip?: BenchmarkResult['errorCategory'] } {
   if (model.provider === 'anthropic') {
     const config = credentials.anthropic
     if (!config) return { skip: 'credentials_missing' }
@@ -293,7 +295,13 @@ function buildRequest(model: SeedModel, prompt: string, credentials: Credentials
         'api-key': `${config.appId}:${config.appKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: model.modelId, max_tokens: getBenchmarkMaxTokens(model), stream: true, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({
+        model: model.modelId,
+        max_tokens: getBenchmarkMaxTokens(model),
+        stream: true,
+        messages: [{ role: 'user', content: prompt }],
+        ...(model.modelId === 'kimi-k3' ? { reasoning: { mode: 'enabled', effort: 'low' } } : {}),
+      }),
     }),
   }
 }

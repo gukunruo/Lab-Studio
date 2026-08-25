@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   BENCHMARK_TASKS,
+  buildRequest,
   extractHttpErrorTelemetry,
   getBenchmarkModels,
   getBenchmarkMaxTokens,
@@ -25,6 +26,23 @@ test('benchmark covers every non-image seed model with five fixed tasks', () => 
 test('benchmark gives Kimi K3 the extended output budget', () => {
   assert.equal(getBenchmarkMaxTokens({ modelId: 'kimi-k3' }), 4096)
   assert.equal(getBenchmarkMaxTokens({ modelId: 'gpt-4.1' }), 600)
+})
+
+test('benchmark enables Kimi K3 reasoning with low effort', async () => {
+  const model = getBenchmarkModels().find((candidate) => candidate.modelId === 'kimi-k3')
+  assert.ok(model)
+  const built = buildRequest(model, 'test prompt', {
+    openai: { appId: 'test-app', appKey: 'test-key', baseUrl: 'https://ai.example.test/' },
+  })
+
+  assert.ok(built.request)
+  assert.deepEqual(await built.request.json(), {
+    model: 'kimi-k3',
+    max_tokens: 4096,
+    stream: true,
+    messages: [{ role: 'user', content: 'test prompt' }],
+    reasoning: { mode: 'enabled', effort: 'low' },
+  })
 })
 
 test('benchmark applies Kimi start-to-start pacing while retaining other model delays', () => {
@@ -56,6 +74,24 @@ test('omits error messages and invalid Retry-After values from telemetry', async
   ))
 
   assert.deepEqual(telemetry, { providerCode: 'rate_limit_exceeded' })
+})
+
+test('omits untrusted provider error codes while retaining safe retry telemetry', async () => {
+  const telemetry = await extractHttpErrorTelemetry(new Response(
+    JSON.stringify({ error: { code: 'sk-test-should-not-be-persisted' } }),
+    { status: 429, headers: { 'Retry-After': '2', 'Content-Type': 'application/json' } },
+  ))
+
+  assert.deepEqual(telemetry, { retryAfterMs: 2000 })
+})
+
+test('omits oversized provider error codes', async () => {
+  const telemetry = await extractHttpErrorTelemetry(new Response(
+    JSON.stringify({ error: { type: `error_${'x'.repeat(64)}` } }),
+    { status: 500, headers: { 'Content-Type': 'application/json' } },
+  ))
+
+  assert.deepEqual(telemetry, {})
 })
 
 test('extracts a future HTTP-date Retry-After delay and provider error type', async () => {
