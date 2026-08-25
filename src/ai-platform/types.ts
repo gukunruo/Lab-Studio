@@ -1,4 +1,4 @@
-export type ModelProvider = 'openai-compatible' | 'anthropic' | 'deepseek-harness'
+export type ModelProvider = 'openai-compatible' | 'anthropic'
 export type ModelCategory = 'chat' | 'reasoning' | 'image'
 
 export interface AiModel {

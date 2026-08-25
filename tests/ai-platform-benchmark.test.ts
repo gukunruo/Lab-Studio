@@ -16,7 +16,7 @@ import {
 
 test('benchmark covers every non-image seed model with five fixed tasks', () => {
   const models = getBenchmarkModels()
-  assert.equal(models.length, 17)
+  assert.equal(models.length, 16)
   assert.ok(models.some((model) => model.modelId === 'kimi-k3'))
   assert.equal(BENCHMARK_TASKS.length, 5)
   assert.deepEqual(BENCHMARK_TASKS.map((task) => task.id), ['general', 'reasoning', 'code', 'summary', 'structured'])

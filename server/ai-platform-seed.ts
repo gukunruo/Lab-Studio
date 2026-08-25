@@ -5,7 +5,7 @@ import { aiModels } from './db/schema'
 export interface SeedModel {
   modelId: string
   displayName: string
-  provider: 'openai-compatible' | 'anthropic' | 'deepseek-harness'
+  provider: 'openai-compatible' | 'anthropic'
   category: 'chat' | 'reasoning' | 'image'
   vendor: string
   capabilities: string[]
@@ -22,7 +22,6 @@ export const SEED_MODELS: SeedModel[] = [
   { modelId: 'gpt-5.6-sol', displayName: 'GPT 5.6 Sol', provider: 'openai-compatible', category: 'chat', vendor: 'openai', capabilities: ['streaming', 'reasoning_effort'], contextWindow: 128000, rpmLimit: 50, tpmLimit: 200000, sortOrder: 12 },
   { modelId: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', provider: 'openai-compatible', category: 'chat', vendor: 'deepseek', capabilities: ['streaming'], contextWindow: 1000000, rpmLimit: 50, tpmLimit: 200000, sortOrder: 20 },
   { modelId: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', provider: 'openai-compatible', category: 'chat', vendor: 'deepseek', capabilities: ['streaming'], contextWindow: 1000000, rpmLimit: 50, tpmLimit: 200000, sortOrder: 21 },
-  { modelId: 'deepseek-chat', displayName: 'DeepSeek Chat', provider: 'deepseek-harness', category: 'chat', vendor: 'deepseek', capabilities: ['streaming'], contextWindow: null, sortOrder: 24 },
   { modelId: 'doubao-seed-2.0-mini', displayName: 'Doubao Seed 2.0 mini', provider: 'openai-compatible', category: 'chat', vendor: 'doubao', capabilities: ['streaming', 'reasoning_mode'], contextWindow: 256000, rpmLimit: 5, tpmLimit: 10000, sortOrder: 22 },
   { modelId: 'gemini-3-pro-preview', displayName: 'Gemini 3 Pro Preview', provider: 'openai-compatible', category: 'chat', vendor: 'google', capabilities: ['streaming', 'tool-call', 'multi-tool-call', 'vision', 'structured-output', 'agent-thought', 'video', 'document', 'audio'], contextWindow: 1000000, rpmLimit: 20, tpmLimit: 20000, sortOrder: 23 },
   { modelId: 'glm-5.2', displayName: 'GLM 5.2', provider: 'openai-compatible', category: 'chat', vendor: 'zai', capabilities: ['streaming'], contextWindow: 1000000, rpmLimit: 30, tpmLimit: 500000, sortOrder: 30 },

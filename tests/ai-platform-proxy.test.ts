@@ -2,7 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildAnthropicPlatformRequest,
-  buildDeepSeekHarnessRequest,
   buildImageGenerationRequest,
   buildUpstreamRequest,
   normalizeImageGenerationResponse,
@@ -71,47 +70,6 @@ test('normalizeImageGenerationResponse only accepts HTTPS image URLs', () => {
   assert.equal(normalizeImageGenerationResponse({
     choices: [{ message: { images: [{ url: 'http://cdn.example.test/image.png' }] } }],
   }), null)
-})
-
-test('buildDeepSeekHarnessRequest uses the standard OpenAI streaming contract', () => {
-  const result = buildDeepSeekHarnessRequest({
-    modelId: 'deepseek-chat',
-    messages: [{ role: 'user', content: 'hello' }],
-    system: 'You are helpful.',
-    params: { maxTokens: 1024, reasoningEffort: 'high' },
-  }, {
-    baseUrl: 'https://harness.example.test/',
-    apiKey: 'harness-test-key',
-  })
-
-  assert.equal(result.url, 'https://harness.example.test/v1/chat/completions')
-  assert.equal(result.headers.get('Authorization'), 'Bearer harness-test-key')
-  assert.equal(result.headers.get('api-key'), null)
-  const parsed = JSON.parse(result.body)
-  assert.deepEqual(parsed, {
-    model: 'deepseek-chat',
-    messages: [
-      { role: 'system', content: 'You are helpful.' },
-      { role: 'user', content: 'hello' },
-    ],
-    stream: true,
-    max_tokens: 1024,
-  })
-  assert.equal(parsed.reasoning_effort, undefined)
-  assert.equal(parsed.tools, undefined)
-})
-
-test('buildDeepSeekHarnessRequest excludes invalid max_tokens', () => {
-  const result = buildDeepSeekHarnessRequest({
-    modelId: 'deepseek-chat',
-    messages: [{ role: 'user', content: 'hello' }],
-    params: { maxTokens: Number.NaN },
-  }, {
-    baseUrl: 'https://harness.example.test',
-    apiKey: 'harness-test-key',
-  })
-
-  assert.equal(JSON.parse(result.body).max_tokens, undefined)
 })
 
 test('buildUpstreamRequest formats anthropic requests correctly', () => {

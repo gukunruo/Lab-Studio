@@ -10,7 +10,7 @@ test('seed contains all required models', () => {
   assert.ok(modelIds.includes('gpt-5.6-sol'))
   assert.ok(modelIds.includes('deepseek-v4-pro'))
   assert.ok(modelIds.includes('deepseek-v4-flash'))
-  assert.ok(modelIds.includes('deepseek-chat'))
+  assert.equal(modelIds.includes('deepseek-chat'), false)
   assert.ok(modelIds.includes('glm-5.2'))
   assert.ok(modelIds.includes('kimi-k2-7-code'))
   assert.ok(modelIds.includes('gpt-image-2'))
@@ -40,16 +40,14 @@ test('Kimi K3 has the documented chat configuration', () => {
   })
 })
 
-test('deepseek-chat is a streaming Harness model', () => {
-  const model = SEED_MODELS.find((candidate) => candidate.modelId === 'deepseek-chat')
-  assert.equal(model?.provider, 'deepseek-harness')
-  assert.ok(model?.capabilities.includes('streaming'))
+test('DeepSeek Chat is absent from the seed inventory', () => {
+  assert.equal(SEED_MODELS.some((model) => model.modelId === 'deepseek-chat'), false)
 })
 
 test('every model has valid provider', () => {
   for (const m of SEED_MODELS) {
     assert.ok(
-      m.provider === 'openai-compatible' || m.provider === 'anthropic' || m.provider === 'deepseek-harness',
+      m.provider === 'openai-compatible' || m.provider === 'anthropic',
       `${m.modelId} has invalid provider: ${m.provider}`,
     )
   }

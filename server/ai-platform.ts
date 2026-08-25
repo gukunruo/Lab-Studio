@@ -23,21 +23,10 @@ type AnthropicConfig = {
   model: string
 }
 
-export type DeepSeekHarnessConfig = {
-  apiKey: string
-  baseUrl: string
-}
-
-type SupportedModelProvider = 'openai-compatible' | 'anthropic' | 'deepseek-harness'
+type SupportedModelProvider = 'openai-compatible' | 'anthropic'
 
 function isSupportedModelProvider(value: unknown): value is SupportedModelProvider {
-  return value === 'openai-compatible' || value === 'anthropic' || value === 'deepseek-harness'
-}
-
-function readDeepSeekHarnessConfig(): DeepSeekHarnessConfig | null {
-  const apiKey = process.env.DEEPSEEK_HARNESS_API_KEY ?? ''
-  const baseUrl = process.env.DEEPSEEK_HARNESS_BASE_URL ?? ''
-  return apiKey && baseUrl ? { apiKey, baseUrl } : null
+  return value === 'openai-compatible' || value === 'anthropic'
 }
 
 function readAnthropicConfig(): AnthropicConfig | null {
@@ -348,27 +337,6 @@ export function buildAnthropicPlatformRequest(body: ChatRequestBody, config: Ant
       max_tokens: body.params?.maxTokens ?? 4096,
       stream: true,
       ...(body.system ? { system: body.system } : {}),
-    }),
-  }
-}
-
-export function buildDeepSeekHarnessRequest(body: ChatRequestBody, config: DeepSeekHarnessConfig): UpstreamRequest {
-  const messages = [...body.messages]
-  if (body.system) messages.unshift({ role: 'system', content: body.system })
-
-  return {
-    url: `${config.baseUrl.replace(/\/$/, '')}/v1/chat/completions`,
-    headers: new Headers({
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
-    }),
-    body: JSON.stringify({
-      model: body.modelId,
-      messages,
-      stream: true,
-      ...(typeof body.params?.maxTokens === 'number' && Number.isFinite(body.params.maxTokens) && body.params.maxTokens > 0
-        ? { max_tokens: Math.floor(body.params.maxTokens) }
-        : {}),
     }),
   }
 }
@@ -1185,12 +1153,6 @@ export function registerAiPlatformRoutes(app: Hono): void {
         const config = readAnthropicConfig()
         if (!config) return c.json({ error: 'AI credentials not configured' }, 503)
         upstreamReq = buildAnthropicPlatformRequest(body, config)
-        break
-      }
-      case 'deepseek-harness': {
-        const config = readDeepSeekHarnessConfig()
-        if (!config) return c.json({ error: 'DeepSeek Harness is not configured' }, 503)
-        upstreamReq = buildDeepSeekHarnessRequest(body, config)
         break
       }
       case 'openai-compatible': {

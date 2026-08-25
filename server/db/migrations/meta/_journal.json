@@ -120,6 +120,13 @@
       "when": 1787594400000,
       "tag": "0016_add_ai_image_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787666400000,
+      "tag": "0017_remove_deepseek_chat",
+      "breakpoints": true
     }
   ]
 }
