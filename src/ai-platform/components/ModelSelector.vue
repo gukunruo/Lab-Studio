@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useModelsStore } from '../composables/useModels'
 import type { AiModel } from '../types'
 import { PhCaretDown } from '@phosphor-icons/vue'
@@ -8,6 +8,22 @@ const modelsStore = useModelsStore()
 const open = ref(false)
 const emit = defineEmits<{ select: [model: AiModel] }>()
 const props = defineProps<{ currentModelId: string }>()
+
+const recommendedModelIds = [
+  'glm-5.2',
+  'doubao-seed-2.0-mini',
+  'claude-opus-5',
+  'gpt-5.6-sol',
+  'deepseek-v4-pro',
+  'kimi-k3',
+]
+
+const recommendedChatModels = computed(() => recommendedModelIds
+  .map((modelId) => modelsStore.chatModels.find((model) => model.modelId === modelId))
+  .filter((model): model is AiModel => Boolean(model)))
+
+const otherChatModels = computed(() => modelsStore.chatModels
+  .filter((model) => !recommendedModelIds.includes(model.modelId)))
 
 function toggle() {
   open.value = !open.value
@@ -38,10 +54,25 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
       <PhCaretDown class="model-selector__chevron" :size="12" weight="bold" />
     </button>
     <div v-if="open" class="model-selector__dropdown">
-      <div v-if="modelsStore.chatModels.length" class="model-selector__group">
+      <div v-if="recommendedChatModels.length" class="model-selector__group">
+        <div class="model-selector__group-label">推荐模型</div>
+        <button
+          v-for="m in recommendedChatModels"
+          :key="m.modelId"
+          class="model-selector__item"
+          :class="{ 'model-selector__item--active': m.modelId === currentModelId }"
+          type="button"
+          @click="select(m)"
+        >
+          <span class="model-selector__item-dot" :class="{ 'model-selector__item-dot--active': m.modelId === currentModelId }" />
+          {{ m.displayName }}
+          <span class="model-selector__item-vendor">{{ m.vendor }}</span>
+        </button>
+      </div>
+      <div v-if="otherChatModels.length" class="model-selector__group">
         <div class="model-selector__group-label">对话模型</div>
         <button
-          v-for="m in modelsStore.chatModels"
+          v-for="m in otherChatModels"
           :key="m.modelId"
           class="model-selector__item"
           :class="{ 'model-selector__item--active': m.modelId === currentModelId }"
