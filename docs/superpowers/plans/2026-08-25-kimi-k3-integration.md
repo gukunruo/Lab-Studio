@@ -26,7 +26,7 @@
 - `server/ai-platform.ts` — maps Playground thinking effort to Kimi's OpenAI-compatible `reasoning` request field.
 - `tests/ai-platform-models.test.ts` — validates Kimi K3's identity, metadata, and inclusion among valid seed models.
 - `tests/ai-platform-proxy.test.ts` — validates the exact Kimi K3 upstream request body without network access.
-- `tests/ai-platform-benchmark.test.ts` — validates that the benchmark inventory contains 16 non-image models including Kimi K3.
+- `tests/ai-platform-benchmark.test.ts` — validates that the benchmark inventory contains 17 non-image models including Kimi K3.
 - `data/ai-platform-benchmarks/<run-start>.json` — committed real benchmark evidence produced by the run.
 - `docs/ai-platform-model-benchmark.md` — regenerated benchmark report containing Kimi K3 metrics and rank or failure reason.
 - `src/ai-platform/components/ModelSelector.vue` — manually synchronizes the five explicit composite recommendations to the completed benchmark's top-five rows.
@@ -71,7 +71,7 @@ test('Kimi K3 has the documented chat configuration', () => {
 In the first test in `tests/ai-platform-benchmark.test.ts`, replace the model-count line with:
 
 ```ts
-assert.equal(models.length, 16)
+assert.equal(models.length, 17)
 assert.ok(models.some((model) => model.modelId === 'kimi-k3'))
 ```
 
@@ -85,7 +85,7 @@ Run:
 npx tsx --test tests/ai-platform-models.test.ts tests/ai-platform-benchmark.test.ts
 ```
 
-Expected: FAIL because no `kimi-k3` seed exists and the benchmark still discovers only 15 models.
+Expected: FAIL because no `kimi-k3` seed exists and the benchmark still discovers only 16 models.
 
 - [ ] **Step 4: Add a failing proxy-payload test**
 
@@ -154,7 +154,7 @@ Run:
 npx tsx --test tests/ai-platform-models.test.ts tests/ai-platform-proxy.test.ts tests/ai-platform-benchmark.test.ts
 ```
 
-Expected: PASS; the Kimi metadata, exact proxy payload, and 16-model benchmark inventory match the assertions.
+Expected: PASS; the Kimi metadata, exact proxy payload, and 17-model benchmark inventory match the assertions.
 
 - [ ] **Step 9: Run type checking**
 
@@ -198,7 +198,7 @@ npx tsx --test tests/ai-platform-benchmark.test.ts
 
 Expected: PASS; `getBenchmarkModels()` includes Kimi K3 and defines exactly five fixed tasks.
 
-- [ ] **Step 2: Run the real, full 16-model benchmark**
+- [ ] **Step 2: Run the real, full 17-model benchmark**
 
 Run:
 
@@ -276,7 +276,7 @@ Run:
 npm run type-check && npx tsx --test tests/ai-platform-models.test.ts tests/ai-platform-proxy.test.ts tests/ai-platform-benchmark.test.ts
 ```
 
-Expected: PASS; Kimi K3 remains a valid seed, its proxy mapping is preserved, and the benchmark inventory remains 16 models.
+Expected: PASS; Kimi K3 remains a valid seed, its proxy mapping is preserved, and the benchmark inventory remains 17 models.
 
 - [ ] **Step 4: Start the app for visual verification**
 

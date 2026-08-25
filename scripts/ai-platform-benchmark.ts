@@ -52,6 +52,11 @@ type Credentials = {
 }
 
 const MAX_TOKENS = 600
+
+export function getBenchmarkMaxTokens(model: { modelId: string }): number {
+  return model.modelId === 'kimi-k3' ? 4096 : MAX_TOKENS
+}
+
 const REQUEST_TIMEOUT_MS = 90_000
 const OUTPUT_PREVIEW_MAX = 600
 
@@ -235,7 +240,7 @@ function buildRequest(model: SeedModel, prompt: string, credentials: Credentials
           'x-stainless-lang': 'js',
           'x-stainless-runtime': 'node',
         },
-        body: JSON.stringify({ model: model.modelId, max_tokens: MAX_TOKENS, stream: true, messages: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({ model: model.modelId, max_tokens: getBenchmarkMaxTokens(model), stream: true, messages: [{ role: 'user', content: prompt }] }),
       }),
     }
   }
@@ -250,7 +255,7 @@ function buildRequest(model: SeedModel, prompt: string, credentials: Credentials
         'api-key': `${config.appId}:${config.appKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: model.modelId, max_tokens: MAX_TOKENS, stream: true, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: model.modelId, max_tokens: getBenchmarkMaxTokens(model), stream: true, messages: [{ role: 'user', content: prompt }] }),
     }),
   }
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   BENCHMARK_TASKS,
   getBenchmarkModels,
+  getBenchmarkMaxTokens,
   scoreCode,
   scoreStructuredOutput,
   serializeResult,
@@ -17,6 +18,11 @@ test('benchmark covers every non-image seed model with five fixed tasks', () => 
   assert.equal(BENCHMARK_TASKS.length, 5)
   assert.deepEqual(BENCHMARK_TASKS.map((task) => task.id), ['general', 'reasoning', 'code', 'summary', 'structured'])
   assert.ok(models.every((model) => model.category !== 'image'))
+})
+
+test('benchmark gives Kimi K3 the extended output budget', () => {
+  assert.equal(getBenchmarkMaxTokens({ modelId: 'kimi-k3' }), 4096)
+  assert.equal(getBenchmarkMaxTokens({ modelId: 'gpt-4.1' }), 600)
 })
 
 test('benchmark quality scorers accept valid code and structured JSON', () => {
