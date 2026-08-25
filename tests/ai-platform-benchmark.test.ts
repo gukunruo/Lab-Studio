@@ -60,6 +60,17 @@ test('extracts a future HTTP-date Retry-After delay and provider error type', as
   assert.ok(telemetry.retryAfterMs && telemetry.retryAfterMs > 3_000 && telemetry.retryAfterMs <= 5_000)
 })
 
+test('ignores future dates that are not valid HTTP-date Retry-After values', async () => {
+  for (const retryAfter of ['2027-01-01', '12/31/2999']) {
+    const telemetry = await extractHttpErrorTelemetry(new Response(
+      JSON.stringify({ error: { code: 'rate_limit_exceeded' } }),
+      { status: 429, headers: { 'Retry-After': retryAfter, 'Content-Type': 'application/json' } },
+    ))
+
+    assert.deepEqual(telemetry, { providerCode: 'rate_limit_exceeded' })
+  }
+})
+
 test('benchmark result serialization keeps metrics but truncates output previews', () => {
   const safe = serializeResult({
     modelId: 'example',

@@ -126,13 +126,16 @@ export function serializeResult(result: BenchmarkResult): BenchmarkResult {
 }
 
 export async function extractHttpErrorTelemetry(response: Response): Promise<{ providerCode?: string; retryAfterMs?: number }> {
-  const retryAfter = response.headers.get('Retry-After')
-  const numericRetryAfter = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter.trim()) ? Number(retryAfter) : null
-  const dateRetryAfter = retryAfter && numericRetryAfter === null ? Date.parse(retryAfter) : NaN
+  const retryAfter = response.headers.get('Retry-After')?.trim()
+  const numericRetryAfter = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter) : null
+  const dateRetryAfter = retryAfter && /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retryAfter)
+    ? Date.parse(retryAfter)
+    : NaN
+  const now = Date.now()
   const retryAfterMs = numericRetryAfter !== null && Number.isFinite(numericRetryAfter)
     ? numericRetryAfter * 1000
-    : Number.isFinite(dateRetryAfter) && dateRetryAfter > Date.now()
-      ? Math.max(0, dateRetryAfter - Date.now())
+    : Number.isFinite(dateRetryAfter) && dateRetryAfter > now
+      ? dateRetryAfter - now
       : undefined
 
   try {
