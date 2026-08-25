@@ -367,8 +367,14 @@ async function benchmarkTask(model: SeedModel, task: BenchmarkTask, credentials:
   }
 }
 
-function modelDelayMs(model: SeedModel): number {
+function modelDelayMs(model: { rpmLimit?: number }): number {
   return model.rpmLimit ? Math.ceil(60_000 / model.rpmLimit) : 0
+}
+
+export function getBenchmarkInterTaskDelayMs(model: { modelId: string; rpmLimit?: number }, elapsedPreviousTaskMs: number): number {
+  return model.modelId === 'kimi-k3'
+    ? Math.max(0, 61_000 - elapsedPreviousTaskMs)
+    : modelDelayMs(model)
 }
 
 export async function runBenchmark(models = getBenchmarkModels(), credentials = readCredentials()): Promise<BenchmarkRun> {
@@ -376,11 +382,12 @@ export async function runBenchmark(models = getBenchmarkModels(), credentials = 
   const results: BenchmarkResult[] = []
   for (const model of models) {
     for (const [index, task] of BENCHMARK_TASKS.entries()) {
+      const taskStartedAt = performance.now()
       const result = await benchmarkTask(model, task, credentials)
       results.push(serializeResult(result))
       console.log(`${model.modelId} ${task.id}: ${result.status}`)
       if (index < BENCHMARK_TASKS.length - 1) {
-        const delay = modelDelayMs(model)
+        const delay = getBenchmarkInterTaskDelayMs(model, performance.now() - taskStartedAt)
         if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }

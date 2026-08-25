@@ -5,6 +5,7 @@ import {
   extractHttpErrorTelemetry,
   getBenchmarkModels,
   getBenchmarkMaxTokens,
+  getBenchmarkInterTaskDelayMs,
   scoreCode,
   scoreStructuredOutput,
   serializeResult,
@@ -24,6 +25,13 @@ test('benchmark covers every non-image seed model with five fixed tasks', () => 
 test('benchmark gives Kimi K3 the extended output budget', () => {
   assert.equal(getBenchmarkMaxTokens({ modelId: 'kimi-k3' }), 4096)
   assert.equal(getBenchmarkMaxTokens({ modelId: 'gpt-4.1' }), 600)
+})
+
+test('benchmark applies Kimi start-to-start pacing while retaining other model delays', () => {
+  assert.equal(getBenchmarkInterTaskDelayMs({ modelId: 'kimi-k3', rpmLimit: 50 }, 5_000), 56_000)
+  assert.equal(getBenchmarkInterTaskDelayMs({ modelId: 'kimi-k3', rpmLimit: 50 }, 61_000), 0)
+  assert.equal(getBenchmarkInterTaskDelayMs({ modelId: 'gpt-4.1', rpmLimit: 50 }, 5_000), 1_200)
+  assert.equal(getBenchmarkInterTaskDelayMs({ modelId: 'gpt-4.1', rpmLimit: 50 }, 61_000), 1_200)
 })
 
 test('benchmark quality scorers accept valid code and structured JSON', () => {
