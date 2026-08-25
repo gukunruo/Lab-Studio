@@ -163,6 +163,14 @@ function asHttpsUrl(value: unknown): string | null {
   }
 }
 
+function decodeImageDataUrl(value: unknown): DecodedImage | null {
+  if (typeof value !== 'string') return null
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]*={0,2})$/i.exec(value)
+  if (!match) return null
+  const image = decodeBase64Image(match[2])
+  return image?.mimeType === match[1].toLowerCase() ? image : null
+}
+
 export type NormalizedImageGenerationResponse =
   | { kind: 'url'; imageUrl: string }
   | { kind: 'base64'; image: DecodedImage }
@@ -183,8 +191,13 @@ export function normalizeImageGenerationResponse(payload: unknown): NormalizedIm
   const message = choice?.message as Record<string, unknown> | undefined
   const images = message?.images
   if (Array.isArray(images)) {
-    const imageUrl = asHttpsUrl((images[0] as Record<string, unknown> | undefined)?.url)
+    const image = images[0] as Record<string, unknown> | undefined
+    const value = image?.url
+      ?? (image?.image_url as Record<string, unknown> | undefined)?.url
+    const imageUrl = asHttpsUrl(value)
     if (imageUrl) return { kind: 'url', imageUrl }
+    const decodedImage = decodeImageDataUrl(value)
+    if (decodedImage) return { kind: 'base64', image: decodedImage }
   }
   const content = message?.content
   if (Array.isArray(content)) {

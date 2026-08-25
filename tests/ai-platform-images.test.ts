@@ -178,6 +178,10 @@ test('normalizeImageGenerationResponse accepts known HTTPS response shapes only'
   }), { kind: 'url', imageUrl: 'https://cdn.example.test/gemini.png' })
 
   assert.deepEqual(normalizeImageGenerationResponse({
+    choices: [{ message: { images: [{ image_url: { url: 'https://cdn.example.test/gemini-nested.png' } }] } }],
+  }), { kind: 'url', imageUrl: 'https://cdn.example.test/gemini-nested.png' })
+
+  assert.deepEqual(normalizeImageGenerationResponse({
     choices: [{ message: { content: [{ type: 'image_url', image_url: { url: 'https://cdn.example.test/content.png' } }] } }],
   }), { kind: 'url', imageUrl: 'https://cdn.example.test/content.png' })
 })
@@ -185,6 +189,22 @@ test('normalizeImageGenerationResponse accepts known HTTPS response shapes only'
 test('normalizeImageGenerationResponse accepts a valid b64_json image payload', () => {
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   const result = normalizeImageGenerationResponse({ data: [{ b64_json: png.toString('base64') }] })
+
+  assert.equal(result?.kind, 'base64')
+  assert.deepEqual(result?.kind === 'base64' ? result.image.bytes : null, png)
+})
+
+test('normalizeImageGenerationResponse decodes a Gemini image data URL', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const result = normalizeImageGenerationResponse({
+    choices: [{
+      message: {
+        images: [{
+          image_url: { url: `data:image/png;base64,${png.toString('base64')}` },
+        }],
+      },
+    }],
+  })
 
   assert.equal(result?.kind, 'base64')
   assert.deepEqual(result?.kind === 'base64' ? result.image.bytes : null, png)
