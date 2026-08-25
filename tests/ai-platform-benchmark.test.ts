@@ -94,6 +94,15 @@ test('omits oversized provider error codes', async () => {
   assert.deepEqual(telemetry, {})
 })
 
+test('omits unknown machine-formatted provider codes', async () => {
+  const telemetry = await extractHttpErrorTelemetry(new Response(
+    JSON.stringify({ error: { type: 'session_abc123' } }),
+    { status: 429, headers: { 'Retry-After': '2', 'Content-Type': 'application/json' } },
+  ))
+
+  assert.deepEqual(telemetry, { retryAfterMs: 2000 })
+})
+
 test('extracts a future HTTP-date Retry-After delay and provider error type', async () => {
   const telemetry = await extractHttpErrorTelemetry(new Response(
     JSON.stringify({ error: { type: 'overloaded_error' } }),

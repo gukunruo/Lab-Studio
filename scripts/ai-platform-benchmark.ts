@@ -63,7 +63,12 @@ export function getBenchmarkMaxTokens(model: { modelId: string }): number {
 
 const REQUEST_TIMEOUT_MS = 90_000
 const OUTPUT_PREVIEW_MAX = 600
-const SAFE_PROVIDER_CODE = /^(?!.*(?:api|key|token|secret|password|credential|auth))[a-z0-9_]{1,64}$/i
+const SAFE_PROVIDER_CODES = new Set([
+  '400', '401', '403', '404', '408', '409', '413', '422', '429', '500', '502', '503', '504',
+  'authentication_error', 'context_length_exceeded', 'content_filter', 'insufficient_quota',
+  'invalid_request_error', 'not_found_error', 'overloaded_error', 'permission_error',
+  'rate_limit_exceeded', 'server_error', 'service_unavailable',
+])
 
 export const BENCHMARK_TASKS: BenchmarkTask[] = [
   {
@@ -154,7 +159,7 @@ export async function extractHttpErrorTelemetry(response: Response): Promise<{ p
       : typeof body.error?.type === 'string'
         ? body.error.type
         : undefined
-    const providerCode = candidate && SAFE_PROVIDER_CODE.test(candidate) ? candidate : undefined
+    const providerCode = candidate && SAFE_PROVIDER_CODES.has(candidate) ? candidate : undefined
     return { ...(providerCode === undefined ? {} : { providerCode }), ...(retryAfterMs === undefined ? {} : { retryAfterMs }) }
   } catch {
     return retryAfterMs === undefined ? {} : { retryAfterMs }
