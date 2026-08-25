@@ -191,3 +191,25 @@ test('buildUpstreamRequest handles empty system prompt', () => {
   assert.equal(parsed.messages[0].role, 'user')
   assert.equal(parsed.messages.length, 1)
 })
+
+test('buildUpstreamRequest enables Kimi K3 thinking with the selected effort', () => {
+  const result = buildUpstreamRequest({
+    modelId: 'kimi-k3',
+    messages: [{ role: 'user', content: '解释数据库索引' }],
+    params: { reasoningEffort: 'high' },
+  }, {
+    provider: 'openai-compatible',
+    modelId: 'kimi-k3',
+    baseUrl: 'https://ai.example.test/',
+    appId: 'test-app',
+    appKey: 'test-key',
+  })
+
+  assert.equal(result.url, 'https://ai.example.test/openai-compatible/v1/chat/completions')
+  assert.deepEqual(JSON.parse(result.body), {
+    model: 'kimi-k3',
+    messages: [{ role: 'user', content: '解释数据库索引' }],
+    stream: true,
+    reasoning: { mode: 'enabled', effort: 'high' },
+  })
+})

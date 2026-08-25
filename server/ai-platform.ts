@@ -308,6 +308,11 @@ export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConf
       mode: 'enabled',
       effort: body.params?.reasoningEffort ?? 'low',
     }
+  } else if (modelId === 'kimi-k3') {
+    payload.reasoning = {
+      mode: 'enabled',
+      effort: body.params?.reasoningEffort ?? 'low',
+    }
   } else if (body.params?.reasoningEffort) {
     payload.reasoning_effort = body.params.reasoningEffort
   }

@@ -24,6 +24,22 @@ test('seed contains all required models', () => {
   assert.ok(modelIds.includes('claude-sonnet-5'))
 })
 
+test('Kimi K3 has the documented chat configuration', () => {
+  const model = SEED_MODELS.find((candidate) => candidate.modelId === 'kimi-k3')
+  assert.deepEqual(model, {
+    modelId: 'kimi-k3',
+    displayName: 'Kimi K3',
+    provider: 'openai-compatible',
+    category: 'chat',
+    vendor: 'moonshot',
+    capabilities: ['streaming', 'reasoning_mode'],
+    contextWindow: 1_000_000,
+    rpmLimit: 50,
+    tpmLimit: 500_000,
+    sortOrder: 31,
+  })
+})
+
 test('deepseek-chat is a streaming Harness model', () => {
   const model = SEED_MODELS.find((candidate) => candidate.modelId === 'deepseek-chat')
   assert.equal(model?.provider, 'deepseek-harness')
