@@ -94,13 +94,29 @@ interface UpstreamConfig {
 export interface UpstreamRequest {
   url: string
   headers: Headers
-  body: string
+  body: string | FormData | null
 }
 
 export type ImageGenerationRequestBody = {
   modelId: string
   prompt: string
   aspectRatio: '1:1' | '16:9' | '9:16'
+  referenceImageId?: string
+}
+
+export type GeminiMultimodalRequestBody = {
+  prompt: string
+  referenceImageId?: string
+}
+
+export type GeminiMultimodalResponse = {
+  content: string
+  imageUrl?: string
+}
+
+type PrivateImageReference = {
+  bytes: Buffer
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp'
 }
 
 type ImageGenerationConfig = {
@@ -109,7 +125,6 @@ type ImageGenerationConfig = {
   appKey: string
 }
 
-const IMAGE_MODEL_IDS = new Set(['gpt-image-2', 'gemini-3-pro-image'])
 const IMAGE_ASPECT_RATIOS = new Set(['1:1', '16:9', '9:16'])
 const IMAGE_PROMPT_MAX = 2_000
 
@@ -124,34 +139,80 @@ function readImageGenerationConfig(): ImageGenerationConfig | null {
   }
 }
 
-export function buildImageGenerationRequest(body: ImageGenerationRequestBody, config: ImageGenerationConfig): UpstreamRequest {
-  const baseUrl = config.baseUrl.replace(/\/$/, '')
-  const headers = new Headers({
+function imageUpstreamHeaders(config: ImageGenerationConfig, contentType?: string): Headers {
+  return new Headers({
     Authorization: `Bearer ${config.appId}:${config.appKey}`,
     'api-key': `${config.appId}:${config.appKey}`,
-    'Content-Type': 'application/json',
+    ...(contentType ? { 'Content-Type': contentType } : {}),
   })
+}
 
-  if (body.modelId === 'gemini-3-pro-image') {
+function privateImageDataUrl(reference: PrivateImageReference): string | null {
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(reference.mimeType)) return null
+  return `data:${reference.mimeType};base64,${reference.bytes.toString('base64')}`
+}
+
+function imageExtension(mimeType: PrivateImageReference['mimeType']): 'png' | 'jpg' | 'webp' {
+  if (mimeType === 'image/jpeg') return 'jpg'
+  return mimeType === 'image/webp' ? 'webp' : 'png'
+}
+
+export function buildGptImageRequest(
+  body: ImageGenerationRequestBody,
+  config: ImageGenerationConfig,
+  reference?: PrivateImageReference,
+): UpstreamRequest {
+  const baseUrl = config.baseUrl.replace(/\/$/, '')
+  if (!reference) {
     return {
-      url: `${baseUrl}/openai-compatible/v1/chat/completions`,
-      headers,
-      body: JSON.stringify({
-        model: body.modelId,
-        messages: [{ role: 'user', content: body.prompt }],
-        modalities: ['text', 'image'],
-      }),
+      url: `${baseUrl}/openai-compatible/v1/images/generations`,
+      headers: imageUpstreamHeaders(config, 'application/json'),
+      body: JSON.stringify({ model: 'gpt-image-2', prompt: body.prompt }),
     }
   }
 
+  const form = new FormData()
+  form.set('model', 'gpt-image-2')
+  form.set('prompt', body.prompt)
+  form.set('image', new Blob([reference.bytes], { type: reference.mimeType }), `reference.${imageExtension(reference.mimeType)}`)
   return {
-    url: `${baseUrl}/openai-compatible/v1/images/generations`,
-    headers,
+    url: `${baseUrl}/openai-compatible/v1/images/edits`,
+    headers: imageUpstreamHeaders(config),
+    body: form,
+  }
+}
+
+export function buildGeminiMultimodalRequest(
+  body: GeminiMultimodalRequestBody,
+  config: ImageGenerationConfig,
+  reference?: PrivateImageReference,
+): UpstreamRequest {
+  const content = reference
+    ? (() => {
+        const dataUrl = privateImageDataUrl(reference)
+        if (!dataUrl) throw new Error('unsupported private image MIME type')
+        return [
+          { type: 'text', text: body.prompt },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ]
+      })()
+    : body.prompt
+
+  return {
+    url: `${config.baseUrl.replace(/\/$/, '')}/openai-compatible/v1/chat/completions`,
+    headers: imageUpstreamHeaders(config, 'application/json'),
     body: JSON.stringify({
-      model: body.modelId,
-      prompt: body.prompt,
+      model: 'gemini-3-pro-image',
+      messages: [{ role: 'user', content }],
+      modalities: ['text', 'image'],
     }),
   }
+}
+
+export function buildImageGenerationRequest(body: ImageGenerationRequestBody, config: ImageGenerationConfig): UpstreamRequest {
+  return body.modelId === 'gemini-3-pro-image'
+    ? buildGeminiMultimodalRequest(body, config)
+    : buildGptImageRequest(body, config)
 }
 
 function asHttpsUrl(value: unknown): string | null {
@@ -175,6 +236,53 @@ export type NormalizedImageGenerationResponse =
   | { kind: 'url'; imageUrl: string }
   | { kind: 'base64'; image: DecodedImage }
 
+type NormalizedGeminiImage = { imageUrl: string } | DecodedImage
+
+function normalizeGeminiImage(message: Record<string, unknown> | undefined): NormalizedGeminiImage | null {
+  const images = message?.images
+  if (Array.isArray(images)) {
+    const image = images[0] as Record<string, unknown> | undefined
+    const value = image?.url
+      ?? (image?.image_url as Record<string, unknown> | undefined)?.url
+    const imageUrl = asHttpsUrl(value)
+    if (imageUrl) return { imageUrl }
+    const decodedImage = decodeImageDataUrl(value)
+    if (decodedImage) return decodedImage
+  }
+
+  const content = message?.content
+  if (Array.isArray(content)) {
+    for (const item of content) {
+      if (!item || typeof item !== 'object') continue
+      const value = item as Record<string, unknown>
+      const image = value.image_url as Record<string, unknown> | undefined
+      const imageUrl = asHttpsUrl(image?.url)
+      if (imageUrl) return { imageUrl }
+      const decodedImage = decodeImageDataUrl(image?.url)
+      if (decodedImage) return decodedImage
+    }
+  }
+  return null
+}
+
+function firstGeminiMessage(payload: unknown): Record<string, unknown> | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const choices = (payload as Record<string, unknown>).choices
+  const choice = Array.isArray(choices) ? choices[0] as Record<string, unknown> | undefined : undefined
+  const message = choice?.message
+  return message && typeof message === 'object' ? message as Record<string, unknown> : undefined
+}
+
+export function normalizeGeminiMultimodalResponse(payload: unknown): {
+  content: string
+  image?: NormalizedGeminiImage
+} | null {
+  const message = firstGeminiMessage(payload)
+  const content = typeof message?.content === 'string' ? message.content : ''
+  const image = normalizeGeminiImage(message)
+  return content || image ? { content, ...(image ? { image } : {}) } : null
+}
+
 export function normalizeImageGenerationResponse(payload: unknown): NormalizedImageGenerationResponse | null {
   if (!payload || typeof payload !== 'object') return null
   const root = payload as Record<string, unknown>
@@ -187,29 +295,9 @@ export function normalizeImageGenerationResponse(payload: unknown): NormalizedIm
     if (image) return { kind: 'base64', image }
   }
 
-  const choice = Array.isArray(root.choices) ? root.choices[0] as Record<string, unknown> | undefined : undefined
-  const message = choice?.message as Record<string, unknown> | undefined
-  const images = message?.images
-  if (Array.isArray(images)) {
-    const image = images[0] as Record<string, unknown> | undefined
-    const value = image?.url
-      ?? (image?.image_url as Record<string, unknown> | undefined)?.url
-    const imageUrl = asHttpsUrl(value)
-    if (imageUrl) return { kind: 'url', imageUrl }
-    const decodedImage = decodeImageDataUrl(value)
-    if (decodedImage) return { kind: 'base64', image: decodedImage }
-  }
-  const content = message?.content
-  if (Array.isArray(content)) {
-    for (const item of content) {
-      if (!item || typeof item !== 'object') continue
-      const value = item as Record<string, unknown>
-      const image = value.image_url as Record<string, unknown> | undefined
-      const imageUrl = asHttpsUrl(image?.url)
-      if (imageUrl) return { kind: 'url', imageUrl }
-    }
-  }
-  return null
+  const image = normalizeGeminiImage(firstGeminiMessage(payload))
+  if (!image) return null
+  return 'imageUrl' in image ? { kind: 'url', imageUrl: image.imageUrl } : { kind: 'base64', image }
 }
 
 export async function imageAssetResponse(userKey: string, id: string): Promise<Response> {
@@ -225,6 +313,21 @@ export async function imageAssetResponse(userKey: string, id: string): Promise<R
       'X-Content-Type-Options': 'nosniff',
     },
   })
+}
+
+function asPrivateImageReference(value: Awaited<ReturnType<typeof readImageAsset>>): PrivateImageReference | null {
+  if (!value || !['image/png', 'image/jpeg', 'image/webp'].includes(value.mimeType)) return null
+  return value as PrivateImageReference
+}
+
+async function resolvePrivateImageReference(referenceImageId: unknown): Promise<PrivateImageReference | null> {
+  if (referenceImageId === undefined) return null
+  if (typeof referenceImageId !== 'string') return null
+  return asPrivateImageReference(await readImageAsset(USER_KEY, referenceImageId))
+}
+
+function hasInvalidReferenceImageId(value: unknown): boolean {
+  return value !== undefined && typeof value !== 'string'
 }
 
 export function buildAnthropicPlatformRequest(body: ChatRequestBody, config: AnthropicConfig): UpstreamRequest {
@@ -934,7 +1037,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
   app.post('/ai-platform/images/generations', async (c) => {
     await ensureSeeded()
     const body = await c.req.json<ImageGenerationRequestBody>().catch(() => null)
-    if (!body || !IMAGE_MODEL_IDS.has(body.modelId)) {
+    if (!body || body.modelId !== 'gpt-image-2') {
       return c.json({ error: '不支持的图片模型。' }, 400)
     }
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
@@ -944,17 +1047,24 @@ export function registerAiPlatformRoutes(app: Hono): void {
     if (!IMAGE_ASPECT_RATIOS.has(body.aspectRatio)) {
       return c.json({ error: '不支持的图片比例。' }, 400)
     }
+    if (hasInvalidReferenceImageId(body.referenceImageId)) {
+      return c.json({ error: '参考图片不存在或不可用。' }, 404)
+    }
 
     const model = await db.select().from(aiModels).where(eq(aiModels.modelId, body.modelId)).get()
     if (!model || model.enabled !== 1 || model.category !== 'image') {
       return c.json({ error: '图片模型当前不可用。' }, 400)
+    }
+    const reference = await resolvePrivateImageReference(body.referenceImageId)
+    if (body.referenceImageId && !reference) {
+      return c.json({ error: '参考图片不存在或不可用。' }, 404)
     }
     const config = readImageGenerationConfig()
     if (!config) return c.json({ error: '图片生成服务暂未配置。' }, 503)
 
     let upstream: Response
     try {
-      const request = buildImageGenerationRequest({ ...body, prompt }, config)
+      const request = buildGptImageRequest({ ...body, prompt }, config, reference ?? undefined)
       upstream = await fetch(request.url, {
         method: 'POST',
         headers: request.headers,
@@ -981,6 +1091,68 @@ export function registerAiPlatformRoutes(app: Hono): void {
       const imageUrl = imageAssetUrl(asset.id)
       if (!imageUrl) throw new Error('invalid image asset id')
       return c.json({ modelId: body.modelId, imageUrl })
+    } catch {
+      return c.json({ error: '图片生成结果保存失败，请稍后重试。' }, 502)
+    }
+  })
+
+  app.post('/ai-platform/images/gemini', async (c) => {
+    await ensureSeeded()
+    const body = await c.req.json<GeminiMultimodalRequestBody>().catch(() => null)
+    if (!body) {
+      return c.json({ error: '图片创作描述不能为空且不能超过 2000 个字符。' }, 400)
+    }
+    const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+    if (!prompt || prompt.length > IMAGE_PROMPT_MAX) {
+      return c.json({ error: '图片创作描述不能为空且不能超过 2000 个字符。' }, 400)
+    }
+    if (hasInvalidReferenceImageId(body.referenceImageId)) {
+      return c.json({ error: '参考图片不存在或不可用。' }, 404)
+    }
+
+    const model = await db.select().from(aiModels).where(eq(aiModels.modelId, 'gemini-3-pro-image')).get()
+    if (!model || model.enabled !== 1 || model.category !== 'image') {
+      return c.json({ error: 'Gemini 创作模型当前不可用。' }, 400)
+    }
+    const reference = await resolvePrivateImageReference(body.referenceImageId)
+    if (body.referenceImageId && !reference) {
+      return c.json({ error: '参考图片不存在或不可用。' }, 404)
+    }
+    const config = readImageGenerationConfig()
+    if (!config) return c.json({ error: '图片创作服务暂未配置。' }, 503)
+
+    let upstream: Response
+    try {
+      const request = buildGeminiMultimodalRequest({ ...body, prompt }, config, reference ?? undefined)
+      upstream = await fetch(request.url, {
+        method: 'POST',
+        headers: request.headers,
+        body: request.body,
+        signal: c.req.raw.signal,
+      })
+    } catch {
+      return c.json({ error: '图片创作服务暂时不可用，请稍后重试。' }, 502)
+    }
+    if (!upstream.ok) {
+      return c.json({ error: '图片创作服务暂时不可用，请稍后重试。' }, 502)
+    }
+
+    const result = normalizeGeminiMultimodalResponse(await upstream.json().catch(() => null))
+    if (!result) {
+      return c.json({ error: '本次创作未返回可展示内容，请修改描述后重试。' }, 502)
+    }
+    if (!result.image || 'imageUrl' in result.image) {
+      return c.json({
+        content: result.content,
+        ...(result.image ? { imageUrl: result.image.imageUrl } : {}),
+      } satisfies GeminiMultimodalResponse)
+    }
+
+    try {
+      const asset = await storeImageAsset(USER_KEY, result.image)
+      const imageUrl = imageAssetUrl(asset.id)
+      if (!imageUrl) throw new Error('invalid image asset id')
+      return c.json({ content: result.content, imageUrl } satisfies GeminiMultimodalResponse)
     } catch {
       return c.json({ error: '图片生成结果保存失败，请稍后重试。' }, 502)
     }

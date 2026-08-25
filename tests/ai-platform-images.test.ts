@@ -9,8 +9,11 @@ import {
   type ImageGenerationInput,
 } from '../src/ai-platform/api'
 import {
+  buildGeminiMultimodalRequest,
+  buildGptImageRequest,
   buildImageGenerationRequest,
   imageAssetResponse,
+  normalizeGeminiMultimodalResponse,
   normalizeImageGenerationResponse,
 } from '../server/ai-platform'
 import {
@@ -149,23 +152,77 @@ test('buildImageGenerationRequest uses the confirmed GPT image endpoint and body
   })
 })
 
-test('buildImageGenerationRequest uses the confirmed Gemini chat-completions contract', () => {
-  const request = buildImageGenerationRequest({
-    modelId: 'gemini-3-pro-image',
-    prompt: '生成一个猫咪图片',
-    aspectRatio: '9:16',
-  }, {
+test('buildGeminiMultimodalRequest uses the confirmed text-only chat-completions contract', () => {
+  const request = buildGeminiMultimodalRequest({ prompt: '生成一个猫咪图片' }, {
     baseUrl: 'https://ai.example.test',
     appId: 'test-app',
     appKey: 'test-key',
   })
 
   assert.equal(request.url, 'https://ai.example.test/openai-compatible/v1/chat/completions')
-  assert.deepEqual(JSON.parse(request.body), {
+  assert.deepEqual(JSON.parse(String(request.body)), {
     model: 'gemini-3-pro-image',
     messages: [{ role: 'user', content: '生成一个猫咪图片' }],
     modalities: ['text', 'image'],
   })
+})
+
+test('buildGeminiMultimodalRequest includes a server-side image content block', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const request = buildGeminiMultimodalRequest({ prompt: '优化一下' }, {
+    baseUrl: 'https://ai.example.test',
+    appId: 'test-app',
+    appKey: 'test-key',
+  }, { bytes: png, mimeType: 'image/png' })
+  const body = JSON.parse(String(request.body))
+
+  assert.deepEqual(body.messages[0].content.map((item: { type: string }) => item.type), [
+    'text',
+    'image_url',
+  ])
+  assert.deepEqual(body.modalities, ['text', 'image'])
+})
+
+test('buildGptImageRequest uses multipart edits only with a private reference image', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const request = buildGptImageRequest({
+    modelId: 'gpt-image-2',
+    prompt: '改成蓝色',
+    aspectRatio: '1:1',
+  }, {
+    baseUrl: 'https://ai.example.test',
+    appId: 'test-app',
+    appKey: 'test-key',
+  }, { bytes: png, mimeType: 'image/png' })
+
+  assert.equal(request.url, 'https://ai.example.test/openai-compatible/v1/images/edits')
+  assert.ok(request.body instanceof FormData)
+  assert.equal(request.headers.has('Content-Type'), false)
+})
+
+test('normalizeGeminiMultimodalResponse preserves text-only success', () => {
+  assert.deepEqual(normalizeGeminiMultimodalResponse({
+    choices: [{ message: { content: '请提供一张需要优化的图片。' } }],
+  }), { content: '请提供一张需要优化的图片。' })
+})
+
+test('normalizeGeminiMultimodalResponse returns text with a decoded image', () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const result = normalizeGeminiMultimodalResponse({
+    choices: [{
+      message: {
+        content: '已完成优化。',
+        images: [{ image_url: { url: `data:image/png;base64,${png.toString('base64')}` } }],
+      },
+    }],
+  })
+
+  assert.equal(result?.content, '已完成优化。')
+  assert.equal(result?.image && 'bytes' in result.image, true)
+})
+
+test('normalizeGeminiMultimodalResponse rejects a result without text or image', () => {
+  assert.equal(normalizeGeminiMultimodalResponse({ choices: [{ message: {} }] }), null)
 })
 
 test('normalizeImageGenerationResponse accepts known HTTPS response shapes only', () => {
