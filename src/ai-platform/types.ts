@@ -56,6 +56,7 @@ export interface ImageRequestMessage {
   prompt: string
   modelId: ImageModelId
   aspectRatio: ImageAspectRatio
+  referenceImageId?: string
   createdAt: string
 }
 
@@ -73,7 +74,28 @@ export interface ImageResultMessage {
   errorMessage?: string
 }
 
-export type ChatMessage = TextMessage | ImageRequestMessage | ImageResultMessage
+export interface GeminiMultimodalUserMessage {
+  type: 'gemini-multimodal-user'
+  role: 'user'
+  requestId: string
+  content: string
+  referenceImageId?: string
+  createdAt: string
+}
+
+export interface GeminiMultimodalAssistantMessage {
+  type: 'gemini-multimodal-assistant'
+  role: 'assistant'
+  requestId: string
+  content: string
+  status: 'generating' | 'completed' | 'error' | 'cancelled'
+  imageUrl?: string
+  createdAt: string
+  completedAt?: string
+  errorMessage?: string
+}
+
+export type ChatMessage = TextMessage | ImageRequestMessage | ImageResultMessage | GeminiMultimodalUserMessage | GeminiMultimodalAssistantMessage
 
 export interface ChatParams {
   reasoningEffort?: 'low' | 'medium' | 'high'

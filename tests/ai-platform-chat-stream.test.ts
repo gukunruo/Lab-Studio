@@ -79,6 +79,31 @@ test('toUpstreamMessages excludes structured image messages', () => {
   assert.deepEqual(toUpstreamMessages(messages), [{ role: 'user', content: '请总结这段话' }])
 })
 
+test('toUpstreamMessages excludes Gemini multimodal conversation messages', () => {
+  const messages: ChatMessage[] = [
+    { role: 'user', content: '请总结这段话' },
+    {
+      type: 'gemini-multimodal-user',
+      role: 'user',
+      requestId: 'gemini-1',
+      content: '优化一下',
+      referenceImageId: 'b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+      createdAt: '2026-08-25T00:00:00.000Z',
+    },
+    {
+      type: 'gemini-multimodal-assistant',
+      role: 'assistant',
+      requestId: 'gemini-1',
+      content: '已完成优化。',
+      status: 'completed',
+      imageUrl: '/api/ai-platform/images/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+      createdAt: '2026-08-25T00:00:01.000Z',
+    },
+  ]
+
+  assert.deepEqual(toUpstreamMessages(messages), [{ role: 'user', content: '请总结这段话' }])
+})
+
 test('streamChat sends only usable message history to the chat endpoint', async () => {
   const originalFetch = globalThis.fetch
   let requestBody: { messages?: unknown } | undefined

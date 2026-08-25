@@ -1,4 +1,4 @@
-import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, ImageAspectRatio, ImageModelId, TextMessage } from './types'
+import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from './types'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
   const res = await fetch('/api/ai-platform/models', { credentials: 'include' })
@@ -147,23 +147,35 @@ export function toUpstreamMessages(messages: ChatMessage[]): Array<Pick<TextMess
     .map(({ role, content }) => ({ role, content }))
 }
 
+const CONTROLLED_IMAGE_ASSET_PATH = /^\/api\/ai-platform\/images\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
+
 export interface ImageGenerationInput {
-  modelId: ImageModelId
+  modelId: 'gpt-image-2'
   prompt: string
   aspectRatio: ImageAspectRatio
+  referenceImageId?: string
   signal: AbortSignal
 }
 
 export interface ImageGenerationResponse {
   imageUrl: string
-  modelId: ImageModelId
+  modelId: 'gpt-image-2'
+}
+
+export interface GeminiMultimodalResponse {
+  content: string
+  imageUrl?: string
+}
+
+export function controlledImageAssetId(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = value.match(CONTROLLED_IMAGE_ASSET_PATH)
+  return match?.[1]?.toLowerCase() ?? null
 }
 
 export function isSafeImageUrl(value: unknown): value is string {
+  if (controlledImageAssetId(value)) return true
   if (typeof value !== 'string' || !value) return false
-  if (/^\/api\/ai-platform\/images\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
-    return true
-  }
   try {
     return new URL(value).protocol === 'https:'
   } catch {
@@ -171,7 +183,30 @@ export function isSafeImageUrl(value: unknown): value is string {
   }
 }
 
+export function latestControlledImageAssetId(messages: ChatMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (!message) continue
+    if (message.type === 'image-result' && message.status === 'completed') {
+      const image = message as ImageResultMessage
+      const assetId = controlledImageAssetId(image.imageUrl)
+      if (assetId) return assetId
+    }
+    if (message.type === 'gemini-multimodal-assistant' && message.status === 'completed') {
+      const image = message as GeminiMultimodalAssistantMessage
+      const assetId = controlledImageAssetId(image.imageUrl)
+      if (assetId) return assetId
+    }
+  }
+  return null
+}
+
+async function responsePayload(res: Response): Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown } | null> {
+  return res.json().catch(() => null) as Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown } | null>
+}
+
 export async function generateImage(input: ImageGenerationInput): Promise<ImageGenerationResponse> {
+  const referenceImageId = input.referenceImageId?.toLowerCase()
   const res = await fetch('/api/ai-platform/images/generations', {
     credentials: 'include',
     method: 'POST',
@@ -180,18 +215,52 @@ export async function generateImage(input: ImageGenerationInput): Promise<ImageG
       modelId: input.modelId,
       prompt: input.prompt,
       aspectRatio: input.aspectRatio,
+      ...(referenceImageId && CONTROLLED_IMAGE_ASSET_PATH.test(`/api/ai-platform/images/${referenceImageId}`)
+        ? { referenceImageId }
+        : {}),
     }),
     signal: input.signal,
   })
 
-  const payload = await res.json().catch(() => null) as { error?: unknown; imageUrl?: unknown; modelId?: unknown } | null
+  const payload = await responsePayload(res)
   if (!res.ok) {
     throw new Error(typeof payload?.error === 'string' ? payload.error : '图片生成失败，请稍后重试。')
   }
-  if (!payload || !isSafeImageUrl(payload.imageUrl) || (payload.modelId !== 'gpt-image-2' && payload.modelId !== 'gemini-3-pro-image')) {
+  if (!payload || !isSafeImageUrl(payload.imageUrl) || payload.modelId !== 'gpt-image-2') {
     throw new Error('图片生成服务返回了无效结果，请稍后重试。')
   }
   return { imageUrl: payload.imageUrl, modelId: payload.modelId }
+}
+
+export async function generateGeminiMultimodal(input: {
+  prompt: string
+  referenceImageId?: string
+  signal: AbortSignal
+}): Promise<GeminiMultimodalResponse> {
+  const referenceImageId = input.referenceImageId?.toLowerCase()
+  const res = await fetch('/api/ai-platform/images/gemini', {
+    credentials: 'include',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: input.prompt,
+      ...(referenceImageId && CONTROLLED_IMAGE_ASSET_PATH.test(`/api/ai-platform/images/${referenceImageId}`)
+        ? { referenceImageId }
+        : {}),
+    }),
+    signal: input.signal,
+  })
+
+  const payload = await responsePayload(res)
+  if (!res.ok) {
+    throw new Error(typeof payload?.error === 'string' ? payload.error : '图片创作失败，请稍后重试。')
+  }
+  const content = typeof payload?.content === 'string' ? payload.content.trim() : ''
+  const imageUrl = isSafeImageUrl(payload?.imageUrl) ? payload.imageUrl : undefined
+  if (!content && !imageUrl) {
+    throw new Error('图片创作服务返回了无效结果，请稍后重试。')
+  }
+  return imageUrl ? { content, imageUrl } : { content }
 }
 
 export async function streamChat(opts: StreamChatOptions): Promise<void> {

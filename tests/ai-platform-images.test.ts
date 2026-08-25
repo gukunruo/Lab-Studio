@@ -4,8 +4,11 @@ import { rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import {
+  controlledImageAssetId,
+  generateGeminiMultimodal,
   generateImage,
   isSafeImageUrl,
+  latestControlledImageAssetId,
   type ImageGenerationInput,
 } from '../src/ai-platform/api'
 import {
@@ -83,7 +86,7 @@ test('isSafeImageUrl accepts only HTTPS URLs and controlled image asset paths', 
   assert.equal(isSafeImageUrl('data:image/png;base64,abc'), false)
 })
 
-test('generateImage accepts the Gemini image model', async () => {
+test('generateImage rejects a Gemini result because Gemini uses the multimodal endpoint', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async () => Response.json({
     modelId: 'gemini-3-pro-image',
@@ -91,8 +94,9 @@ test('generateImage accepts the Gemini image model', async () => {
   })
 
   try {
-    const result = await generateImage({ ...input, modelId: 'gemini-3-pro-image' })
-    assert.equal(result.modelId, 'gemini-3-pro-image')
+    await assert.rejects(() => generateImage(input), {
+      message: '图片生成服务返回了无效结果，请稍后重试。',
+    })
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -132,6 +136,121 @@ test('generateImage returns a controlled API error', async () => {
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('generateImage sends only a controlled reference image id', async () => {
+  const originalFetch = globalThis.fetch
+  let body: Record<string, unknown> | undefined
+  globalThis.fetch = async (_request, init) => {
+    body = JSON.parse(String(init?.body))
+    return Response.json({
+      modelId: 'gpt-image-2',
+      imageUrl: '/api/ai-platform/images/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+    })
+  }
+
+  try {
+    await generateImage({
+      ...input,
+      referenceImageId: 'b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+    })
+    assert.deepEqual(body, {
+      modelId: 'gpt-image-2',
+      prompt: '电影感的橘猫',
+      aspectRatio: '1:1',
+      referenceImageId: 'b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('generateGeminiMultimodal accepts text-only and controlled image results', async () => {
+  const originalFetch = globalThis.fetch
+  let call = 0
+  globalThis.fetch = async () => Response.json(call++ === 0
+    ? { content: '已完成优化。' }
+    : {
+        content: '已完成优化。',
+        imageUrl: '/api/ai-platform/images/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+      })
+
+  try {
+    assert.deepEqual(await generateGeminiMultimodal({
+      prompt: '优化一下',
+      signal: new AbortController().signal,
+    }), { content: '已完成优化。' })
+    assert.deepEqual(await generateGeminiMultimodal({
+      prompt: '优化一下',
+      signal: new AbortController().signal,
+    }), {
+      content: '已完成优化。',
+      imageUrl: '/api/ai-platform/images/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('generateGeminiMultimodal rejects unsafe image results', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({
+    content: '',
+    imageUrl: 'data:image/png;base64,abc',
+  })
+
+  try {
+    await assert.rejects(() => generateGeminiMultimodal({
+      prompt: '优化一下',
+      signal: new AbortController().signal,
+    }), { message: '图片创作服务返回了无效结果，请稍后重试。' })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('controlledImageAssetId accepts only a controlled image path', () => {
+  assert.equal(
+    controlledImageAssetId('/api/ai-platform/images/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56'),
+    'b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+  )
+  assert.equal(controlledImageAssetId('https://cdn.example.test/image.png'), null)
+  assert.equal(controlledImageAssetId('data:image/png;base64,abc'), null)
+  assert.equal(controlledImageAssetId('/api/ai-platform/images/not-a-uuid'), null)
+})
+
+test('latestControlledImageAssetId selects only the newest completed controlled image', () => {
+  assert.equal(latestControlledImageAssetId([
+    {
+      type: 'image-result',
+      role: 'assistant',
+      requestId: 'first',
+      modelId: 'gpt-image-2',
+      prompt: '第一张',
+      aspectRatio: '1:1',
+      status: 'completed',
+      imageUrl: '/api/ai-platform/images/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+      createdAt: '2026-08-25T00:00:00.000Z',
+    },
+    {
+      type: 'gemini-multimodal-assistant',
+      role: 'assistant',
+      requestId: 'second',
+      content: '已完成优化。',
+      status: 'completed',
+      imageUrl: 'https://cdn.example.test/external.png',
+      createdAt: '2026-08-25T00:00:01.000Z',
+    },
+    {
+      type: 'gemini-multimodal-assistant',
+      role: 'assistant',
+      requestId: 'third',
+      content: '',
+      status: 'generating',
+      imageUrl: '/api/ai-platform/images/3a73c712-2758-4a9d-8c7b-80e788f33a42',
+      createdAt: '2026-08-25T00:00:02.000Z',
+    },
+  ]), 'b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56')
 })
 
 test('buildImageGenerationRequest uses the confirmed GPT image endpoint and body', () => {

@@ -1,31 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { marked } from 'marked'
 import type { ChatMessage } from '../types'
 import { isTextMessage } from '../api'
+import { renderMarkdown } from '../message-markdown'
+import GeminiMultimodalCard from './GeminiMultimodalCard.vue'
 import ImageMessageCard from './ImageMessageCard.vue'
-
-marked.use({
-  gfm: true,
-  breaks: true,
-})
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-const markdownRenderer = new marked.Renderer()
-markdownRenderer.html = ({ text }) => escapeHtml(text)
-markdownRenderer.link = ({ href, title, text }) => {
-  const safeHref = /^(https?:|mailto:|#)/i.test(href) ? href : '#'
-  const titleAttribute = title ? ` title="${escapeHtml(title)}"` : ''
-  return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noreferrer">${text}</a>`
-}
 
 const props = defineProps<{
   message: ChatMessage
@@ -45,17 +24,16 @@ const emit = defineEmits<{
   'retry-image': []
   'edit-image': []
   'abort-image': []
+  'retry-gemini': []
+  'edit-gemini': []
+  'abort-gemini': []
+  'use-image-reference': []
 }>()
-
-function renderMarkdown(value: string): string {
-  return marked.parse(value, {
-    async: false,
-    renderer: markdownRenderer,
-  }) as string
-}
 
 const textMessage = computed(() => isTextMessage(props.message) ? props.message : null)
 const imageMessage = computed(() => props.message.type === 'image-request' || props.message.type === 'image-result' ? props.message : null)
+const geminiUserMessage = computed(() => props.message.type === 'gemini-multimodal-user' ? props.message : null)
+const geminiAssistantMessage = computed(() => props.message.type === 'gemini-multimodal-assistant' ? props.message : null)
 const renderedContent = computed(() => textMessage.value ? renderMarkdown(textMessage.value.content) : '')
 const isText = computed(() => Boolean(textMessage.value))
 const isAssistant = computed(() => props.message.role === 'assistant')
@@ -111,8 +89,27 @@ function onEditKeydown(event: KeyboardEvent) {
 <template>
   <div class="message" :class="`message--${message.role}`">
     <div class="message__body">
-      <template v-if="!isText">
-        <ImageMessageCard v-if="imageMessage" :message="imageMessage" @retry="emit('retry-image')" @edit="emit('edit-image')" @abort="emit('abort-image')" />
+      <template v-if="geminiUserMessage">
+        <div class="message__content"><div class="message__plain">{{ geminiUserMessage.content }}</div></div>
+      </template>
+      <template v-else-if="geminiAssistantMessage">
+        <GeminiMultimodalCard
+          :message="geminiAssistantMessage"
+          @retry="emit('retry-gemini')"
+          @edit="emit('edit-gemini')"
+          @abort="emit('abort-gemini')"
+          @use-as-reference="emit('use-image-reference')"
+        />
+      </template>
+      <template v-else-if="!isText">
+        <ImageMessageCard
+          v-if="imageMessage"
+          :message="imageMessage"
+          @retry="emit('retry-image')"
+          @edit="emit('edit-image')"
+          @abort="emit('abort-image')"
+          @use-as-reference="emit('use-image-reference')"
+        />
       </template>
       <template v-else>
         <div v-if="isAssistant" class="message__role">{{ modelName ?? 'Assistant' }}</div>

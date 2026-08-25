@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
-import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from '../types'
-import { isTextMessage, parseConversationDigest } from '../api'
+import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from '../types'
+import { controlledImageAssetId, isTextMessage, latestControlledImageAssetId, parseConversationDigest } from '../api'
 import MessageBubble from './MessageBubble.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
 import { useChat } from '../composables/useChat'
 import { useImageGeneration } from '../composables/useImageGeneration'
+import { useGeminiMultimodal } from '../composables/useGeminiMultimodal'
 import { useModelsStore } from '../composables/useModels'
 import { PhGearSix, PhLightning, PhSidebarSimple, PhNotePencil, PhArrowDown, PhListBullets, PhX } from '@phosphor-icons/vue'
 
@@ -51,7 +52,9 @@ const userScrolledAway = ref(false)
 
 const { streaming, send, abort } = useChat()
 const { send: sendDigest } = useChat()
-const { generating: imageGenerating, generate: generateImage, abort: abortImage } = useImageGeneration()
+const { generating: gptImageGenerating, generate: generateImage, abort: abortImage } = useImageGeneration()
+const { generating: geminiGenerating, generate: generateGemini, abort: abortGemini } = useGeminiMultimodal()
+const imageGenerating = computed(() => gptImageGenerating.value || geminiGenerating.value)
 const modelsStore = useModelsStore()
 function isImageModelId(value: string): value is ImageModelId {
   return value === 'gpt-image-2' || value === 'gemini-3-pro-image'
@@ -62,18 +65,39 @@ const imageModels = computed(() => modelsStore.imageModels.flatMap((model) => (
 )))
 let requestGeneration = 0
 let imageRequestGeneration = 0
+let geminiRequestGeneration = 0
 let activeRequestConversation: object | number | null = null
+let selectedReferenceConversation: object | number | null = null
+const selectedReferenceImageId = ref<string | null | undefined>(undefined)
 let composerObserver: ResizeObserver | null = null
 
+function currentConversation(): object | number {
+  return props.conversationKey ?? props.messages
+}
+
+const referenceImageId = computed(() => {
+  if (selectedReferenceConversation !== currentConversation()) return latestControlledImageAssetId(props.messages)
+  return selectedReferenceImageId.value === undefined
+    ? latestControlledImageAssetId(props.messages)
+    : selectedReferenceImageId.value
+})
+
+function selectReferenceImage(assetId: string | null) {
+  selectedReferenceConversation = currentConversation()
+  selectedReferenceImageId.value = assetId
+}
+
 function isCurrentConversation(key: object | number | null): boolean {
-  return key === (props.conversationKey ?? props.messages)
+  return key === currentConversation()
 }
 
 function invalidateRequest() {
   requestGeneration += 1
   imageRequestGeneration += 1
+  geminiRequestGeneration += 1
   abort()
   abortImage()
+  abortGemini()
   streamingContent.value = ''
   waitingForFirstToken.value = false
 }
@@ -220,7 +244,12 @@ function updateImageResult(requestId: string, update: (message: ImageResultMessa
   )))
 }
 
-async function handleGenerateImage(input: { prompt: string; aspectRatio: ImageAspectRatio; modelId: ImageModelId }) {
+async function handleGenerateImage(input: {
+  prompt: string
+  aspectRatio: ImageAspectRatio
+  modelId: 'gpt-image-2'
+  referenceImageId?: string
+}) {
   if (streaming.value || generatingDigest.value || imageGenerating.value) return
   const requestId = crypto.randomUUID()
   const createdAt = new Date().toISOString()
@@ -231,6 +260,7 @@ async function handleGenerateImage(input: { prompt: string; aspectRatio: ImageAs
     prompt: input.prompt,
     modelId: input.modelId,
     aspectRatio: input.aspectRatio,
+    ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
     createdAt,
   }
   const resultMessage: ImageResultMessage = {
@@ -269,8 +299,67 @@ async function handleGenerateImage(input: { prompt: string; aspectRatio: ImageAs
   })
 }
 
+function updateGeminiResult(requestId: string, update: (message: GeminiMultimodalAssistantMessage) => GeminiMultimodalAssistantMessage) {
+  emit('update:messages', props.messages.map((message) => (
+    message.type === 'gemini-multimodal-assistant' && message.requestId === requestId && message.status === 'generating'
+      ? update(message)
+      : message
+  )))
+}
+
+async function handleGenerateGemini(input: { prompt: string; referenceImageId?: string | null }) {
+  if (streaming.value || generatingDigest.value || imageGenerating.value) return
+  const requestId = crypto.randomUUID()
+  const createdAt = new Date().toISOString()
+  const reference = input.referenceImageId === undefined ? referenceImageId.value : input.referenceImageId
+  const userMessage: GeminiMultimodalUserMessage = {
+    type: 'gemini-multimodal-user',
+    role: 'user',
+    requestId,
+    content: input.prompt,
+    ...(reference ? { referenceImageId: reference } : {}),
+    createdAt,
+  }
+  const assistantMessage: GeminiMultimodalAssistantMessage = {
+    type: 'gemini-multimodal-assistant',
+    role: 'assistant',
+    requestId,
+    content: '',
+    status: 'generating',
+    createdAt,
+  }
+  const conversation = currentConversation()
+  const generation = ++geminiRequestGeneration
+  emit('clear-digest')
+  emit('update:messages', [...props.messages, userMessage, assistantMessage])
+  await generateGemini({
+    prompt: input.prompt,
+    ...(reference ? { referenceImageId: reference } : {}),
+  }, {
+    onDone: (result) => {
+      if (generation !== geminiRequestGeneration || !isCurrentConversation(conversation)) return
+      updateGeminiResult(requestId, (message) => ({
+        ...message,
+        content: result.content,
+        ...(result.imageUrl ? { imageUrl: result.imageUrl } : {}),
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+      }))
+    },
+    onError: (errorMessage) => {
+      if (generation !== geminiRequestGeneration || !isCurrentConversation(conversation)) return
+      updateGeminiResult(requestId, (message) => ({ ...message, status: 'error', errorMessage }))
+    },
+    onAbort: () => {
+      if (generation !== geminiRequestGeneration || !isCurrentConversation(conversation)) return
+      updateGeminiResult(requestId, (message) => ({ ...message, status: 'cancelled' }))
+    },
+  })
+}
+
 function abortImageGeneration() {
   abortImage()
+  abortGemini()
 }
 
 function imageRequestForResult(result: ImageResultMessage) {
@@ -284,11 +373,12 @@ function retryImage(index: number) {
   const result = props.messages[index]
   if (!result || result.type !== 'image-result' || imageGenerating.value) return
   const request = imageRequestForResult(result)
-  if (!request) return
+  if (!request || request.modelId !== 'gpt-image-2') return
   void handleGenerateImage({
     prompt: request.prompt,
     aspectRatio: request.aspectRatio,
-    modelId: request.modelId,
+    modelId: 'gpt-image-2',
+    ...(request.referenceImageId ? { referenceImageId: request.referenceImageId } : {}),
   })
 }
 
@@ -297,11 +387,50 @@ function editImage(index: number) {
   if (!result || result.type !== 'image-result') return
   const request = imageRequestForResult(result)
   if (!request) return
+  if (request.modelId !== 'gpt-image-2') return
+  selectReferenceImage(request.referenceImageId ?? null)
   composerRef.value?.restoreImageDraft({
     prompt: request.prompt,
     aspectRatio: request.aspectRatio,
-    modelId: request.modelId,
+    ...(request.referenceImageId ? { referenceImageId: request.referenceImageId } : {}),
   })
+}
+
+function geminiUserForResult(result: GeminiMultimodalAssistantMessage) {
+  const request = props.messages.find((message) => (
+    message.type === 'gemini-multimodal-user' && message.requestId === result.requestId
+  ))
+  return request?.type === 'gemini-multimodal-user' ? request : null
+}
+
+function retryGemini(index: number) {
+  const result = props.messages[index]
+  if (!result || result.type !== 'gemini-multimodal-assistant' || imageGenerating.value) return
+  const request = geminiUserForResult(result)
+  if (!request) return
+  void handleGenerateGemini({
+    prompt: request.content,
+    referenceImageId: request.referenceImageId ?? null,
+  })
+}
+
+function editGemini(index: number) {
+  const result = props.messages[index]
+  if (!result || result.type !== 'gemini-multimodal-assistant') return
+  const request = geminiUserForResult(result)
+  if (!request) return
+  if (request.referenceImageId) selectReferenceImage(request.referenceImageId)
+  else selectReferenceImage(null)
+  composerRef.value?.restoreGeminiDraft({ prompt: request.content })
+}
+
+function useImageReference(index: number) {
+  const message = props.messages[index]
+  if (!message || (message.type !== 'image-result' && message.type !== 'gemini-multimodal-assistant')) return
+  const assetId = controlledImageAssetId(message.imageUrl)
+  if (!assetId) return
+  selectReferenceImage(assetId)
+  composerRef.value?.restoreGeminiDraft({ prompt: '' })
 }
 
 async function retryMessage(index: number) {
@@ -398,6 +527,10 @@ function isImageResult(message: ChatMessage): message is ImageResultMessage {
 
 watch(() => props.conversationKey, (key, previousKey) => {
   if ((streaming.value || imageGenerating.value) && key !== previousKey) invalidateRequest()
+  if (key !== previousKey) {
+    selectedReferenceConversation = null
+    selectedReferenceImageId.value = undefined
+  }
 }, { flush: 'sync' })
 
 onBeforeUnmount(() => invalidateRequest())
@@ -509,6 +642,10 @@ onBeforeUnmount(() => invalidateRequest())
         @retry-image="retryImage(i)"
         @edit-image="editImage(i)"
         @abort-image="abortImageGeneration"
+        @retry-gemini="retryGemini(i)"
+        @edit-gemini="editGemini(i)"
+        @abort-gemini="abortImageGeneration"
+        @use-image-reference="useImageReference(i)"
         @regenerate="regenerateMessage(i)"
         @edit="editMessage"
         @branch="emit('branch', $event)"
@@ -542,8 +679,12 @@ onBeforeUnmount(() => invalidateRequest())
       :busy="generatingDigest"
       :params="params"
       :image-models="imageModels"
+      :reference-image-id="referenceImageId"
+      :reference-image-label="referenceImageId ? '基于上一张图片' : null"
       @send="handleSend"
       @generate-image="handleGenerateImage"
+      @generate-gemini="handleGenerateGemini"
+      @clear-reference="selectReferenceImage(null)"
       @abort="abort"
       @abort-image="abortImageGeneration"
     >

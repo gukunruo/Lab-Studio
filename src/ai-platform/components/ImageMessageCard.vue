@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { PhArrowClockwise, PhDownloadSimple, PhImage, PhSpinnerGap, PhStop, PhXCircle } from '@phosphor-icons/vue'
 import type { ImageRequestMessage, ImageResultMessage } from '../types'
-import { isSafeImageUrl } from '../api'
+import { controlledImageAssetId, isSafeImageUrl } from '../api'
 
 const props = defineProps<{
   message: ImageRequestMessage | ImageResultMessage
@@ -12,6 +12,7 @@ const emit = defineEmits<{
   retry: []
   edit: []
   abort: []
+  'use-as-reference': []
 }>()
 
 const isRequest = computed(() => props.message.type === 'image-request')
@@ -23,6 +24,7 @@ const imageUrl = computed(() => {
   const value = resultMessage.value?.imageUrl
   return isSafeImageUrl(value) ? value : null
 })
+const hasReferenceImage = computed(() => Boolean(controlledImageAssetId(imageUrl.value)))
 </script>
 
 <template>
@@ -60,7 +62,10 @@ const imageUrl = computed(() => {
         <img class="image-card__image" :src="imageUrl" :alt="message.prompt" loading="lazy" />
         <div class="image-card__footer">
           <div><strong>图片已生成</strong><span>{{ message.modelId === 'gpt-image-2' ? 'GPT-Image-2' : 'Gemini 3 Pro Image' }}</span></div>
-          <a class="image-card__download" :href="imageUrl" target="_blank" rel="noreferrer" download><PhDownloadSimple :size="15" weight="bold" /> 下载</a>
+          <div class="image-card__actions">
+            <button v-if="hasReferenceImage" class="image-card__secondary-action" type="button" @click="emit('use-as-reference')"><PhImage :size="14" weight="bold" /> 基于此图继续</button>
+            <a class="image-card__download" :href="imageUrl" target="_blank" rel="noreferrer" download><PhDownloadSimple :size="15" weight="bold" /> 下载</a>
+          </div>
         </div>
       </template>
       <div v-else class="image-card__status image-card__status--error" role="alert">

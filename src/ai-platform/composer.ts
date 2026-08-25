@@ -7,6 +7,6 @@ export function nextTextareaHeight(scrollHeight: number): number {
   return Math.min(scrollHeight, COMPOSER_INPUT_MAX_HEIGHT)
 }
 
-export function imageShortcutMatches(event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey'>): boolean {
-  return event.key === 'Enter' && (event.metaKey || event.ctrlKey)
+export function composerSubmitMatches(event: Pick<KeyboardEvent, 'key' | 'shiftKey'>): boolean {
+  return event.key === 'Enter' && !event.shiftKey
 }
