@@ -128,13 +128,21 @@ export function serializeResult(result: BenchmarkResult): BenchmarkResult {
 export async function extractHttpErrorTelemetry(response: Response): Promise<{ providerCode?: string; retryAfterMs?: number }> {
   const retryAfter = response.headers.get('Retry-After')?.trim()
   const numericRetryAfter = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter) : null
-  const dateRetryAfter = retryAfter && /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retryAfter)
-    ? Date.parse(retryAfter)
-    : NaN
+  const httpDate = retryAfter?.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/)
+  const dateRetryAfter = httpDate ? Date.parse(retryAfter) : NaN
+  const parsedDate = Number.isFinite(dateRetryAfter) ? new Date(dateRetryAfter) : null
+  const hasMatchingHttpDate = parsedDate && httpDate
+    && parsedDate.getUTCDay() === ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(httpDate[1])
+    && parsedDate.getUTCDate() === Number(httpDate[2])
+    && parsedDate.getUTCMonth() === ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(httpDate[3])
+    && parsedDate.getUTCFullYear() === Number(httpDate[4])
+    && parsedDate.getUTCHours() === Number(httpDate[5])
+    && parsedDate.getUTCMinutes() === Number(httpDate[6])
+    && parsedDate.getUTCSeconds() === Number(httpDate[7])
   const now = Date.now()
   const retryAfterMs = numericRetryAfter !== null && Number.isFinite(numericRetryAfter)
     ? numericRetryAfter * 1000
-    : Number.isFinite(dateRetryAfter) && dateRetryAfter > now
+    : hasMatchingHttpDate && dateRetryAfter > now
       ? dateRetryAfter - now
       : undefined
 

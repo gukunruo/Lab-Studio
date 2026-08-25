@@ -71,6 +71,17 @@ test('ignores future dates that are not valid HTTP-date Retry-After values', asy
   }
 })
 
+test('ignores impossible and wrong-weekday IMF-fixdate Retry-After values', async () => {
+  for (const retryAfter of ['Thu, 31 Apr 2027 00:00:00 GMT', 'Thu, 01 Jan 2027 00:00:00 GMT']) {
+    const telemetry = await extractHttpErrorTelemetry(new Response(
+      JSON.stringify({ error: { code: 'rate_limit_exceeded' } }),
+      { status: 429, headers: { 'Retry-After': retryAfter, 'Content-Type': 'application/json' } },
+    ))
+
+    assert.deepEqual(telemetry, { providerCode: 'rate_limit_exceeded' })
+  }
+})
+
 test('benchmark result serialization keeps metrics but truncates output previews', () => {
   const safe = serializeResult({
     modelId: 'example',
