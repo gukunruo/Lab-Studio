@@ -1,0 +1,922 @@
+{
+  "version": 1,
+  "startedAt": "2026-08-25T08:25:24.839Z",
+  "completedAt": "2026-08-25T08:36:24.852Z",
+  "results": [
+    {
+      "modelId": "gpt-5.4",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 1168.069291,
+      "totalMs": 2121.314166,
+      "outputChars": 48,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引像目录，可加快查询、排序和定位记录；代价是占用额外存储，并会降低插入、更新、删除速度。"
+    },
+    {
+      "modelId": "gpt-5.4",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 1205.902791999999,
+      "totalMs": 1664.0475829999996,
+      "outputChars": 61,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x - 7 = 38\\)\n\n\\(3x = 45\\)\n\n\\(x = 15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "gpt-5.4",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1863.290832999999,
+      "totalMs": 2711.4847499999996,
+      "outputChars": 113,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return Array.from(new Set(values)).sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "gpt-5.4",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 1272.257292000002,
+      "totalMs": 1906.1625420000055,
+      "outputChars": 52,
+      "qualityScore": 1,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。\n2. 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "gpt-5.4",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1163.4617500000022,
+      "totalMs": 3169.131207999999,
+      "outputChars": 182,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查登录接口超时配置与服务器响应时间\",\"排查数据库连接、缓存和第三方认证服务是否存在延迟\",\"优化后端查询与接口性能，必要时增加重试与降级机制\",\"更新前端超时提示与异常处理逻辑\",\"在测试环境复现并验证登录流程稳定性\",\"上线后监控登录成功率、响应时间和错误日志\"]}"
+    },
+    {
+      "modelId": "gpt-5.5",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 2938.0810839999976,
+      "totalMs": 3379.5121670000008,
+      "outputChars": 44,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引像目录，可加速按字段查找、排序和范围查询；代价是占用额外存储，并降低写入速度。"
+    },
+    {
+      "modelId": "gpt-5.5",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 2478.9639580000003,
+      "totalMs": 2932.8494580000042,
+      "outputChars": 63,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x - 7 = 38\\)  \n\\(3x = 45\\)  \n\\(x = 15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "gpt-5.5",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1705.041333000001,
+      "totalMs": 2008.5697919999948,
+      "outputChars": 113,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return Array.from(new Set(values)).sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "gpt-5.5",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 4609.369250000003,
+      "totalMs": 5153.036959000005,
+      "outputChars": 46,
+      "qualityScore": 0.75,
+      "outputPreview": "- 本周完成登录模块重构，错误率下降40%。\n- 下周迁移支付回调，保留旧接口并监控失败率。"
+    },
+    {
+      "modelId": "gpt-5.5",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 2454.778250000003,
+      "totalMs": 4891.253042000011,
+      "outputChars": 248,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"复现登录超时问题并记录触发条件、错误提示和耗时\",\"检查认证服务、网关和数据库的日志，定位超时发生的具体环节\",\"排查网络连接、DNS、负载均衡和第三方认证依赖是否异常\",\"优化登录接口的慢查询、缓存读取和外部请求超时时间配置\",\"增加必要的重试、降级和错误提示机制，避免用户长时间等待\",\"在测试环境验证修复效果，覆盖正常登录、弱网和高并发场景\",\"发布修复版本并监控登录成功率、接口耗时和错误率\"]}"
+    },
+    {
+      "modelId": "gpt-5.6-sol",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 2623.1440000000002,
+      "totalMs": 3488.80458299999,
+      "outputChars": 45,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引像书的目录，可减少扫描数据量、加快查询；代价是占用额外存储，并可能使增删改变慢。"
+    },
+    {
+      "modelId": "gpt-5.6-sol",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 6093.832874999993,
+      "totalMs": 7370.140457999994,
+      "outputChars": 73,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\[\n3x-7=38 \\Rightarrow 3x=45 \\Rightarrow x=15\n\\]\n\n答案：\\(15\\)"
+    },
+    {
+      "modelId": "gpt-5.6-sol",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1487.2353339999972,
+      "totalMs": 1721.7223749999976,
+      "outputChars": 106,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "gpt-5.6-sol",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 1730.6987079999963,
+      "totalMs": 2122.0847499999945,
+      "outputChars": 50,
+      "qualityScore": 1,
+      "outputPreview": "- 本周完成登录模块重构，错误率下降40%。\n- 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "gpt-5.6-sol",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1671.984958000001,
+      "totalMs": 3361.8537910000014,
+      "outputChars": 194,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查登录接口、认证服务和数据库日志，定位超时环节\",\"验证网络连接、DNS、负载均衡及第三方认证服务状态\",\"检查会话配置、令牌有效期和请求超时参数\",\"优化慢查询、认证流程和连接池配置\",\"增加超时重试、异常处理及监控告警\",\"在测试环境验证修复后部署上线，并持续观察登录成功率和响应时间\"]}"
+    },
+    {
+      "modelId": "deepseek-v4-pro",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 786.0628330000036,
+      "totalMs": 2068.8492079999996,
+      "outputChars": 74,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引类似书的目录，能大幅加快数据查询速度，避免全表扫描。  \n代价：索引本身占用额外存储空间，且每次数据增删改时需同步更新索引，降低写入性能。"
+    },
+    {
+      "modelId": "deepseek-v4-pro",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 1178.0383750000037,
+      "totalMs": 2073.0658330000006,
+      "outputChars": 74,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\( x \\)。  \n\\[\n3x - 7 = 38\n\\]  \n\\[\n3x = 45\n\\]  \n\\[\nx = 15\n\\]  \n\n答案：15"
+    },
+    {
+      "modelId": "deepseek-v4-pro",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 902.9397079999908,
+      "totalMs": 1487.975207999989,
+      "outputChars": 124,
+      "qualityScore": 1,
+      "outputPreview": "```typescript\nfunction uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}\n```"
+    },
+    {
+      "modelId": "deepseek-v4-pro",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 1094.1307909999887,
+      "totalMs": 1828.640665999992,
+      "outputChars": 48,
+      "qualityScore": 1,
+      "outputPreview": "- 完成登录模块重构，错误率下降40%。\n- 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "deepseek-v4-pro",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 966.5919589999976,
+      "totalMs": 3775.6283750000002,
+      "outputChars": 250,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\": \"修复登录超时\", \"priority\": \"high\", \"steps\": [\"检查服务器时间与客户端时间是否同步，校正时区或启用NTP。\", \"验证会话超时设置是否过短，调整应用服务器或框架中的session timeout值。\", \"排查网络连接稳定性，确认防火墙或代理未中断长连接。\", \"检查登录接口的令牌（Token）有效期，适当延长refresh token或access token的寿命。\", \"查看服务器日志和浏览器控制台，定位具体超时环节后针对性修复。\"]}"
+    },
+    {
+      "modelId": "deepseek-v4-flash",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 1108.4706250000017,
+      "totalMs": 1586.770000000004,
+      "outputChars": 66,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引加速查询（类似目录），大幅减少扫描数据量，提升检索效率；代价是占用额外存储空间，且增删改时需同步更新索引，拖慢写操作性能。"
+    },
+    {
+      "modelId": "deepseek-v4-flash",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 1120.0862920000072,
+      "totalMs": 1604.2212500000023,
+      "outputChars": 100,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\( x \\)。  \n三倍减去7等于38：  \n\\[\n3x - 7 = 38\n\\]  \n加7：  \n\\[\n3x = 45\n\\]  \n除以3：  \n\\[\nx = 15\n\\]  \n\n答案：15"
+    },
+    {
+      "modelId": "deepseek-v4-flash",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1158.747457999998,
+      "totalMs": 1438.2477919999947,
+      "outputChars": 124,
+      "qualityScore": 1,
+      "outputPreview": "```typescript\nfunction uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}\n```"
+    },
+    {
+      "modelId": "deepseek-v4-flash",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 992.5853749999806,
+      "totalMs": 1301.7975829999923,
+      "outputChars": 47,
+      "qualityScore": 0.75,
+      "outputPreview": "1. 登录模块重构完成，错误率降40%。  \n2. 下周迁移支付回调，保留旧接口并监控失败率。"
+    },
+    {
+      "modelId": "deepseek-v4-flash",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1157.9999170000083,
+      "totalMs": 3000.4949579999957,
+      "outputChars": 262,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"复现登录超时问题，记录触发场景和错误信息\",\"检查网络连接，确认客户端与服务器之间的延迟和丢包情况\",\"查看服务器日志，定位超时相关的异常或慢查询\",\"检查会话超时配置，调整会话过期时间\",\"优化服务器端认证接口的响应时间，增加缓存或异步处理\",\"更新前端请求超时设置，使其与服务器端配置匹配\",\"在代码中添加超时重试机制，但避免无限重试\",\"进行压力测试，验证修复后的登录流程稳定性\",\"部署修复并监控线上登录成功率与超时率\"]}"
+    },
+    {
+      "modelId": "deepseek-chat",
+      "taskId": "general",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 84.30779200000688,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "deepseek-chat",
+      "taskId": "reasoning",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 20.229000000021188,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "deepseek-chat",
+      "taskId": "code",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 21.211999999999534,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "deepseek-chat",
+      "taskId": "summary",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 23.56120799999917,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "deepseek-chat",
+      "taskId": "structured",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 28.858957999997074,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "doubao-seed-2.0-mini",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 319.8685420000111,
+      "totalMs": 748.7935419999994,
+      "outputChars": 75,
+      "qualityScore": 0.6666666666666666,
+      "outputPreview": "数据库索引类似书籍目录，能快速定位数据，大幅提升查询效率。但它会占用额外存储空间，且新增、修改、删除数据时，需要同步更新索引，额外增加了写操作的开销。"
+    },
+    {
+      "modelId": "doubao-seed-2.0-mini",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 387.53429199999664,
+      "totalMs": 869.1102090000059,
+      "outputChars": 81,
+      "qualityScore": 1,
+      "outputPreview": "### 推导：\n设这个数为$x$，根据题意列方程：$3x -7 =38$，移项得$3x=38+7=45$，解得$x=45\\div3=15$。\n\n**答案：15**"
+    },
+    {
+      "modelId": "doubao-seed-2.0-mini",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 481.2549159999762,
+      "totalMs": 838.7099159999925,
+      "outputChars": 126,
+      "qualityScore": 1,
+      "outputPreview": "```typescript\nfunction uniqueSorted(values: number[]): number[] {\n    return [...new Set(values)].sort((a, b) => a - b);\n}\n```"
+    },
+    {
+      "modelId": "doubao-seed-2.0-mini",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 529.0978749999776,
+      "totalMs": 957.8731669999834,
+      "outputChars": 54,
+      "qualityScore": 1,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。\n2. 下周将迁移支付回调服务，需保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "doubao-seed-2.0-mini",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 437.4612919999927,
+      "totalMs": 1522.2074579999899,
+      "outputChars": 250,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"medium\",\"steps\":[\"1. 检查服务器端登录接口的响应超时配置，调整合理的超时阈值\",\"2. 排查数据库连接池状态，确认是否存在连接耗尽导致的登录请求阻塞\",\"3. 查看前端网络请求日志，定位是否存在请求链路过长或网络波动问题\",\"4. 优化登录接口的业务逻辑，减少不必要的同步校验和数据查询\",\"5. 添加登录超时的友好提示文案，并提供重试按钮提升用户体验\",\"6. 模拟高并发场景进行压测，验证修复后的登录接口稳定性\"]}"
+    },
+    {
+      "modelId": "gemini-3-pro-preview",
+      "taskId": "general",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 266.6022079999966,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "gemini-3-pro-preview",
+      "taskId": "reasoning",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 23.546875,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "gemini-3-pro-preview",
+      "taskId": "code",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 32.26425000000745,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "gemini-3-pro-preview",
+      "taskId": "summary",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 21.754125000006752,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "gemini-3-pro-preview",
+      "taskId": "structured",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 19.143832999980077,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "glm-5.2",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 680.7137500000244,
+      "totalMs": 1615.6732920000213,
+      "outputChars": 102,
+      "qualityScore": 1,
+      "outputPreview": "**作用**：类似书本目录，数据库索引能加快数据检索速度，避免全表扫描，显著提升查询性能。\n**代价**：占用额外磁盘与内存空间；且在插入、删除和修改数据时需同步更新索引，会增加系统的写入开销与维护成本。"
+    },
+    {
+      "modelId": "glm-5.2",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 578.8641669999924,
+      "totalMs": 1205.7003339999937,
+      "outputChars": 56,
+      "qualityScore": 1,
+      "outputPreview": "答案：15  \n简短推导：设该数为 \\(x\\)，则 \\(3x - 7 = 38\\)，解得 \\(x = 15\\)。"
+    },
+    {
+      "modelId": "glm-5.2",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 704.5382080000127,
+      "totalMs": 1301.0086250000168,
+      "outputChars": 133,
+      "qualityScore": 1,
+      "outputPreview": "```typescript\nfunction uniqueSorted(values: number[]): number[] {\n    return Array.from(new Set(values)).sort((a, b) => a - b);\n}\n```"
+    },
+    {
+      "modelId": "glm-5.2",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 768.7588749999995,
+      "totalMs": 1286.9125420000055,
+      "outputChars": 51,
+      "qualityScore": 0.75,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。\n2. 下周迁移支付回调服务，需保留旧接口并监控失败率。"
+    },
+    {
+      "modelId": "glm-5.2",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 704.0948749999807,
+      "totalMs": 3123.5538749999832,
+      "outputChars": 180,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查服务器端会话超时配置并适当增加超时时间\",\"优化后端数据库查询和第三方接口响应速度，减少登录延迟\",\"排查并清理前端应用中可能导致阻塞的冗余网络请求\",\"在网络波动或高延迟环境下，为登录请求添加自动重试机制\",\"增加登录流程的详细日志记录以便追踪超时根本原因\"]}"
+    },
+    {
+      "modelId": "kimi-k3",
+      "taskId": "general",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 10342.854541000008,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 429,
+      "httpError": {
+        "providerCode": "429",
+        "retryAfterMs": 30000
+      }
+    },
+    {
+      "modelId": "kimi-k3",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 6733.192000000039,
+      "totalMs": 7361.130958000023,
+      "outputChars": 53,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)：\\(3x-7=38\\)，所以 \\(3x=45\\)，\\(x=15\\)。\n\n答案：15"
+    },
+    {
+      "modelId": "kimi-k3",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 4263.357958999986,
+      "totalMs": 5674.829417000001,
+      "outputChars": 124,
+      "qualityScore": 1,
+      "outputPreview": "```typescript\nfunction uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}\n```"
+    },
+    {
+      "modelId": "kimi-k3",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 15852.913583000016,
+      "totalMs": 16304.894499999995,
+      "outputChars": 55,
+      "qualityScore": 1,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。\n2. 下周迁移支付回调服务，期间需保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "kimi-k3",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 13414.027083000052,
+      "totalMs": 19591.146583000023,
+      "outputChars": 358,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"复现问题并收集超时发生时的请求日志、响应状态码与链路追踪信息\",\"检查客户端与服务器之间的网络连通性及延迟，排除网络层故障\",\"分析认证服务的性能瓶颈，如数据库慢查询、缓存失效或第三方接口响应缓慢\",\"核查负载均衡器、网关及应用服务器的超时配置，确保各环节超时时间合理衔接\",\"优化耗时操作，如为数据库查询添加索引、引入缓存或异步处理非关键流程\",\"适当增加超时阈值并实现带退避策略的重试机制\",\"优化前端体验，在超时发生时给出明确提示并引导用户重试\",\"编写单元测试与集成测试，模拟超时场景验证修复效果\",\"灰度发布修复版本，监控登录成功率与响应时间指标\",\"确认指标恢复正常后全量发布，并记录问题根因与修复方案归档\"]}"
+    },
+    {
+      "modelId": "kimi-k2-7-code",
+      "taskId": "general",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 70.77162499999395,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "kimi-k2-7-code",
+      "taskId": "reasoning",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 41.8461669999524,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "kimi-k2-7-code",
+      "taskId": "code",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 25.850292000046466,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "kimi-k2-7-code",
+      "taskId": "summary",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 27.741959000006318,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "kimi-k2-7-code",
+      "taskId": "structured",
+      "status": "failed",
+      "ttftMs": null,
+      "totalMs": 24.50720900000306,
+      "outputChars": 0,
+      "qualityScore": null,
+      "errorCategory": "http_error",
+      "errorStatus": 403,
+      "httpError": {
+        "providerCode": "403"
+      }
+    },
+    {
+      "modelId": "claude-opus-4.6",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 3045.275874999992,
+      "totalMs": 3647.276332999987,
+      "outputChars": 56,
+      "qualityScore": 0.6666666666666666,
+      "outputPreview": "数据库索引像书的目录，可快速定位符合条件的数据，减少全表扫描；代价是占用额外存储，并会降低插入、更新、删除速度。"
+    },
+    {
+      "modelId": "claude-opus-4.6",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 2441.5856669999775,
+      "totalMs": 2993.54574999999,
+      "outputChars": 55,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x-7=38\\)  \n\\(3x=45\\)  \n\\(x=15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "claude-opus-4.6",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1555.3524159999797,
+      "totalMs": 2577.8860409999616,
+      "outputChars": 106,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "claude-opus-4.6",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 2323.9238749999786,
+      "totalMs": 2851.296583999996,
+      "outputChars": 52,
+      "qualityScore": 1,
+      "outputPreview": "- 本周完成登录模块重构，错误率下降40%。  \n- 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "claude-opus-4.6",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1574.2088749998948,
+      "totalMs": 2859.358332999982,
+      "outputChars": 166,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查登录接口响应时间与错误日志\",\"确认认证服务、数据库和缓存服务状态正常\",\"排查网络连接、DNS、负载均衡及防火墙配置\",\"优化登录接口超时配置与重试策略\",\"修复发现的性能瓶颈或异常依赖\",\"部署修复后进行登录回归测试与监控验证\"]}"
+    },
+    {
+      "modelId": "claude-opus-4.7",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 2679.765417000046,
+      "totalMs": 3345.7710420000367,
+      "outputChars": 70,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引像书的目录，按字段建立有序结构，可快速定位记录，减少全表扫描并提升查询效率。代价是占用额外存储，且增删改时需维护索引，写入会变慢。"
+    },
+    {
+      "modelId": "claude-opus-4.7",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 1858.4810409999918,
+      "totalMs": 2333.4166249999544,
+      "outputChars": 55,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x-7=38\\)  \n\\(3x=45\\)  \n\\(x=15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "claude-opus-4.7",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 2061.734957999899,
+      "totalMs": 2830.8669579999987,
+      "outputChars": 113,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return Array.from(new Set(values)).sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "claude-opus-4.7",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 1818.7841250000056,
+      "totalMs": 2387.956125000026,
+      "outputChars": 54,
+      "qualityScore": 1,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。  \n2. 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "claude-opus-4.7",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1838.5061670000432,
+      "totalMs": 2764.7592920000898,
+      "outputChars": 151,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查登录接口响应时间和错误日志\",\"确认认证服务、数据库及缓存服务状态正常\",\"排查网络连接、DNS 和负载均衡配置\",\"检查会话令牌、超时配置及第三方认证依赖\",\"优化慢查询和接口性能后进行登录回归测试\"]}"
+    },
+    {
+      "modelId": "claude-opus-4.8",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 2528.7028329999885,
+      "totalMs": 3062.7901249999413,
+      "outputChars": 63,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引像书的目录，可按字段快速定位数据，减少全表扫描并提升查询效率。代价是占用额外存储，且增删改时需维护索引，写入会变慢。"
+    },
+    {
+      "modelId": "claude-opus-4.8",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 1921.2998339999467,
+      "totalMs": 2410.3174590000417,
+      "outputChars": 55,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x-7=38\\)  \n\\(3x=45\\)  \n\\(x=15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "claude-opus-4.8",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1861.6648330000462,
+      "totalMs": 2438.979082999984,
+      "outputChars": 106,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "claude-opus-4.8",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 1697.419458999997,
+      "totalMs": 3211.983583999914,
+      "outputChars": 54,
+      "qualityScore": 1,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。  \n2. 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "claude-opus-4.8",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1654.4000419999938,
+      "totalMs": 3251.244834000012,
+      "outputChars": 162,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查认证服务与数据库连接状态\",\"排查登录接口日志中的超时请求与错误信息\",\"确认网络、负载均衡和防火墙配置正常\",\"检查会话存储或缓存服务的响应时间\",\"优化慢查询、接口调用或超时配置\",\"修复后执行登录流程测试并监控错误率\"]}"
+    },
+    {
+      "modelId": "claude-opus-5",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 3874.1054579999764,
+      "totalMs": 4724.550208000001,
+      "outputChars": 61,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引像目录，通过额外结构快速定位记录，减少扫描并提升查询效率。代价是占用存储空间，且增删改时需维护索引，写入会变慢。"
+    },
+    {
+      "modelId": "claude-opus-5",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 1982.2216659999685,
+      "totalMs": 2580.1514579999493,
+      "outputChars": 55,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x-7=38\\)  \n\\(3x=45\\)  \n\\(x=15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "claude-opus-5",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1616.8165840000147,
+      "totalMs": 3241.7477499999804,
+      "outputChars": 106,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "claude-opus-5",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 2118.797332999995,
+      "totalMs": 2866.428500000038,
+      "outputChars": 52,
+      "qualityScore": 1,
+      "outputPreview": "- 本周完成登录模块重构，错误率下降40%。  \n- 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "claude-opus-5",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1979.6182910000207,
+      "totalMs": 3055.8047910000896,
+      "outputChars": 165,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查登录接口响应时间和错误日志\",\"确认认证服务、数据库及缓存连接状态\",\"排查网络延迟、负载均衡和防火墙配置\",\"检查会话或令牌生成逻辑是否存在阻塞\",\"优化慢查询并调整接口超时与重试策略\",\"部署修复后进行登录压力测试和监控验证\"]}"
+    },
+    {
+      "modelId": "claude-sonnet-4.6",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 1866.9587090000277,
+      "totalMs": 2555.1295420000097,
+      "outputChars": 52,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引像书的目录，可加快查询、排序和定位数据；代价是占用额外存储空间，并会降低插入、更新、删除速度。"
+    },
+    {
+      "modelId": "claude-sonnet-4.6",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 1762.2082500000251,
+      "totalMs": 2209.3720419999445,
+      "outputChars": 55,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x-7=38\\)  \n\\(3x=45\\)  \n\\(x=15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "claude-sonnet-4.6",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1826.1094160000794,
+      "totalMs": 2259.691208000062,
+      "outputChars": 106,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "claude-sonnet-4.6",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 2453.3539170000004,
+      "totalMs": 3268.4759169999743,
+      "outputChars": 54,
+      "qualityScore": 1,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。  \n2. 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "claude-sonnet-4.6",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1852.735667000059,
+      "totalMs": 3155.5414170000004,
+      "outputChars": 162,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查登录接口响应时间和服务器日志\",\"确认网络连接、DNS和负载均衡配置正常\",\"检查认证服务、数据库及缓存服务状态\",\"优化慢查询和认证接口性能\",\"调整合理的请求超时与重试策略\",\"部署修复后进行登录流程回归测试和监控验证\"]}"
+    },
+    {
+      "modelId": "claude-sonnet-5",
+      "taskId": "general",
+      "status": "completed",
+      "ttftMs": 1816.7551250000251,
+      "totalMs": 2452.912000000011,
+      "outputChars": 67,
+      "qualityScore": 1,
+      "outputPreview": "数据库索引类似书的目录，可快速定位数据，减少查询扫描范围、提升检索效率；代价是占用额外存储空间，并会增加插入、更新、删除时的维护开销。"
+    },
+    {
+      "modelId": "claude-sonnet-5",
+      "taskId": "reasoning",
+      "status": "completed",
+      "ttftMs": 2298.720583999995,
+      "totalMs": 2898.0479999999516,
+      "outputChars": 55,
+      "qualityScore": 1,
+      "outputPreview": "设这个数为 \\(x\\)。\n\n\\(3x-7=38\\)  \n\\(3x=45\\)  \n\\(x=15\\)\n\n答案：15"
+    },
+    {
+      "modelId": "claude-sonnet-5",
+      "taskId": "code",
+      "status": "completed",
+      "ttftMs": 1570.593874999904,
+      "totalMs": 1946.4724999999162,
+      "outputChars": 106,
+      "qualityScore": 1,
+      "outputPreview": "function uniqueSorted(values: number[]): number[] {\n  return [...new Set(values)].sort((a, b) => a - b);\n}"
+    },
+    {
+      "modelId": "claude-sonnet-5",
+      "taskId": "summary",
+      "status": "completed",
+      "ttftMs": 2089.793457999942,
+      "totalMs": 3119.0878749999683,
+      "outputChars": 54,
+      "qualityScore": 1,
+      "outputPreview": "1. 本周完成登录模块重构，错误率下降40%。  \n2. 下周迁移支付回调服务，保留旧接口兼容并监控失败率。"
+    },
+    {
+      "modelId": "claude-sonnet-5",
+      "taskId": "structured",
+      "status": "completed",
+      "ttftMs": 1794.7425419999054,
+      "totalMs": 3370.407416999922,
+      "outputChars": 149,
+      "qualityScore": 1,
+      "outputPreview": "{\"title\":\"修复登录超时\",\"priority\":\"high\",\"steps\":[\"检查认证服务与网络连接状态\",\"确认登录接口超时配置及错误日志\",\"排查数据库或缓存响应延迟\",\"优化认证流程并调整超时重试策略\",\"部署修复后进行登录与压力测试\",\"监控上线后的登录成功率和响应时间\"]}"
+    }
+  ]
+}

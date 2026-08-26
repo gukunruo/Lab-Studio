@@ -85,6 +85,7 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
         systemPrompt: conversation.systemPrompt,
         params: conversation.params,
         messages: conversation.messages,
+        pinned: conversation.pinned,
       })
       await loadList()
     } finally {
@@ -108,6 +109,19 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     if (activeConversation.value) await flushPersist(activeConversation.value)
     activeId.value = id
     activeConversation.value = await fetchConversation(id)
+  }
+
+  async function setPinned(id: number, pinned: boolean) {
+    await apiUpdate(id, { pinned })
+    if (activeConversation.value?.id === id) {
+      activeConversation.value.pinned = pinned
+    }
+    await loadList()
+  }
+
+  async function togglePinned(id: number) {
+    const conversation = conversations.value.find((item) => item.id === id)
+    if (conversation) await setPinned(id, !conversation.pinned)
   }
 
   async function remove(id: number) {
@@ -135,6 +149,8 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     updateActiveParams,
     updateActiveSystemPrompt,
     persistActive,
+    setPinned,
+    togglePinned,
     remove,
   }
 })

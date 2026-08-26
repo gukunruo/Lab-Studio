@@ -111,7 +111,7 @@ async function signOut() {
       <img v-if="auth.avatarUrl" :src="auth.avatarUrl" alt="" class="user-menu__avatar" />
       <span v-else class="user-menu__avatar user-menu__avatar--fallback">{{ auth.username.slice(0, 1).toUpperCase() }}</span>
       <span class="user-menu__name">{{ auth.username }}</span>
-      <PhCaretDown :size="12" aria-hidden="true" />
+      <PhCaretDown class="user-menu__caret" :size="12" aria-hidden="true" />
     </button>
     <div v-if="open" class="user-menu__panel" :style="isAiSidebar ? panelStyle : undefined" role="menu">
       <div v-if="!editing && props.variant === 'ai-sidebar'" class="user-menu__profile">
@@ -144,7 +144,9 @@ async function signOut() {
 
 <style scoped lang="scss">
 .user-menu { position: relative; }
-.user-menu__trigger { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.25rem 0.5rem 0.25rem 0.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); color: var(--color-text); }
+.user-menu__trigger { display: flex; align-items: center; gap: 0.45rem; min-width: 0; padding: 0.25rem 2rem 0.25rem 0.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); color: var(--color-text); position: relative; }
+.user-menu:not([data-variant='ai-sidebar']) .user-menu__name { min-width: 0; }
+.user-menu:not([data-variant='ai-sidebar']) :deep(.user-menu__caret) { position: absolute; top: 50%; right: 0.75rem; color: var(--color-text-muted); transform: translateY(-50%); }
 .user-menu__avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
 .user-menu__avatar--fallback { display: grid; place-items: center; background: var(--color-accent); color: var(--color-on-accent); font-size: 0.72rem; font-weight: 700; }
 .user-menu__name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; }
@@ -158,7 +160,7 @@ async function signOut() {
 .user-menu__logout { width: 100%; margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--color-border); text-align: left; color: var(--color-danger); }
 
 .user-menu[data-variant='ai-sidebar'] { width: 100%; }
-.user-menu[data-variant='ai-sidebar'] .user-menu__trigger { align-items: center; width: 100%; gap: 0.55rem; padding: 0.3rem 0.7rem 0.3rem 0.3rem; transition: border-color 0.2s, background 0.2s; }
+.user-menu[data-variant='ai-sidebar'] .user-menu__trigger { position: relative; align-items: center; width: 100%; gap: 0.55rem; padding: 0.3rem 2rem 0.3rem 0.3rem; transition: border-color 0.2s, background 0.2s; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger > svg { flex-shrink: 0; color: var(--color-text-muted); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger:hover,
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger[aria-expanded='true'] { border-color: var(--color-border-strong); background: var(--color-surface-2); }
@@ -166,6 +168,7 @@ async function signOut() {
 .user-menu[data-variant='ai-sidebar'] .user-menu__avatar--large { width: 38px; height: 38px; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__avatar--fallback { background: var(--color-accent); color: var(--color-bg); font-size: 0.78rem; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__name { min-width: 0; flex: 1; text-align: left; font-size: 0.82rem; }
+.user-menu[data-variant='ai-sidebar'] .user-menu__caret { position: absolute; top: 50%; right: 0.7rem; flex-shrink: 0; color: var(--color-text-muted); transform: translateY(-50%); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__trigger > svg { flex-shrink: 0; color: var(--color-text-muted); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__panel { position: fixed; width: min(280px, calc(100vw - 24px)); max-height: min(420px, calc(100dvh - 24px)); overflow-y: auto; padding: 14px; border-color: var(--color-border-strong); border-radius: 18px; background: var(--color-bg-elevated); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42); }
 .user-menu[data-variant='ai-sidebar'] .user-menu__profile { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--color-border-subtle); }
@@ -177,8 +180,4 @@ async function signOut() {
 .user-menu[data-variant='ai-sidebar'] .user-menu__logout { border: 0; background: transparent; color: var(--color-accent-strong); cursor: pointer; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__edit { flex-shrink: 0; padding: 4px 2px; font-size: 0.78rem; }
 .user-menu[data-variant='ai-sidebar'] .user-menu__logout { margin-top: 14px; padding: 12px 0 0; border-top-color: var(--color-border-subtle); font-size: 0.82rem; }
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] { width: 40px; flex: 0 0 40px; }
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] .user-menu__trigger { width: 40px; height: 40px; padding: 0; justify-content: center; }
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] .user-menu__name,
-:global(.sidebar--collapsed) .user-menu[data-variant='ai-sidebar'] .user-menu__trigger > svg { display: none; }
 </style>

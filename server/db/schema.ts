@@ -85,22 +85,49 @@ export const financePreferences = sqliteTable('finance_preferences', {
 })
 
 // AI 平台模型注册表：存储所有可用模型的元信息，按 provider 路由请求协议。
+// AI Playground 外观偏好，按管理员身份（userKey）归属且仅作用于 AI 页面。
+export const aiPreferences = sqliteTable('ai_preferences', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userKey: text('user_key').notNull().unique(),
+  preferences: text('preferences', { mode: 'json' }).$type<unknown>().notNull().default({}),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 export const aiModels = sqliteTable('ai_models', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   modelId: text('model_id').notNull().unique(),
   displayName: text('display_name').notNull(),
-  provider: text('provider').notNull(), // 'openai-compatible' | 'anthropic'
+  provider: text('provider').notNull(), // Supported server-side routing provider; endpoint and credentials never belong here.
   category: text('category').notNull(), // 'chat' | 'reasoning' | 'image'
   vendor: text('vendor').notNull(), // 'openai' | 'anthropic' | 'deepseek' | 'zai' | 'moonshot'
   capabilities: text('capabilities', { mode: 'json' }).$type<string[]>().notNull().default([]),
   contextWindow: integer('context_window'),
+  rpmLimit: integer('rpm_limit'),
+  tpmLimit: integer('tpm_limit'),
   sortOrder: integer('sort_order').notNull().default(0),
   enabled: integer('enabled').notNull().default(1),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
+export const aiRecommendationBatches = sqliteTable('ai_recommendation_batches', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  items: text('items', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  deliveredCount: integer('delivered_count').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 // AI 平台对话会话：按管理员身份（userKey）归属，消息以 JSON 数组存储。
+export const aiImageAssets = sqliteTable('ai_image_assets', {
+  id: text('id').primaryKey(),
+  userKey: text('user_key').notNull(),
+  mimeType: text('mime_type').notNull(),
+  extension: text('extension').notNull(),
+  byteLength: integer('byte_length').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 export const aiConversations = sqliteTable('ai_conversations', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userKey: text('user_key').notNull(),
@@ -109,6 +136,11 @@ export const aiConversations = sqliteTable('ai_conversations', {
   systemPrompt: text('system_prompt').notNull().default(''),
   params: text('params', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
   messages: text('messages', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  pinned: integer('pinned').notNull().default(0),
+  parentConversationId: integer('parent_conversation_id'),
+  branchFromMessageIndex: integer('branch_from_message_index'),
+  digest: text('digest', { mode: 'json' }).$type<unknown>().notNull().default({}),
+  digestMessageCount: integer('digest_message_count').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })

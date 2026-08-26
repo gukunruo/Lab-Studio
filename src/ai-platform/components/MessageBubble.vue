@@ -1,69 +1,152 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { marked } from 'marked'
+import { computed, nextTick, ref } from 'vue'
 import type { ChatMessage } from '../types'
-
-marked.use({
-  gfm: true,
-  breaks: true,
-})
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-const markdownRenderer = new marked.Renderer()
-markdownRenderer.html = ({ text }) => escapeHtml(text)
-markdownRenderer.link = ({ href, title, text }) => {
-  const safeHref = /^(https?:|mailto:|#)/i.test(href) ? href : '#'
-  const titleAttribute = title ? ` title="${escapeHtml(title)}"` : ''
-  return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noreferrer">${text}</a>`
-}
+import { isTextMessage } from '../api'
+import { renderMarkdown } from '../message-markdown'
+import GeminiMultimodalCard from './GeminiMultimodalCard.vue'
+import ImageMessageCard from './ImageMessageCard.vue'
 
 const props = defineProps<{
   message: ChatMessage
+  messageIndex: number
   streaming?: boolean
   modelName?: string
+  retryable?: boolean
+  regenerable?: boolean
+  branchable?: boolean
 }>()
 
-function renderMarkdown(value: string): string {
-  return marked.parse(value, {
-    async: false,
-    renderer: markdownRenderer,
-  }) as string
-}
+const emit = defineEmits<{
+  retry: []
+  regenerate: []
+  edit: [index: number, content: string]
+  branch: [index: number]
+  'retry-image': []
+  'edit-image': []
+  'abort-image': []
+  'retry-gemini': []
+  'edit-gemini': []
+  'abort-gemini': []
+  'use-image-reference': []
+}>()
 
-const renderedContent = computed(() => renderMarkdown(props.message.content))
+const textMessage = computed(() => isTextMessage(props.message) ? props.message : null)
+const imageMessage = computed(() => props.message.type === 'image-request' || props.message.type === 'image-result' ? props.message : null)
+const geminiUserMessage = computed(() => props.message.type === 'gemini-multimodal-user' ? props.message : null)
+const geminiAssistantMessage = computed(() => props.message.type === 'gemini-multimodal-assistant' ? props.message : null)
+const renderedContent = computed(() => textMessage.value ? renderMarkdown(textMessage.value.content) : '')
+const isText = computed(() => Boolean(textMessage.value))
 const isAssistant = computed(() => props.message.role === 'assistant')
 const isStreaming = computed(() => Boolean(props.streaming))
 const copied = ref(false)
+const editing = ref(false)
+const editedContent = ref('')
+const editInput = ref<HTMLTextAreaElement | null>(null)
 
 async function copyContent() {
-  await navigator.clipboard.writeText(props.message.content)
+  const content = textMessage.value?.content
+  if (!content) return
+  await navigator.clipboard.writeText(content)
   copied.value = true
   setTimeout(() => (copied.value = false), 2000)
+}
+
+async function startEditing() {
+  const content = textMessage.value?.content
+  if (!content) return
+  editedContent.value = content
+  editing.value = true
+  await nextTick()
+  editInput.value?.focus()
+}
+
+function cancelEditing() {
+  editing.value = false
+  editedContent.value = ''
+}
+
+function submitEdit() {
+  const content = editedContent.value.trim()
+  if (!content || content === textMessage.value?.content) {
+    cancelEditing()
+    return
+  }
+  emit('edit', props.messageIndex, content)
+  cancelEditing()
+}
+
+function onEditKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    cancelEditing()
+  } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault()
+    submitEdit()
+  }
 }
 </script>
 
 <template>
   <div class="message" :class="`message--${message.role}`">
     <div class="message__body">
-      <div class="message__role">{{ message.role === 'user' ? '我' : (modelName ?? 'Assistant') }}</div>
-      <div class="message__content">
-        <div v-if="isAssistant" class="message__markdown" v-html="renderedContent" />
-        <div v-else class="message__plain">{{ message.content }}</div>
-        <span v-if="isStreaming" class="message__cursor" />
-      </div>
-      <div v-if="!streaming" class="message__actions">
-        <button class="message__action" type="button" @click="copyContent">
-          {{ copied ? '已复制' : '复制' }}
-        </button>
-      </div>
+      <template v-if="geminiUserMessage">
+        <div class="message__content"><div class="message__plain">{{ geminiUserMessage.content }}</div></div>
+      </template>
+      <template v-else-if="geminiAssistantMessage">
+        <GeminiMultimodalCard
+          :message="geminiAssistantMessage"
+          @retry="emit('retry-gemini')"
+          @edit="emit('edit-gemini')"
+          @abort="emit('abort-gemini')"
+          @use-as-reference="emit('use-image-reference')"
+        />
+      </template>
+      <template v-else-if="!isText">
+        <ImageMessageCard
+          v-if="imageMessage"
+          :message="imageMessage"
+          @retry="emit('retry-image')"
+          @edit="emit('edit-image')"
+          @abort="emit('abort-image')"
+          @use-as-reference="emit('use-image-reference')"
+        />
+      </template>
+      <template v-else>
+        <div v-if="isAssistant" class="message__role">{{ modelName ?? 'Assistant' }}</div>
+        <div v-if="textMessage?.status === 'error'" class="message__status message__status--error" role="alert">
+          <strong>回复失败</strong>
+          <p>{{ textMessage.content }}</p>
+          <button v-if="retryable" class="message__retry" type="button" @click="emit('retry')">重新发送</button>
+        </div>
+        <div v-else class="message__content">
+          <template v-if="editing">
+            <textarea
+              ref="editInput"
+              v-model="editedContent"
+              class="message__edit-input"
+              aria-label="编辑消息"
+              @keydown="onEditKeydown"
+            />
+            <div class="message__edit-actions">
+              <span class="message__edit-hint">⌘/Ctrl + Enter 发送</span>
+              <button class="message__edit-button" type="button" @click="cancelEditing">取消</button>
+              <button class="message__edit-button message__edit-button--primary" type="button" @click="submitEdit">保存并重新发送</button>
+            </div>
+          </template>
+          <template v-else>
+            <div v-if="isAssistant" class="message__markdown" v-html="renderedContent" />
+            <div v-else class="message__plain">{{ textMessage?.content }}</div>
+            <span v-if="isStreaming" class="message__cursor" />
+            <div v-if="textMessage?.status === 'interrupted'" class="message__interrupted">已停止生成</div>
+          </template>
+        </div>
+        <div v-if="!streaming && textMessage?.status !== 'error' && !editing" class="message__actions">
+          <button class="message__action" type="button" @click="copyContent">{{ copied ? '已复制' : '复制' }}</button>
+          <button v-if="!isAssistant" class="message__action" type="button" @click="startEditing">编辑</button>
+          <button v-if="regenerable" class="message__action" type="button" @click="emit('regenerate')">重新生成</button>
+          <button v-if="branchable" class="message__action" type="button" @click="emit('branch', messageIndex)">从这里分支</button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -87,8 +170,9 @@ async function copyContent() {
 }
 
 .message--user .message__role,
-.message--user .message__content {
-  text-align: right;
+.message--user .message__content,
+.message--user .message__plain {
+  text-align: left;
 }
 
 .message--user .message__content {
@@ -126,6 +210,102 @@ async function copyContent() {
 }
 
 .message__plain { white-space: pre-wrap; }
+
+.message__edit-input {
+  display: block;
+  width: 100%;
+  min-height: 92px;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.6;
+  outline: none;
+  padding: 10px 12px;
+}
+
+.message__edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.message__edit-hint {
+  margin-right: auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.message__edit-button {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 9px;
+}
+
+.message__edit-button--primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.message__edit-button:hover { border-color: var(--color-accent); }
+
+.message__status {
+  max-width: 520px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.message__status--error {
+  border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  color: var(--color-text);
+}
+
+.message__status p {
+  margin: 5px 0 10px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.message__retry {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 9px;
+}
+
+.message__retry:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-strong);
+}
+
+.message__interrupted {
+  width: fit-content;
+  margin-top: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+}
+
 .message__markdown :deep(p) { margin: 0 0 0.8em; }
 .message__markdown :deep(p:last-child) { margin-bottom: 0; }
 .message__markdown :deep(h1),
@@ -141,7 +321,7 @@ async function copyContent() {
 .message__markdown :deep(hr) { margin: 1em 0; border: 0; border-top: 1px solid var(--color-border); }
 .message__markdown :deep(a) { color: var(--color-accent-strong); text-decoration: underline; text-underline-offset: 2px; }
 .message__markdown :deep(code) { padding: 0.12em 0.35em; border: 1px solid var(--color-border); border-radius: 5px; background: var(--color-surface-2); color: var(--color-accent-strong); font-family: var(--font-mono); font-size: 0.88em; }
-.message__markdown :deep(pre) { margin: 0.8em 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: #09090b; padding: 12px 14px; }
+.message__markdown :deep(pre) { margin: 0.8em 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); padding: 12px 14px; }
 .message__markdown :deep(pre code) { display: block; padding: 0; border: 0; background: transparent; color: var(--color-text); font-size: 12px; line-height: 1.65; white-space: pre; }
 .message__markdown :deep(table) { width: 100%; margin: 0.8em 0; border-collapse: collapse; font-size: 0.92em; }
 .message__markdown :deep(th),

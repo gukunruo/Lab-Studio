@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildUpstreamRequest, type ChatRequestBody } from '../server/ai-platform'
+import {
+  buildAnthropicPlatformRequest,
+  buildImageGenerationRequest,
+  buildUpstreamRequest,
+  normalizeImageGenerationResponse,
+  type ChatRequestBody,
+} from '../server/ai-platform'
 
 test('buildUpstreamRequest formats openai-compatible requests correctly', () => {
   const body: ChatRequestBody = {
@@ -27,6 +33,43 @@ test('buildUpstreamRequest formats openai-compatible requests correctly', () => 
   assert.equal(parsed.messages[0].role, 'system')
   assert.equal(parsed.messages[0].content, 'You are helpful.')
   assert.equal(parsed.messages[1].role, 'user')
+})
+
+test('buildImageGenerationRequest maps each image model to its confirmed endpoint', () => {
+  const config = {
+    baseUrl: 'https://ai.example.test/',
+    appId: 'test-app',
+    appKey: 'test-key',
+  }
+
+  const gpt = buildImageGenerationRequest({
+    modelId: 'gpt-image-2',
+    prompt: '孙悟空',
+    aspectRatio: '1:1',
+  }, config)
+  assert.equal(gpt.url, 'https://ai.example.test/openai-compatible/v1/images/generations')
+  assert.deepEqual(JSON.parse(gpt.body), { model: 'gpt-image-2', prompt: '孙悟空' })
+
+  const gemini = buildImageGenerationRequest({
+    modelId: 'gemini-3-pro-image',
+    prompt: '生成一个猫咪图片',
+    aspectRatio: '1:1',
+  }, config)
+  assert.equal(gemini.url, 'https://ai.example.test/openai-compatible/v1/chat/completions')
+  assert.deepEqual(JSON.parse(gemini.body), {
+    model: 'gemini-3-pro-image',
+    messages: [{ role: 'user', content: '生成一个猫咪图片' }],
+    modalities: ['text', 'image'],
+  })
+})
+
+test('normalizeImageGenerationResponse only accepts HTTPS image URLs', () => {
+  assert.deepEqual(normalizeImageGenerationResponse({
+    data: [{ url: 'https://cdn.example.test/image.png' }],
+  }), { kind: 'url', imageUrl: 'https://cdn.example.test/image.png' })
+  assert.equal(normalizeImageGenerationResponse({
+    choices: [{ message: { images: [{ url: 'http://cdn.example.test/image.png' }] } }],
+  }), null)
 })
 
 test('buildUpstreamRequest formats anthropic requests correctly', () => {
@@ -71,6 +114,22 @@ test('buildUpstreamRequest does not add reasoning_effort for anthropic', () => {
   assert.equal(parsed.reasoning_effort, undefined)
 })
 
+test('buildAnthropicPlatformRequest forwards the selected Playground model', () => {
+  const body: ChatRequestBody = {
+    modelId: 'claude-sonnet-5',
+    messages: [{ role: 'user', content: 'hello' }],
+    params: { reasoningEffort: 'high' },
+  }
+  const result = buildAnthropicPlatformRequest(body, {
+    apiKey: 'test-key',
+    baseUrl: 'https://example.test',
+    model: 'claude-sonnet-4.6',
+  })
+  const parsed = JSON.parse(result.body)
+  assert.equal(parsed.model, 'claude-sonnet-5')
+  assert.equal(parsed.reasoning_effort, undefined)
+})
+
 test('buildUpstreamRequest handles empty system prompt', () => {
   const body: ChatRequestBody = {
     modelId: 'gpt-5.4',
@@ -89,4 +148,26 @@ test('buildUpstreamRequest handles empty system prompt', () => {
   // No system message prepended when system is empty
   assert.equal(parsed.messages[0].role, 'user')
   assert.equal(parsed.messages.length, 1)
+})
+
+test('buildUpstreamRequest enables Kimi K3 thinking with the selected effort', () => {
+  const result = buildUpstreamRequest({
+    modelId: 'kimi-k3',
+    messages: [{ role: 'user', content: '解释数据库索引' }],
+    params: { reasoningEffort: 'high' },
+  }, {
+    provider: 'openai-compatible',
+    modelId: 'kimi-k3',
+    baseUrl: 'https://ai.example.test/',
+    appId: 'test-app',
+    appKey: 'test-key',
+  })
+
+  assert.equal(result.url, 'https://ai.example.test/openai-compatible/v1/chat/completions')
+  assert.deepEqual(JSON.parse(result.body), {
+    model: 'kimi-k3',
+    messages: [{ role: 'user', content: '解释数据库索引' }],
+    stream: true,
+    reasoning: { mode: 'enabled', effort: 'high' },
+  })
 })

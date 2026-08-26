@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "router": "tsx cc-router/index.ts",
+    "benchmark:ai": "tsx scripts/ai-platform-benchmark.ts",
     "dev:all": "run-p dev dev:server",
     "dev:server": "tsx watch server/index.ts",
     "server": "tsx server/index.ts",
