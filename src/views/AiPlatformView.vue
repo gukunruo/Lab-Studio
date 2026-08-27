@@ -254,7 +254,12 @@ async function onAiThemeChange(theme: AiThemePreference) {
 
 function onAiLocaleChange(locale: 'zh' | 'en') {
   aiLocale.value = locale
+  localeStore.setLocale(locale)
 }
+
+watch(aiTheme, (resolved) => {
+  if (themeStore.theme !== resolved) themeStore.theme = resolved
+})
 </script>
 
 <template>

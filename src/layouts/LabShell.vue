@@ -6,6 +6,7 @@ import { PhChartLine, PhMoon, PhSparkle, PhStudent, PhSun, PhTranslate } from '@
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { usePlayerStore } from '@/stores/player'
+import { updateAiPreferences } from '@/ai-platform/api'
 import PlayerBar from '@/components/PlayerBar.vue'
 import PlayerFull from '@/components/PlayerFull.vue'
 import UserMenu from '@/layouts/UserMenu.vue'
@@ -17,6 +18,11 @@ const route = useRoute()
 const { isPlaying } = storeToRefs(player)
 
 const isLearn = computed(() => route.name === 'learn')
+
+function toggleTheme() {
+  theme.toggle()
+  void updateAiPreferences({ theme: theme.theme }).catch(() => {})
+}
 </script>
 
 <template>
@@ -101,7 +107,7 @@ const isLearn = computed(() => route.name === 'learn')
         <button
           class="shell__icon-button"
           type="button"
-          @click="theme.toggle()"
+          @click="toggleTheme"
           :aria-label="theme.theme === 'dark' ? i18n.t('nav.theme.toLightAria') : i18n.t('nav.theme.toDarkAria')"
           :title="theme.theme === 'dark' ? i18n.t('nav.theme.toLightAria') : i18n.t('nav.theme.toDarkAria')"
         >
