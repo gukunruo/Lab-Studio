@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { PhNotePencil, PhPushPin } from '@phosphor-icons/vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { PhGitBranch, PhNotePencil, PhPushPin, PhTrash } from '@phosphor-icons/vue'
 import { useConversationsStore } from '../composables/useConversations'
 import UserMenu from '@/layouts/UserMenu.vue'
 
-const props = defineProps<{ collapsed: boolean }>()
+const props = defineProps<{
+  collapsed: boolean
+  width: number
+  theme: 'light' | 'dark'
+}>()
 
 const emit = defineEmits<{
   'new-conversation': []
@@ -12,6 +16,39 @@ const emit = defineEmits<{
 
 const store = useConversationsStore()
 const searchQuery = ref('')
+const pendingDelete = ref<{ id: number; title: string } | null>(null)
+const deleting = ref(false)
+
+function closeDeleteDialog() {
+  if (deleting.value) return
+  pendingDelete.value = null
+}
+
+function onDeleteDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeDeleteDialog()
+}
+
+watch(pendingDelete, async (value) => {
+  if (value) {
+    await nextTick()
+    document.querySelector<HTMLElement>('.sidebar__delete-dialog [data-autofocus]')?.focus()
+  }
+})
+
+onMounted(() => document.addEventListener('keydown', onDeleteDialogKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onDeleteDialogKeydown))
+
+async function confirmDelete() {
+  const target = pendingDelete.value
+  if (!target || deleting.value) return
+  deleting.value = true
+  try {
+    await store.remove(target.id)
+    pendingDelete.value = null
+  } finally {
+    deleting.value = false
+  }
+}
 
 const filtered = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -57,10 +94,19 @@ async function togglePinned(id: number, event: MouseEvent) {
   event.stopPropagation()
   await store.togglePinned(id)
 }
+
+function removeConversation(id: number, title: string, event: MouseEvent) {
+  event.stopPropagation()
+  pendingDelete.value = { id, title }
+}
 </script>
 
 <template>
-  <aside class="sidebar" :class="{ 'sidebar--collapsed': props.collapsed }">
+  <aside
+    class="sidebar"
+    :class="{ 'sidebar--collapsed': props.collapsed }"
+    :style="{ '--sidebar-width': `${props.width}px` }"
+  >
     <div class="sidebar__header">
       <div class="sidebar__logo">
         <span class="sidebar__logo-badge" aria-hidden="true">
@@ -95,11 +141,15 @@ async function togglePinned(id: number, event: MouseEvent) {
           <button class="sidebar__item-main" type="button" @click="selectConversation(conv.id)">
             <PhPushPin class="sidebar__item-pin sidebar__item-pin--visible" :size="14" weight="fill" />
             <span class="sidebar__item-text">{{ conv.title }}</span>
+            <span v-if="conv.parentConversationId !== null" class="sidebar__branch" title="分支对话"><PhGitBranch :size="12" weight="bold" /> 分支</span>
             <span class="sidebar__item-meta">{{ timeLabel(conv.updatedAt) }}</span>
           </button>
           <span class="sidebar__item-action-wrap">
             <button class="sidebar__item-action" type="button" :aria-label="`取消置顶 ${conv.title}`" title="取消置顶" @click="togglePinned(conv.id, $event)">
               <PhPushPin :size="14" weight="regular" />
+            </button>
+            <button class="sidebar__item-action sidebar__item-action--danger" type="button" :aria-label="`移除 ${conv.title}`" title="移除" @click="removeConversation(conv.id, conv.title, $event)">
+              <PhTrash :size="14" weight="regular" />
             </button>
           </span>
         </div>
@@ -116,13 +166,18 @@ async function togglePinned(id: number, event: MouseEvent) {
           :class="{ 'sidebar__item--active': conv.id === store.activeId }"
         >
           <button class="sidebar__item-main" type="button" @click="selectConversation(conv.id)">
-            <span class="sidebar__item-dot" />
+            <PhGitBranch v-if="conv.parentConversationId !== null" class="sidebar__item-branch-icon" :size="14" weight="bold" />
+            <span v-else class="sidebar__item-dot" />
             <span class="sidebar__item-text">{{ conv.title }}</span>
+            <span v-if="conv.parentConversationId !== null" class="sidebar__branch" title="分支对话">分支</span>
             <span class="sidebar__item-meta">{{ timeLabel(conv.updatedAt) }}</span>
           </button>
           <span class="sidebar__item-action-wrap">
             <button class="sidebar__item-action" type="button" :aria-label="`置顶 ${conv.title}`" title="置顶" @click="togglePinned(conv.id, $event)">
               <PhPushPin :size="14" weight="regular" />
+            </button>
+            <button class="sidebar__item-action sidebar__item-action--danger" type="button" :aria-label="`移除 ${conv.title}`" title="移除" @click="removeConversation(conv.id, conv.title, $event)">
+              <PhTrash :size="14" weight="regular" />
             </button>
           </span>
         </div>
@@ -135,14 +190,62 @@ async function togglePinned(id: number, event: MouseEvent) {
     <div class="sidebar__footer">
       <UserMenu variant="ai-sidebar" />
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="pendingDelete"
+        class="sidebar__delete-dialog-backdrop"
+        :data-theme="props.theme"
+        @click.self="closeDeleteDialog"
+      >
+        <section
+          class="sidebar__delete-dialog"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="ai-delete-dialog-title"
+          aria-describedby="ai-delete-dialog-description"
+        >
+          <div class="sidebar__delete-dialog-heading">
+            <div class="sidebar__delete-dialog-icon" aria-hidden="true">
+              <PhTrash :size="20" weight="regular" />
+            </div>
+            <h2 id="ai-delete-dialog-title">删除这个对话？</h2>
+          </div>
+          <div class="sidebar__delete-dialog-copy">
+            <p id="ai-delete-dialog-description">
+              “{{ pendingDelete.title }}”将从对话列表中移除，删除后无法恢复。
+            </p>
+          </div>
+          <div class="sidebar__delete-dialog-actions">
+            <button
+              class="sidebar__delete-dialog-button sidebar__delete-dialog-button--cancel"
+              type="button"
+              :disabled="deleting"
+              @click="closeDeleteDialog"
+            >
+              取消
+            </button>
+            <button
+              class="sidebar__delete-dialog-button sidebar__delete-dialog-button--danger"
+              type="button"
+              :disabled="deleting"
+              data-autofocus
+              @click="confirmDelete"
+            >
+              {{ deleting ? '删除中…' : '删除对话' }}
+            </button>
+          </div>
+        </section>
+      </div>
+    </Teleport>
   </aside>
 </template>
 
 <style scoped lang="scss">
 .sidebar {
   position: relative;
-  width: 264px !important;
-  flex: 0 0 264px;
+  width: var(--sidebar-width) !important;
+  flex: 0 0 var(--sidebar-width);
   height: 100%;
   min-height: 0;
   flex-shrink: 0;
@@ -179,14 +282,132 @@ async function togglePinned(id: number, event: MouseEvent) {
 .sidebar__item--active { background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.15); }
 .sidebar__item-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-muted); flex-shrink: 0; opacity: 0.5; }
 .sidebar__item--active .sidebar__item-dot { background: var(--color-accent); opacity: 1; box-shadow: 0 0 6px var(--color-accent-glow); }
-.sidebar__item-pin { flex: 0 0 14px; color: var(--color-accent-strong); }
+.sidebar__item-pin,
+.sidebar__item-branch-icon { flex: 0 0 14px; color: var(--color-accent-strong); }
+.sidebar__branch { flex: 0 0 auto; color: var(--color-accent-strong); font-size: 10px; font-weight: 600; }
 .sidebar__item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--color-text-muted); }
 .sidebar__item--active .sidebar__item-text { color: var(--color-text); }
 .sidebar__item-meta { flex-shrink: 0; font-size: 10px; color: var(--color-text-muted); opacity: 0.5; font-family: var(--font-mono); }
-.sidebar__item-action-wrap { flex: 0 0 20px; display: flex; justify-content: flex-end; }
+.sidebar__item-action-wrap { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 2px; }
 .sidebar__item-action { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-muted); cursor: pointer; opacity: 0; }
+.sidebar__item-action--danger:hover { background: color-mix(in srgb, var(--color-danger) 16%, transparent); color: var(--color-danger); }
 .sidebar__item:hover .sidebar__item-action, .sidebar__item-action:focus-visible { opacity: 1; }
 .sidebar__item-action:hover { background: var(--color-accent-soft); color: var(--color-accent-strong); }
 .sidebar__empty { padding: 24px 16px; text-align: center; font-size: 12px; color: var(--color-text-muted); }
 .sidebar__footer { padding: 12px 16px; border-top: 1px solid var(--color-border-subtle); display: flex; align-items: center; gap: 10px; }
+
+.sidebar__delete-dialog-backdrop {
+  --dialog-bg: #fff;
+  --dialog-surface: #fafafa;
+  --dialog-text: #1d1d1f;
+  --dialog-muted: #666;
+  --dialog-border: rgba(29, 29, 31, 0.14);
+  --dialog-danger: #e5484d;
+  --dialog-danger-hover: #cf3d42;
+  --dialog-danger-soft: #fff1f1;
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(3px);
+}
+
+.sidebar__delete-dialog-backdrop[data-theme='dark'] {
+  --dialog-bg: #18181a;
+  --dialog-surface: #222225;
+  --dialog-text: #f4f4f5;
+  --dialog-muted: #b1b1b5;
+  --dialog-border: rgba(255, 255, 255, 0.14);
+  --dialog-danger-soft: rgba(229, 72, 77, 0.16);
+}
+
+.sidebar__delete-dialog {
+  width: min(100%, 380px);
+  padding: 22px;
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-md);
+  background: var(--dialog-bg);
+  color: var(--dialog-text);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar__delete-dialog-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar__delete-dialog-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dialog-danger) 28%, transparent);
+  border-radius: 9px;
+  background: var(--dialog-danger-soft);
+  color: var(--dialog-danger);
+}
+
+.sidebar__delete-dialog-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.sidebar__delete-dialog-copy p {
+  margin: 12px 0 0;
+  color: var(--dialog-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.sidebar__delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.sidebar__delete-dialog-button {
+  min-width: 88px;
+  height: 38px;
+  padding: 0 15px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: 600 13px var(--font-sans);
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, opacity 0.18s;
+}
+
+.sidebar__delete-dialog-button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.sidebar__delete-dialog-button--cancel {
+  border-color: var(--dialog-border);
+  background: transparent;
+  color: var(--dialog-text);
+}
+
+.sidebar__delete-dialog-button--cancel:hover:not(:disabled) {
+  background: var(--dialog-surface);
+}
+
+.sidebar__delete-dialog-button--danger {
+  border-color: var(--dialog-danger);
+  background: var(--dialog-danger);
+  color: #fff;
+}
+
+.sidebar__delete-dialog-button--danger:hover:not(:disabled) {
+  border-color: var(--dialog-danger-hover);
+  background: var(--dialog-danger-hover);
+}
 </style>

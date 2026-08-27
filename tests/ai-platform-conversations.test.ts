@@ -58,3 +58,41 @@ test('normalizeConversationUpdate rejects non-array messages', () => {
   const result = normalizeConversationUpdate(input)
   assert.deepEqual(result.messages, [])
 })
+
+test('normalizeConversationUpdate keeps a bounded digest and strips unknown fields', () => {
+  const result = normalizeConversationUpdate({
+    digest: {
+      summary: '  已整理的会话摘要  ',
+      sourceMessageCount: 3.8,
+      updatedAt: '2026-08-23T00:00:00.000Z',
+      ignored: 'value',
+      outline: [{
+        messageIndex: 1.9,
+        title: '关键问题',
+        detail: '保留的重要结论',
+        ignored: true,
+      }],
+    },
+    digestMessageCount: 3.8,
+  })
+
+  assert.deepEqual(result.digest, {
+    summary: '已整理的会话摘要',
+    sourceMessageCount: 3,
+    updatedAt: '2026-08-23T00:00:00.000Z',
+    outline: [{ messageIndex: 1, title: '关键问题', detail: '保留的重要结论' }],
+  })
+  assert.equal(result.digestMessageCount, 3)
+})
+
+test('normalizeConversationUpdate rejects malformed digest and branch mutations', () => {
+  const result = normalizeConversationUpdate({
+    digest: { summary: '缺少大纲' } as unknown as ConversationUpdate['digest'],
+    parentConversationId: 123,
+    branchFromMessageIndex: 4,
+  } as unknown as ConversationUpdate)
+
+  assert.equal(result.digest, null)
+  assert.equal((result as Record<string, unknown>).parentConversationId, undefined)
+  assert.equal((result as Record<string, unknown>).branchFromMessageIndex, undefined)
+})

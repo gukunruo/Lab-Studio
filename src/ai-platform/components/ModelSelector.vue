@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, type ComponentPublicInstance } from 'vue'
 import { useModelsStore } from '../composables/useModels'
 import type { AiModel } from '../types'
 import { PhCaretDown } from '@phosphor-icons/vue'
 
 const modelsStore = useModelsStore()
 const open = ref(false)
+const triggerRef = ref<HTMLButtonElement | null>(null)
+const optionRefs = ref<HTMLButtonElement[]>([])
 const emit = defineEmits<{ select: [model: AiModel] }>()
 const props = defineProps<{ currentModelId: string }>()
 
@@ -18,25 +20,76 @@ const recommendedModelIds = [
   'kimi-k3',
 ]
 
-const recommendedChatModels = computed(() => recommendedModelIds
-  .map((modelId) => modelsStore.chatModels.find((model) => model.modelId === modelId))
-  .filter((model): model is AiModel => Boolean(model)))
+const allModels = () => [...modelsStore.chatModels, ...modelsStore.reasoningModels]
+const recommendedModels = () => recommendedModelIds
+  .map((modelId) => allModels().find((model) => model.modelId === modelId))
+  .filter((model): model is AiModel => Boolean(model))
+const otherChatModels = () => modelsStore.chatModels.filter((model) => !recommendedModelIds.includes(model.modelId))
 
-const otherChatModels = computed(() => modelsStore.chatModels
-  .filter((model) => !recommendedModelIds.includes(model.modelId)))
+function availableModels(): AiModel[] {
+  return allModels().filter((model) => model.status !== 'unavailable')
+}
+
+async function openMenu() {
+  open.value = true
+  await nextTick()
+  const selectedIndex = availableModels().findIndex((model) => model.modelId === props.currentModelId)
+  optionRefs.value[selectedIndex >= 0 ? selectedIndex : 0]?.focus()
+}
+
+function closeMenu() {
+  open.value = false
+  void nextTick(() => triggerRef.value?.focus())
+}
 
 function toggle() {
-  open.value = !open.value
+  if (open.value) closeMenu()
+  else void openMenu()
 }
 
 function select(model: AiModel) {
+  if (model.status === 'unavailable') return
   emit('select', model)
-  open.value = false
+  closeMenu()
+}
+
+function onTriggerKeydown(event: KeyboardEvent) {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    void openMenu()
+  }
+}
+
+function setOptionRef(model: AiModel, element: Element | ComponentPublicInstance | null) {
+  const index = availableModels().findIndex((option) => option.modelId === model.modelId)
+  if (index >= 0 && element instanceof HTMLButtonElement) optionRefs.value[index] = element
+}
+
+function onOptionKeydown(event: KeyboardEvent, model: AiModel) {
+  const options = availableModels()
+  const index = options.findIndex((option) => option.modelId === model.modelId)
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    select(model)
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    closeMenu()
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    const nextIndex = (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length
+    optionRefs.value[nextIndex]?.focus()
+  } else if (event.key === 'Home') {
+    event.preventDefault()
+    optionRefs.value[0]?.focus()
+  } else if (event.key === 'End') {
+    event.preventDefault()
+    optionRefs.value.at(-1)?.focus()
+  }
 }
 
 function handleClickOutside(e: MouseEvent) {
   const el = e.target as HTMLElement
-  if (!el.closest('.model-selector')) open.value = false
+  if (!el.closest('.model-selector') && open.value) closeMenu()
 }
 
 onMounted(() => document.addEventListener('click', handleClickOutside))
@@ -47,41 +100,60 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
 
 <template>
   <div class="model-selector" :class="{ 'model-selector--open': open }">
-    <button class="model-selector__trigger" type="button" @click="toggle">
+    <button
+      ref="triggerRef"
+      class="model-selector__trigger"
+      type="button"
+      aria-haspopup="listbox"
+      :aria-expanded="open"
+      aria-controls="ai-model-options"
+      @click="toggle"
+      @keydown="onTriggerKeydown"
+    >
       <span class="model-selector__dot" />
       <span class="model-selector__name">{{ currentModel()?.displayName ?? currentModelId }}</span>
       <span class="model-selector__vendor">{{ currentModel()?.vendor }}</span>
       <PhCaretDown class="model-selector__chevron" :size="12" weight="bold" />
     </button>
-    <div v-if="open" class="model-selector__dropdown">
-      <div v-if="recommendedChatModels.length" class="model-selector__group">
+    <div v-if="open" id="ai-model-options" class="model-selector__dropdown" role="listbox" aria-label="选择模型" @keydown.esc.prevent="closeMenu">
+      <div v-if="recommendedModels().length" class="model-selector__group model-selector__group--recommended">
         <div class="model-selector__group-label">推荐模型</div>
         <button
-          v-for="m in recommendedChatModels"
+          v-for="m in recommendedModels()"
           :key="m.modelId"
+          :ref="(element) => setOptionRef(m, element)"
           class="model-selector__item"
           :class="{ 'model-selector__item--active': m.modelId === currentModelId }"
           type="button"
+          role="option"
+          :aria-selected="m.modelId === currentModelId"
+          :disabled="m.status === 'unavailable'"
           @click="select(m)"
+          @keydown="onOptionKeydown($event, m)"
         >
-          <span class="model-selector__item-dot" :class="{ 'model-selector__item-dot--active': m.modelId === currentModelId }" />
+          <span class="model-selector__item-dot" :class="{ 'model-selector__item-dot--active': m.modelId === currentModelId, 'model-selector__item-dot--unavailable': m.status === 'unavailable' }" />
           {{ m.displayName }}
-          <span class="model-selector__item-vendor">{{ m.vendor }}</span>
+          <span class="model-selector__item-vendor">{{ m.status === 'unavailable' ? '无权限' : m.vendor }}</span>
         </button>
       </div>
-      <div v-if="otherChatModels.length" class="model-selector__group">
-        <div class="model-selector__group-label">对话模型</div>
+      <div v-if="otherChatModels().length" class="model-selector__group">
+        <div class="model-selector__group-label">其他对话模型</div>
         <button
-          v-for="m in otherChatModels"
+          v-for="m in otherChatModels()"
           :key="m.modelId"
+          :ref="(element) => setOptionRef(m, element)"
           class="model-selector__item"
           :class="{ 'model-selector__item--active': m.modelId === currentModelId }"
           type="button"
+          role="option"
+          :aria-selected="m.modelId === currentModelId"
+          :disabled="m.status === 'unavailable'"
           @click="select(m)"
+          @keydown="onOptionKeydown($event, m)"
         >
-          <span class="model-selector__item-dot" :class="{ 'model-selector__item-dot--active': m.modelId === currentModelId }" />
+          <span class="model-selector__item-dot" :class="{ 'model-selector__item-dot--active': m.modelId === currentModelId, 'model-selector__item-dot--unavailable': m.status === 'unavailable' }" />
           {{ m.displayName }}
-          <span class="model-selector__item-vendor">{{ m.vendor }}</span>
+          <span class="model-selector__item-vendor">{{ m.status === 'unavailable' ? '无权限' : m.vendor }}</span>
         </button>
       </div>
       <div v-if="modelsStore.reasoningModels.length" class="model-selector__group">
@@ -89,14 +161,19 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
         <button
           v-for="m in modelsStore.reasoningModels"
           :key="m.modelId"
+          :ref="(element) => setOptionRef(m, element)"
           class="model-selector__item"
           :class="{ 'model-selector__item--active': m.modelId === currentModelId }"
           type="button"
+          role="option"
+          :aria-selected="m.modelId === currentModelId"
+          :disabled="m.status === 'unavailable'"
           @click="select(m)"
+          @keydown="onOptionKeydown($event, m)"
         >
-          <span class="model-selector__item-dot" :class="{ 'model-selector__item-dot--active': m.modelId === currentModelId }" />
+          <span class="model-selector__item-dot" :class="{ 'model-selector__item-dot--active': m.modelId === currentModelId, 'model-selector__item-dot--unavailable': m.status === 'unavailable' }" />
           {{ m.displayName }}
-          <span class="model-selector__item-vendor">{{ m.vendor }}</span>
+          <span class="model-selector__item-vendor">{{ m.status === 'unavailable' ? '无权限' : m.vendor }}</span>
         </button>
       </div>
     </div>
@@ -168,13 +245,33 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
   top: calc(100% + 6px);
   left: 0;
   min-width: 280px;
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: min(520px, calc(100dvh - 88px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-  z-index: 50;
+  z-index: 100;
   padding: 6px;
   backdrop-filter: blur(16px) saturate(125%);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.model-selector__dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.model-selector__dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.model-selector__dropdown::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--color-border-strong);
 }
 
 .model-selector__group-label {
@@ -207,6 +304,17 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
   background: var(--color-surface);
 }
 
+.model-selector__item:has(.model-selector__item-dot--unavailable) {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.model-selector__item-dot--unavailable {
+  background: var(--color-danger);
+  box-shadow: none;
+}
+
 .model-selector__item--active {
   background: var(--color-accent-soft);
 }
@@ -228,5 +336,12 @@ const currentModel = () => modelsStore.findById(props.currentModelId)
   font-size: 10px;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
+}
+
+.model-selector__item-quota {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  white-space: nowrap;
 }
 </style>

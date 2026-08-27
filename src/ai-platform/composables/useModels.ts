@@ -9,6 +9,7 @@ export const useModelsStore = defineStore('ai-models', () => {
 
   const chatModels = computed(() => models.value.chat ?? [])
   const reasoningModels = computed(() => models.value.reasoning ?? [])
+  const imageModels = computed(() => models.value.image ?? [])
 
   async function load() {
     if (loading.value) return
@@ -24,5 +25,5 @@ export const useModelsStore = defineStore('ai-models', () => {
     return [...chatModels.value, ...reasoningModels.value].find((m) => m.modelId === modelId)
   }
 
-  return { models, loading, chatModels, reasoningModels, load, findById }
+  return { models, loading, chatModels, reasoningModels, imageModels, load, findById }
 })

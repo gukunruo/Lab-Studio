@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AiConversation, AiConversationSummary, ChatMessage, ChatParams } from '../types'
+import type { AiConversation, AiConversationSummary, ChatMessage, ChatParams, ConversationDigest } from '../types'
 import {
   fetchConversations,
   fetchConversation,
@@ -18,14 +18,30 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     conversations.value = await fetchConversations()
   }
 
-  async function create(modelId: string, title?: string) {
+  async function create(modelId: string, title = '新对话') {
+    const active = activeConversation.value
+    const shouldPersist = active && (active.id === 0 || persistTimer !== null)
     cancelPendingPersist()
-    if (activeConversation.value) await flushPersist(activeConversation.value)
-    const conv = await apiCreate(modelId, title)
-    activeId.value = conv.id
-    activeConversation.value = conv
-    await loadList()
-    return conv
+    if (shouldPersist && active) await flushPersist(active)
+    const draft: AiConversation = {
+      id: 0,
+      userKey: 'admin',
+      title,
+      modelId,
+      systemPrompt: '',
+      params: {},
+      messages: [],
+      pinned: false,
+      parentConversationId: null,
+      branchFromMessageIndex: null,
+      digest: null,
+      digestMessageCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    activeId.value = null
+    activeConversation.value = draft
+    return draft
   }
 
   function setActiveMessages(messages: ChatMessage[]) {
@@ -53,32 +69,80 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
   }
 
   let persistTimer: ReturnType<typeof setTimeout> | null = null
-  let persistInFlight = false
-  let queuedConversation: AiConversation | null = null
-  let pendingConversation: AiConversation | null = null
+  let pendingPersist: { source: AiConversation; snapshot: AiConversation } | null = null
+  let persistLoop: Promise<void> | null = null
+  let selectionGeneration = 0
 
-  async function persistActive() {
-    if (!activeConversation.value) return
-    pendingConversation = {
-      ...activeConversation.value,
-      params: { ...activeConversation.value.params },
-      messages: [...activeConversation.value.messages],
-    }
-    if (persistTimer) clearTimeout(persistTimer)
-    persistTimer = setTimeout(() => {
-      const conversation = pendingConversation
-      pendingConversation = null
-      if (conversation) void flushPersist(conversation)
-    }, 250)
+  function conversationTitle(conversation: AiConversation): string {
+    if (conversation.title !== '新对话') return conversation.title
+    const firstUserMessage = conversation.messages.find((message) => message.role === 'user')
+    const content = firstUserMessage?.type === 'image-request'
+      ? firstUserMessage.prompt.replace(/\s+/g, ' ').trim()
+      : firstUserMessage && (firstUserMessage.type === 'text' || firstUserMessage.type === undefined)
+        ? firstUserMessage.content.replace(/\s+/g, ' ').trim()
+        : ''
+    return content ? content.slice(0, 32) + (content.length > 32 ? '…' : '') : '新对话'
   }
 
-  async function flushPersist(conversation: AiConversation) {
-    if (persistInFlight) {
-      queuedConversation = conversation
-      return
+  function snapshot(conversation: AiConversation): AiConversation {
+    return {
+      ...conversation,
+      title: conversationTitle(conversation),
+      params: { ...conversation.params },
+      messages: [...conversation.messages],
+      digest: conversation.digest
+        ? { ...conversation.digest, outline: [...conversation.digest.outline] }
+        : null,
     }
-    persistInFlight = true
-    try {
+  }
+
+  function queuePersist(conversation: AiConversation): Promise<void> {
+    pendingPersist = { source: conversation, snapshot: snapshot(conversation) }
+    if (!persistLoop) {
+      persistLoop = drainPersist().finally(() => {
+        persistLoop = null
+      })
+    }
+    return persistLoop
+  }
+
+  function assignQueuedDraftId(source: AiConversation, id: number) {
+    const queued = pendingPersist
+    if (queued?.source === source && queued.snapshot.id === 0) {
+      queued.snapshot.id = id
+    }
+  }
+
+  async function drainPersist() {
+    while (pendingPersist) {
+      const pending = pendingPersist
+      pendingPersist = null
+      const conversation = pending.snapshot
+      if (conversation.messages.length === 0) continue
+
+      if (conversation.id === 0) {
+        const created = await apiCreate({
+          modelId: conversation.modelId,
+          title: conversation.title,
+          messages: conversation.messages,
+          params: conversation.params,
+          systemPrompt: conversation.systemPrompt,
+          ...(conversation.parentConversationId !== null
+            ? {
+                parentConversationId: conversation.parentConversationId,
+                branchFromMessageIndex: conversation.branchFromMessageIndex ?? 0,
+              }
+            : {}),
+        })
+        if (activeConversation.value === pending.source) {
+          activeId.value = created.id
+          Object.assign(activeConversation.value, created)
+        }
+        assignQueuedDraftId(pending.source, created.id)
+        await loadList()
+        continue
+      }
+
       await apiUpdate(conversation.id, {
         title: conversation.title,
         modelId: conversation.modelId,
@@ -86,29 +150,85 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
         params: conversation.params,
         messages: conversation.messages,
         pinned: conversation.pinned,
+        digest: conversation.digest,
+        digestMessageCount: conversation.digestMessageCount,
       })
       await loadList()
-    } finally {
-      persistInFlight = false
-      if (queuedConversation) {
-        const nextConversation = queuedConversation
-        queuedConversation = null
-        void flushPersist(nextConversation)
-      }
     }
+  }
+
+  function persistActive() {
+    const active = activeConversation.value
+    if (!active || active.messages.length === 0) return
+    if (persistTimer) clearTimeout(persistTimer)
+    persistTimer = setTimeout(() => {
+      persistTimer = null
+      const current = activeConversation.value
+      if (current && current.messages.length > 0) void queuePersist(current)
+    }, 250)
+  }
+
+  async function flushPersist(conversation: AiConversation) {
+    cancelPendingPersist()
+    if (conversation.messages.length === 0) return
+    await queuePersist(conversation)
+  }
+
+  async function ensurePersisted() {
+    const active = activeConversation.value
+    if (!active || active.messages.length === 0) return
+    cancelPendingPersist()
+    await queuePersist(active)
   }
 
   function cancelPendingPersist() {
     if (persistTimer) clearTimeout(persistTimer)
     persistTimer = null
-    pendingConversation = null
   }
 
   async function select(id: number) {
+    const generation = ++selectionGeneration
     cancelPendingPersist()
-    if (activeConversation.value) await flushPersist(activeConversation.value)
+    const conversation = await fetchConversation(id)
+    if (generation !== selectionGeneration) return
     activeId.value = id
-    activeConversation.value = await fetchConversation(id)
+    activeConversation.value = conversation
+  }
+
+  async function createBranch(messageIndex: number): Promise<AiConversation | null> {
+    const source = activeConversation.value
+    if (!source || source.id === 0 || messageIndex < 0 || messageIndex >= source.messages.length) return null
+
+    await flushPersist(source)
+    const messages = source.messages.slice(0, messageIndex + 1).map((message) => ({ ...message }))
+    const title = `分支 · ${conversationTitle(source)}`.slice(0, 200)
+    const branch = await apiCreate({
+      modelId: source.modelId,
+      title,
+      messages,
+      params: { ...source.params },
+      systemPrompt: source.systemPrompt,
+      parentConversationId: source.id,
+      branchFromMessageIndex: messageIndex,
+    })
+    activeId.value = branch.id
+    activeConversation.value = branch
+    await loadList()
+    return branch
+  }
+
+  function updateActiveDigest(digest: ConversationDigest) {
+    if (!activeConversation.value) return
+    activeConversation.value.digest = digest
+    activeConversation.value.digestMessageCount = digest.sourceMessageCount
+    persistActive()
+  }
+
+  function clearActiveDigest() {
+    if (!activeConversation.value?.digest) return
+    activeConversation.value.digest = null
+    activeConversation.value.digestMessageCount = 0
+    persistActive()
   }
 
   async function setPinned(id: number, pinned: boolean) {
@@ -126,9 +246,6 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
 
   async function remove(id: number) {
     cancelPendingPersist()
-    if (activeConversation.value?.id === id) {
-      await flushPersist(activeConversation.value)
-    }
     await apiDelete(id)
     if (activeId.value === id) {
       activeId.value = null
@@ -149,6 +266,10 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     updateActiveParams,
     updateActiveSystemPrompt,
     persistActive,
+    ensurePersisted,
+    createBranch,
+    updateActiveDigest,
+    clearActiveDigest,
     setPinned,
     togglePinned,
     remove,

@@ -16,12 +16,18 @@ export function useChat() {
       onToken: (token: string) => void
       onDone: (full: string) => void
       onError: (err: string) => void
+      onAbort: (full: string) => void
     },
   ) {
     if (streaming.value) return
     streaming.value = true
     error.value = ''
     abortController = new AbortController()
+    let aborted = false
+    let settled = false
+    abortController.signal.addEventListener('abort', () => {
+      aborted = true
+    }, { once: true })
 
     try {
       await streamChat({
@@ -30,13 +36,27 @@ export function useChat() {
         system,
         params,
         onToken: callbacks.onToken,
-        onDone: callbacks.onDone,
+        onDone: (full) => {
+          settled = true
+          if (aborted) callbacks.onAbort(full)
+          else callbacks.onDone(full)
+        },
         onError: (err) => {
+          settled = true
           error.value = err
           callbacks.onError(err)
         },
         signal: abortController.signal,
       })
+      if (aborted && !settled) callbacks.onAbort('')
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        if (!settled) callbacks.onAbort('')
+        return
+      }
+      const message = e instanceof Error ? e.message : '请求失败'
+      error.value = message
+      callbacks.onError(message)
     } finally {
       streaming.value = false
       abortController = null
