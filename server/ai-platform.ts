@@ -451,6 +451,12 @@ function summarizeConversation(messages: unknown[]): string {
   return content ? content.slice(0, 48) + (content.length > 48 ? '…' : '') : '新对话'
 }
 
+export function conversationKind(messages: unknown[] | null | undefined): 'chat' | 'image' {
+  if (!Array.isArray(messages)) return 'chat'
+  const first = messages[0] as { type?: unknown } | undefined
+  return first !== null && typeof first === 'object' && first.type === 'image-request' ? 'image' : 'chat'
+}
+
 type Recommendation = {
   title: string
   desc: string
@@ -881,6 +887,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
       .all()
     return c.json(rows.map(({ messages, digest, ...row }) => ({
       ...row,
+      kind: conversationKind(messages),
       hasDigest: Boolean(normalizeConversationDigest(digest)?.summary),
       title: row.title === '新对话' ? summarizeConversation(messages) : row.title,
     })))

@@ -1,6 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeConversationUpdate, type ConversationUpdate } from '../server/ai-platform'
+import { conversationKind, normalizeConversationUpdate, type ConversationUpdate } from '../server/ai-platform'
+
+test('conversationKind derives the session kind from the first message', () => {
+  assert.equal(conversationKind([{ type: 'image-request', prompt: '画一只猫' }, { role: 'assistant' }]), 'image')
+  assert.equal(conversationKind([{ role: 'user', type: 'text', content: '你好' }]), 'chat')
+  assert.equal(conversationKind([]), 'chat')
+})
+
+test('conversationKind tolerates malformed message payloads', () => {
+  assert.equal(conversationKind(undefined as unknown as unknown[]), 'chat')
+  assert.equal(conversationKind('nope' as unknown as unknown[]), 'chat')
+  assert.equal(conversationKind([null, { role: 'user' }]), 'chat')
+})
 
 test('normalizeConversationUpdate only allows valid fields', () => {
   const input: ConversationUpdate = {

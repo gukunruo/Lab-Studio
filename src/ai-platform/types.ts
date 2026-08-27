@@ -140,6 +140,7 @@ export interface AiConversationSummary {
   params: ChatParams
   pinned: boolean
   parentConversationId: number | null
+  kind: 'chat' | 'image'
   hasDigest: boolean
   createdAt: string
   updatedAt: string
