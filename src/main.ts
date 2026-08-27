@@ -1,4 +1,5 @@
 import './styles/main.scss'
+import './learn/reader-enhancements.scss'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

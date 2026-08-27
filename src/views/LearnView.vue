@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
 import {
-  PhHighlighter,
   PhClipboardText,
   PhX,
   PhDotsThree,
@@ -13,8 +12,6 @@ import {
   PhPencilSimple,
   PhFloppyDisk,
   PhArrowCounterClockwise,
-  PhCopy,
-  PhChatText,
 } from '@phosphor-icons/vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useAcademyStore } from '@/stores/academy'
@@ -29,10 +26,13 @@ import {
 } from '@/learn/curriculum'
 import { parseWalkthrough, type Step, type StepKind } from '@/learn/walkthrough'
 import { buildSystemPrompt, streamChat, type TutorAdapter } from '@/learn/ai'
+import { enhanceReaderDoc } from '@/learn/reader-enhance'
+import { applyReaderAnnotations, useTextAnnotations } from '@/learn/annotations'
 import AiTutor from '@/components/AiTutor.vue'
 import ResizeGutter from '@/components/ResizeGutter.vue'
 import ReaderShell from '@/components/reader/ReaderShell.vue'
 import ReaderFooter from '@/components/reader/ReaderFooter.vue'
+import SelectionToolbar from '@/components/reader/SelectionToolbar.vue'
 
 defineOptions({ name: 'LearnView' })
 
@@ -58,30 +58,7 @@ const draft = ref('')
 const savedContent = ref<string | null>(null)
 const savingDocument = ref(false)
 const documentStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
-type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
-type Annotation = {
-  id: string
-  quote: string
-  prefix?: string
-  suffix?: string
-  color: AnnotationColor
-  createdAt: string
-  updatedAt?: string
-  stale?: boolean
-}
-const annotations = ref<Annotation[]>([])
-const selectionToolbar = ref<{ text: string; x: number; y: number } | null>(null)
 const editorSelectionToolbar = ref<{ x: number; y: number } | null>(null)
-const colorMenuOpen = ref(false)
-const annotationSaving = ref(false)
-const selectedText = ref('')
-const annotationColors: Array<{ value: AnnotationColor; label: string }> = [
-  { value: 'yellow', label: '黄色' },
-  { value: 'green', label: '绿色' },
-  { value: 'blue', label: '蓝色' },
-  { value: 'pink', label: '粉色' },
-  { value: 'purple', label: '紫色' },
-]
 const aiEditOpen = ref(false)
 const aiEditInstruction = ref('')
 const aiEditLoading = ref(false)
@@ -148,153 +125,25 @@ const markdownSource = computed(() => editing.value ? draft.value : (savedConten
 
 const editableDocument = computed(() => pane.value === 'lesson')
 
+const ann = useTextAnnotations({
+  docId: () => activeLesson.value.id,
+  rootEl: () => readerEl.value,
+  enabled: () => !editing.value && editableDocument.value,
+  sourceText: () => markdownSource.value,
+})
+const annPopup = ann.popup
+
 function loadDocumentOverride() {
   if (!editableDocument.value) return
+  ann.load()
   const lessonId = encodeURIComponent(activeLesson.value.id)
-  void Promise.all([
-    fetch(`/api/lesson-documents/${lessonId}`, { credentials: 'include' }),
-    fetch(`/api/lesson-annotations/${lessonId}`, { credentials: 'include' }),
-  ])
-    .then(async ([documentRes, annotationRes]) => {
+  void fetch(`/api/lesson-documents/${lessonId}`, { credentials: 'include' })
+    .then(async (documentRes) => {
       const documentData = documentRes.ok ? await documentRes.json() as { content?: string } : null
-      const annotationData = annotationRes.ok ? await annotationRes.json() as { annotations?: unknown[] } : null
       savedContent.value = typeof documentData?.content === 'string' ? documentData.content : null
-      annotations.value = Array.isArray(annotationData?.annotations)
-        ? annotationData.annotations.filter((item): item is Annotation => {
-          if (!item || typeof item !== 'object') return false
-          const value = item as Record<string, unknown>
-          return typeof value.id === 'string' && typeof value.quote === 'string'
-            && ['yellow', 'green', 'blue', 'pink', 'purple'].includes(value.color as string)
-        })
-        : []
       if (!editing.value) draft.value = savedContent.value ?? baseMarkdownSource.value
     })
     .catch(() => undefined)
-}
-
-function onReaderSelection() {
-  if (editing.value || !editableDocument.value) return
-  const selection = window.getSelection()
-  const text = selection?.toString().trim() ?? ''
-  if (!selection || selection.rangeCount === 0 || text.length < 2 || !readerEl.value?.contains(selection.anchorNode)) {
-    closeSelectionToolbar()
-    return
-  }
-  const rect = selection.getRangeAt(0).getBoundingClientRect()
-  selectedText.value = text
-  selectionToolbar.value = {
-    text,
-    x: Math.min(Math.max(12, rect.left + rect.width / 2 - 120), window.innerWidth - 252),
-    y: Math.max(12, rect.top - 48),
-  }
-}
-
-function selectionContext(text: string) {
-  const source = markdownSource.value
-  const index = source.indexOf(text)
-  if (index < 0) return { prefix: '', suffix: '' }
-  return { prefix: source.slice(Math.max(0, index - 40), index), suffix: source.slice(index + text.length, index + text.length + 40) }
-}
-
-function openColorMenu() {
-  colorMenuOpen.value = !colorMenuOpen.value
-}
-
-function closeSelectionToolbar() {
-  selectionToolbar.value = null
-  selectedText.value = ''
-  colorMenuOpen.value = false
-}
-
-function selectionTextNodes(root: Node) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  const nodes: Text[] = []
-  let node: Node | null
-  while ((node = walker.nextNode())) {
-    if (node.parentElement?.closest('pre, .learn__annotation')) continue
-    nodes.push(node as Text)
-  }
-  return nodes
-}
-
-function wrapAnnotation(root: HTMLElement, annotation: Annotation) {
-  const nodes = selectionTextNodes(root)
-  const fullText = nodes.map((node) => node.data).join('')
-  const start = fullText.indexOf(annotation.quote)
-  if (start < 0 || !annotation.quote.length) return false
-
-  const end = start + annotation.quote.length
-  let cursor = 0
-  let wrapped = false
-
-  for (const node of nodes) {
-    const nodeStart = cursor
-    const nodeEnd = cursor + node.data.length
-    cursor = nodeEnd
-
-    const segmentStart = Math.max(start, nodeStart)
-    const segmentEnd = Math.min(end, nodeEnd)
-    if (segmentStart >= segmentEnd) continue
-
-    const mark = document.createElement('mark')
-    mark.className = `learn__annotation learn__annotation--${annotation.color}`
-    mark.title = `标注颜色：${annotationColors.find((item) => item.value === annotation.color)?.label ?? ''}`
-
-    const range = document.createRange()
-    range.setStart(node, segmentStart - nodeStart)
-    range.setEnd(node, segmentEnd - nodeStart)
-    range.surroundContents(mark)
-    wrapped = true
-  }
-
-  return wrapped
-}
-
-async function saveAnnotations(next: Annotation[]) {
-  annotationSaving.value = true
-  try {
-    const res = await fetch(`/api/lesson-annotations/${encodeURIComponent(activeLesson.value.id)}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ annotations: next }),
-    })
-    if (!res.ok) throw new Error('annotation save failed')
-    annotations.value = next
-    await nextTick()
-    applyAnnotations()
-  } catch {
-    // 标注保存失败时保留选中文本，用户可以重新选择颜色重试。
-  } finally {
-    annotationSaving.value = false
-  }
-}
-
-function keepSelection(event: MouseEvent) {
-  event.stopPropagation()
-}
-
-function resetSelectionToolbar() {
-  window.setTimeout(() => {
-    const selection = window.getSelection()
-    if (!selection?.toString().trim()) closeSelectionToolbar()
-  }, 0)
-}
-
-function annotate(color: AnnotationColor) {
-  if (!selectedText.value || annotationSaving.value) return
-  const now = new Date().toISOString()
-  const context = selectionContext(selectedText.value)
-  const existing = annotations.value.find((item) => item.quote === selectedText.value)
-  const next = existing
-    ? annotations.value.map((item) => item.id === existing.id
-      ? { ...item, color, ...context, updatedAt: now, stale: false }
-      : item)
-    : [...annotations.value, {
-      id: crypto.randomUUID(), quote: selectedText.value, color, ...context, createdAt: now, updatedAt: now,
-    }]
-  void saveAnnotations(next)
-  closeSelectionToolbar()
 }
 
 async function requestAiEdit() {
@@ -423,17 +272,11 @@ function requestAiEditFromSelection() {
 }
 
 function askAiAboutSelection() {
-  if (!selectedText.value) return
-  const quote = selectedText.value
-  closeSelectionToolbar()
+  if (!ann.selectedText.value) return
+  const quote = ann.selectedText.value
+  ann.closePopup()
   ui.toggleTutor(true)
   nextTick(() => tutorRef.value?.quote(quote))
-}
-
-function copySelection() {
-  if (!selectedText.value) return
-  void navigator.clipboard.writeText(selectedText.value)
-  closeSelectionToolbar()
 }
 
 function startEditing() {
@@ -593,8 +436,7 @@ function navigate(next: Pane, lessonId?: string) {
   editing.value = false
   documentStatus.value = 'idle'
   savedContent.value = null
-  annotations.value = []
-  closeSelectionToolbar()
+  ann.reset()
   menuOpen.value = false
   void router.replace({ query: { ...route.query, s: lessonId ?? next } })
   if (lessonId) academy.openLesson(lessonId)
@@ -708,84 +550,21 @@ function onDocClick(e: MouseEvent) {
   if (!t?.closest('.learn__more')) menuOpen.value = false
 }
 
-const COPY_ICON =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
-const CHECK_ICON =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-
-function applyAnnotations() {
-  const el = readerEl.value
-  if (!el || editing.value) return
-  el.querySelectorAll('.learn__annotation').forEach((mark) => {
-    mark.replaceWith(document.createTextNode(mark.textContent ?? ''))
-  })
-  for (const annotation of annotations.value) {
-    if (annotation.stale || !annotation.quote) continue
-    if (!wrapAnnotation(el, annotation)) annotation.stale = true
-  }
-}
-
-function enhanceDoc() {
-  const el = readerEl.value
-  if (!el) return
-
-  el.querySelectorAll('pre').forEach((pre) => {
-    if (pre.querySelector('.learn__copy')) return
-    const code = pre.querySelector('code')
-    const rawText = code?.textContent ?? pre.textContent ?? ''
-    const langMatch = code?.className?.match(/language-([\w+-]+)/)
-    if (langMatch && langMatch[1]) {
-      const tag = document.createElement('span')
-      tag.className = 'learn__lang'
-      tag.textContent = langMatch[1]
-      pre.prepend(tag)
-    }
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = 'learn__copy'
-    btn.setAttribute('aria-label', i18n.t('academy.copy'))
-    btn.setAttribute('title', i18n.t('academy.copy'))
-    btn.innerHTML = COPY_ICON
-    btn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(rawText)
-        btn.innerHTML = CHECK_ICON
-        btn.classList.add('learn__copy--done')
-        window.setTimeout(() => {
-          btn.innerHTML = COPY_ICON
-          btn.classList.remove('learn__copy--done')
-        }, 1500)
-      } catch {
-        /* clipboard unavailable */
-      }
-    })
-    pre.appendChild(btn)
-  })
-
-  el.querySelectorAll('blockquote').forEach((bq) => {
-    if (bq.classList.contains('callout')) return
-    const strong = bq.querySelector('p > strong')
-    const label = strong?.textContent ?? ''
-    if (/(提示|小贴士|tip)/i.test(label)) bq.classList.add('callout', 'callout--tip')
-    else if (/(警告|注意|warn)/i.test(label)) bq.classList.add('callout', 'callout--warn')
-    else if (/(错误|危险|danger)/i.test(label)) bq.classList.add('callout', 'callout--danger')
-  })
+function enhanceReader() {
+  enhanceReaderDoc(readerEl.value, i18n.t('academy.copy'))
+  if (!editing.value) applyReaderAnnotations(readerEl.value, ann.annotations.value)
 }
 
 watch(readerHtml, () => {
   nextTick(() => {
     readerEl.value?.scrollTo({ top: 0 })
-    enhanceDoc()
-    applyAnnotations()
+    enhanceReader()
   })
 })
 
 onMounted(() => {
   document.addEventListener('click', onDocClick)
-  nextTick(() => {
-    enhanceDoc()
-    applyAnnotations()
-  })
+  nextTick(enhanceReader)
 })
 
 onUnmounted(() => {
@@ -942,38 +721,19 @@ onUnmounted(() => {
           <article
             class="learn__reader"
             :class="{ 'learn__reader--walk': effectiveMode === 'walk' }"
-            @mouseup="onReaderSelection"
-            @mousedown="resetSelectionToolbar"
+            @mouseup="ann.onReaderSelection"
+            @mousedown="ann.resetSelectionToolbar"
             v-html="readerHtml"
           />
         </div>
-        <div
-          v-if="selectionToolbar && !editing"
-          class="learn__selection-toolbar"
-          :style="{ left: `${selectionToolbar.x}px`, top: `${selectionToolbar.y}px` }"
-          role="toolbar"
-          aria-label="选中文本工具"
-          @mousedown="keepSelection"
-        >
-          <div class="learn__color-action">
-            <button type="button" title="标注颜色" @click.stop="openColorMenu">
-              <PhHighlighter :size="15" />
-            </button>
-            <div v-if="colorMenuOpen" class="learn__color-menu" role="menu">
-              <button
-                v-for="color in annotationColors"
-                :key="color.value"
-                type="button"
-                role="menuitem"
-                :class="`learn__color-swatch learn__color-swatch--${color.value}`"
-                :title="color.label"
-                @click.stop="annotate(color.value)"
-              />
-            </div>
-          </div>
-          <button type="button" title="复制" @click.stop="copySelection"><PhCopy :size="15" /></button>
-          <button type="button" title="AI 解释" @click.stop="askAiAboutSelection"><PhChatText :size="15" /></button>
-        </div>
+        <SelectionToolbar
+          v-if="annPopup && !editing"
+          :x="annPopup.x"
+          :y="annPopup.y"
+          @annotate="ann.annotate"
+          @copy="ann.copySelection"
+          @explain="askAiAboutSelection"
+        />
         <div
           v-if="aiEditOpen"
           class="learn__ai-edit-panel"
@@ -1307,10 +1067,9 @@ onUnmounted(() => {
   background: var(--color-bg);
 }
 
-.learn__selection-toolbar,
 .learn__editor-selection-toolbar {
   position: fixed;
-  z-index: 80;
+  z-index: 85;
   display: inline-flex;
   gap: 2px;
   padding: 4px;
@@ -1319,43 +1078,6 @@ onUnmounted(() => {
   background: var(--color-bg);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
 }
-
-.learn__editor-selection-toolbar {
-  z-index: 85;
-  position: fixed;
-  padding: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
-}
-
-.learn__color-action { position: relative; }
-.learn__color-menu {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 6px);
-  display: flex;
-  gap: 5px;
-  padding: 6px;
-  transform: translateX(-50%);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
-}
-.learn__color-swatch {
-  width: 18px !important;
-  height: 18px !important;
-  border: 2px solid var(--color-bg) !important;
-  border-radius: 50% !important;
-  box-shadow: 0 0 0 1px var(--color-border);
-}
-.learn__color-swatch--yellow { background: #facc15 !important; }
-.learn__color-swatch--green { background: #5eead4 !important; }
-.learn__color-swatch--blue { background: #60a5fa !important; }
-.learn__color-swatch--pink { background: #f9a8d4 !important; }
-.learn__color-swatch--purple { background: #c4b5fd !important; }
 
 .learn__textarea-wrap { position: relative; min-height: 0; display: flex; flex: 1; flex-direction: column; }
 .learn__ai-edit-panel {
@@ -1384,7 +1106,6 @@ onUnmounted(() => {
 .learn__textarea { height: 100%; min-height: 0; flex: 1; }
 .learn__editor-preview { height: 100%; box-sizing: border-box; }
 
-.learn__selection-toolbar button,
 .learn__editor-selection-toolbar button {
   display: inline-flex;
   align-items: center;
@@ -1398,20 +1119,10 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.learn__selection-toolbar button:hover,
 .learn__editor-selection-toolbar button:hover {
   background: var(--color-accent-soft);
   color: var(--color-accent);
 }
-
-.learn__selection-toolbar > button:first-of-type { color: var(--color-accent); }
-
-.learn__reader :deep(.learn__annotation--yellow) { background: rgba(250, 204, 21, 0.38); }
-.learn__reader :deep(.learn__annotation--green) { background: rgba(94, 234, 212, 0.3); }
-.learn__reader :deep(.learn__annotation--blue) { background: rgba(96, 165, 250, 0.3); }
-.learn__reader :deep(.learn__annotation--pink) { background: rgba(249, 168, 212, 0.34); }
-.learn__reader :deep(.learn__annotation--purple) { background: rgba(196, 181, 253, 0.36); }
-.learn__reader :deep(.learn__annotation) { padding: 0.05em 0.12em; border-radius: 0.2em; color: inherit; }
 
 /* ---------- Footer ---------- */
 
@@ -1540,53 +1251,6 @@ onUnmounted(() => {
   line-height: 1.6;
 }
 
-.learn__reader :deep(.learn__lang) {
-  position: absolute;
-  top: 6px;
-  left: 10px;
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  letter-spacing: 0.05em;
-  text-transform: lowercase;
-  color: var(--color-text-muted);
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.learn__reader :deep(.learn__copy) {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.learn__reader :deep(pre:hover .learn__copy) {
-  opacity: 1;
-}
-
-.learn__reader :deep(.learn__copy:hover) {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
-.learn__reader :deep(.learn__copy--done) {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
-  opacity: 1;
-}
-
 .learn__reader :deep(table) {
   width: 100%;
   border-collapse: collapse;
@@ -1630,18 +1294,6 @@ onUnmounted(() => {
   border-top: 1px solid var(--color-border);
   margin: 2rem 0;
 }
-
-.learn__reader :deep(.learn__annotation) {
-  padding: 0.05em 0.12em;
-  border-radius: 0.2em;
-  color: inherit;
-}
-
-.learn__reader :deep(.learn__annotation--yellow) { background: rgba(250, 204, 21, 0.38); }
-.learn__reader :deep(.learn__annotation--green) { background: rgba(74, 222, 128, 0.3); }
-.learn__reader :deep(.learn__annotation--blue) { background: rgba(96, 165, 250, 0.3); }
-.learn__reader :deep(.learn__annotation--pink) { background: rgba(244, 114, 182, 0.3); }
-.learn__reader :deep(.learn__annotation--purple) { background: rgba(192, 132, 252, 0.3); }
 
 /* ---------- Footer ---------- */
 .learn__bar {
@@ -1762,16 +1414,6 @@ onUnmounted(() => {
 
   .learn__editor-preview {
     min-height: 16rem;
-  }
-
-  .learn__selection-toolbar {
-    position: fixed;
-    left: 0 !important;
-    right: 0;
-    top: auto !important;
-    bottom: calc(60px + env(safe-area-inset-bottom));
-    justify-content: center;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
   }
 
   .learn__bar {

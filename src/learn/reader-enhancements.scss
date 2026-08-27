@@ -1,0 +1,66 @@
+// 适用于两本书阅读区的运行时注入元素（标注 mark、代码复制按钮、语言标签、callout）。
+// 这些元素由 enhanceReaderDoc / applyReaderAnnotations 动态创建，放全局样式而非组件 scoped。
+
+.learn__annotation {
+  padding: 0.05em 0.12em;
+  border-radius: 0.2em;
+  color: inherit;
+}
+
+.learn__annotation--yellow { background: rgba(250, 204, 21, 0.38); }
+.learn__annotation--green { background: rgba(94, 234, 212, 0.3); }
+.learn__annotation--blue { background: rgba(96, 165, 250, 0.3); }
+.learn__annotation--pink { background: rgba(249, 168, 212, 0.34); }
+.learn__annotation--purple { background: rgba(196, 181, 253, 0.36); }
+
+.learn__lang {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+pre:has(.learn__copy),
+pre:has(.learn__lang) {
+  position: relative;
+}
+
+.learn__copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+
+pre:has(.learn__copy):hover .learn__copy {
+  opacity: 1;
+}
+
+.learn__copy:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.learn__copy--done {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  opacity: 1;
+}

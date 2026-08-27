@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
 import { PhBookOpen, PhSparkle } from '@phosphor-icons/vue'
@@ -14,6 +14,9 @@ import {
   ccNextChapter,
 } from '@/learn/cc-curriculum'
 import { createLocalChatStore, type TutorAdapter } from '@/learn/ai'
+import { useTextAnnotations } from '@/learn/annotations'
+import { enhanceReaderDoc } from '@/learn/reader-enhance'
+import { applyReaderAnnotations } from '@/learn/annotations'
 import { useCcCourseStore } from '@/stores/cc-course'
 import { useLocaleStore } from '@/stores/locale'
 import { useUiStore, TUTOR_MIN, TUTOR_MAX } from '@/stores/ui'
@@ -21,6 +24,7 @@ import AiTutor from '@/components/AiTutor.vue'
 import ResizeGutter from '@/components/ResizeGutter.vue'
 import ReaderShell from '@/components/reader/ReaderShell.vue'
 import ReaderFooter from '@/components/reader/ReaderFooter.vue'
+import SelectionToolbar from '@/components/reader/SelectionToolbar.vue'
 
 const i18n = useLocaleStore()
 const route = useRoute()
@@ -29,6 +33,7 @@ const store = useCcCourseStore()
 const ui = useUiStore()
 
 const scrollEl = ref<HTMLElement | null>(null)
+const proseEl = ref<HTMLElement | null>(null)
 const tutorRef = ref<{ sendPrompt: (t: string) => void; quote: (t: string) => void } | null>(null)
 const dragging = ref(false)
 
@@ -47,6 +52,27 @@ const tutorAdapter = computed<TutorAdapter>(() => ({
   clearMessages: () => ccChats.clear(activeId.value),
   buildSystem: () => buildCcSystemPrompt(activeChapter.value),
 }))
+
+const ann = useTextAnnotations({
+  docId: () => activeId.value,
+  rootEl: () => proseEl.value,
+  enabled: () => true,
+  sourceText: () => ccChapterSource(activeChapter.value),
+})
+const annPopup = ann.popup
+
+function askAiAboutSelection() {
+  if (!ann.selectedText.value) return
+  const quote = ann.selectedText.value
+  ann.closePopup()
+  ui.toggleTutor(true)
+  nextTick(() => tutorRef.value?.quote(quote))
+}
+
+function enhanceReader() {
+  enhanceReaderDoc(proseEl.value, i18n.t('academy.copy'))
+  applyReaderAnnotations(proseEl.value, ann.annotations.value)
+}
 
 const fullSequence = [ccIntro, ...ccChapters]
 const next = computed(() => ccNextChapter(activeId.value))
@@ -82,11 +108,20 @@ function goNext() {
 }
 
 watch(activeId, () => {
-  scrollEl.value?.scrollTo({ top: 0 })
+  ann.load()
+})
+
+watch(html, () => {
+  nextTick(() => {
+    scrollEl.value?.scrollTo({ top: 0 })
+    enhanceReader()
+  })
 })
 
 onMounted(() => {
   store.openChapter(activeId.value)
+  ann.load()
+  nextTick(enhanceReader)
 })
 </script>
 
@@ -129,7 +164,13 @@ onMounted(() => {
           </h1>
         </header>
 
-        <div class="cc__prose" v-html="html" />
+        <div
+          ref="proseEl"
+          class="cc__prose"
+          @mouseup="ann.onReaderSelection"
+          @mousedown="ann.resetSelectionToolbar"
+          v-html="html"
+        />
 
         <div class="cc__foot-wrap">
           <ReaderFooter
@@ -163,6 +204,15 @@ onMounted(() => {
         :focus-title="i18n.tl(activeChapter.title)"
         :open="ui.tutorOpen"
         @close="ui.toggleTutor(false)"
+      />
+
+      <SelectionToolbar
+        v-if="annPopup"
+        :x="annPopup.x"
+        :y="annPopup.y"
+        @annotate="ann.annotate"
+        @copy="ann.copySelection"
+        @explain="askAiAboutSelection"
       />
     </div>
   </ReaderShell>
@@ -336,6 +386,20 @@ onMounted(() => {
 
 .cc__prose :deep(blockquote p) {
   margin: 8px 0;
+}
+
+.cc__prose :deep(blockquote.callout) {
+  color: var(--color-text);
+}
+
+.cc__prose :deep(blockquote.callout--warn) {
+  border-left-color: #d97706;
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.cc__prose :deep(blockquote.callout--danger) {
+  border-left-color: #dc2626;
+  background: rgba(220, 38, 38, 0.07);
 }
 
 .cc__prose :deep(code) {
