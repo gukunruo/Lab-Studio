@@ -16,6 +16,7 @@ test('recommended chat models are ranked by the verified benchmark order', () =>
 
 test('retired models are explicitly removed from the deployed inventory', () => {
   assert.ok(RETIRED_MODEL_IDS.includes('deepseek-chat'))
+  assert.ok(RETIRED_MODEL_IDS.includes('gemini-3-pro-preview'))
 })
 
 
@@ -28,6 +29,7 @@ test('seed contains all required models', () => {
   assert.ok(modelIds.includes('deepseek-v4-pro'))
   assert.ok(modelIds.includes('deepseek-v4-flash'))
   assert.equal(modelIds.includes('deepseek-chat'), false)
+  assert.equal(modelIds.includes('gemini-3-pro-preview'), false)
   assert.ok(modelIds.includes('glm-5.2'))
   assert.ok(modelIds.includes('kimi-k2-7-code'))
   assert.ok(modelIds.includes('gpt-image-2'))

@@ -15,7 +15,7 @@ export interface SeedModel {
   sortOrder: number
 }
 
-export const RETIRED_MODEL_IDS = ['deepseek-chat'] as const
+export const RETIRED_MODEL_IDS = ['deepseek-chat', 'gemini-3-pro-preview'] as const
 
 export const SEED_MODELS: SeedModel[] = [
   // OpenAI compatible
@@ -25,7 +25,6 @@ export const SEED_MODELS: SeedModel[] = [
   { modelId: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', provider: 'openai-compatible', category: 'chat', vendor: 'deepseek', capabilities: ['streaming'], contextWindow: 1000000, rpmLimit: 50, tpmLimit: 200000, sortOrder: 20 },
   { modelId: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', provider: 'openai-compatible', category: 'chat', vendor: 'deepseek', capabilities: ['streaming'], contextWindow: 1000000, rpmLimit: 50, tpmLimit: 200000, sortOrder: 21 },
   { modelId: 'doubao-seed-2.0-mini', displayName: 'Doubao Seed 2.0 mini', provider: 'openai-compatible', category: 'chat', vendor: 'doubao', capabilities: ['streaming', 'reasoning_mode'], contextWindow: 256000, rpmLimit: 5, tpmLimit: 10000, sortOrder: 22 },
-  { modelId: 'gemini-3-pro-preview', displayName: 'Gemini 3 Pro Preview', provider: 'openai-compatible', category: 'chat', vendor: 'google', capabilities: ['streaming', 'tool-call', 'multi-tool-call', 'vision', 'structured-output', 'agent-thought', 'video', 'document', 'audio'], contextWindow: 1000000, rpmLimit: 20, tpmLimit: 20000, sortOrder: 23 },
   { modelId: 'glm-5.2', displayName: 'GLM 5.2', provider: 'openai-compatible', category: 'chat', vendor: 'zai', capabilities: ['streaming'], contextWindow: 1000000, rpmLimit: 30, tpmLimit: 500000, sortOrder: 30 },
   { modelId: 'kimi-k3', displayName: 'Kimi K3', provider: 'openai-compatible', category: 'chat', vendor: 'moonshot', capabilities: ['streaming', 'reasoning_mode'], contextWindow: 1_000_000, rpmLimit: 50, tpmLimit: 500_000, sortOrder: 31 },
   { modelId: 'kimi-k2-7-code', displayName: 'Kimi K2.7 Code', provider: 'openai-compatible', category: 'reasoning', vendor: 'moonshot', capabilities: ['streaming', 'reasoning_mode'], contextWindow: 256000, rpmLimit: 30, tpmLimit: 50000, sortOrder: 40 },
