@@ -695,7 +695,7 @@ export function createApp() {
         model: model || 'claude-sonnet-4-6',
         messages: body.messages,
         system: body.system ?? '',
-        max_tokens: body.maxTokens ?? 2048,
+        max_tokens: body.maxTokens ?? 8192,
         stream: true,
       }),
       signal: c.req.raw.signal,

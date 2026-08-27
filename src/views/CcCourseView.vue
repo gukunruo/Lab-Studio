@@ -2,8 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
-import { PhBookOpen } from '@phosphor-icons/vue'
+import { PhBookOpen, PhSparkle } from '@phosphor-icons/vue'
 import {
+  buildCcSystemPrompt,
   ccChapterById,
   ccChapterSource,
   ccChapters,
@@ -12,8 +13,12 @@ import {
   ccIntro,
   ccNextChapter,
 } from '@/learn/cc-curriculum'
+import { createLocalChatStore, type TutorAdapter } from '@/learn/ai'
 import { useCcCourseStore } from '@/stores/cc-course'
 import { useLocaleStore } from '@/stores/locale'
+import { useUiStore, TUTOR_MIN, TUTOR_MAX } from '@/stores/ui'
+import AiTutor from '@/components/AiTutor.vue'
+import ResizeGutter from '@/components/ResizeGutter.vue'
 import ReaderShell from '@/components/reader/ReaderShell.vue'
 import ReaderFooter from '@/components/reader/ReaderFooter.vue'
 
@@ -21,8 +26,11 @@ const i18n = useLocaleStore()
 const route = useRoute()
 const router = useRouter()
 const store = useCcCourseStore()
+const ui = useUiStore()
 
 const scrollEl = ref<HTMLElement | null>(null)
+const tutorRef = ref<{ sendPrompt: (t: string) => void; quote: (t: string) => void } | null>(null)
+const dragging = ref(false)
 
 const activeId = computed(() => {
   const requested = String(route.query.s ?? '')
@@ -31,6 +39,14 @@ const activeId = computed(() => {
 const activeChapter = computed(() => ccChapterById(activeId.value) ?? ccIntro)
 const html = computed(() =>
   marked.parse(ccChapterSource(activeChapter.value).replace(/^# .+\n/, ''), { async: false }) as string)
+
+const ccChats = createLocalChatStore('lab-cc-course-chats')
+const tutorAdapter = computed<TutorAdapter>(() => ({
+  getMessages: () => ccChats.get(activeId.value),
+  addMessage: (msg) => ccChats.add(activeId.value, msg),
+  clearMessages: () => ccChats.clear(activeId.value),
+  buildSystem: () => buildCcSystemPrompt(activeChapter.value),
+}))
 
 const fullSequence = [ccIntro, ...ccChapters]
 const next = computed(() => ccNextChapter(activeId.value))
@@ -83,35 +99,123 @@ onMounted(() => {
     :groups="groups"
     @select="selectChapter"
   >
-    <article ref="scrollEl" class="cc__reader">
-      <header class="cc__reader-head">
-        <p class="cc__kicker">
-          <PhBookOpen :size="13" />
-          <span>{{ i18n.tl(ccCourseMeta.title) }}</span>
-        </p>
-        <h1 class="cc__chapter-title">
-          <span class="cc__badge">{{ activeChapter.id }}</span>
-          {{ i18n.tl(activeChapter.title) }}
-        </h1>
-      </header>
+    <template #tools>
+      <button
+        type="button"
+        class="cc__icon-btn"
+        :class="{ 'cc__icon-btn--on': ui.tutorOpen }"
+        :aria-label="i18n.t('academy.tutor.open')"
+        :title="i18n.t('academy.tutor.open')"
+        @click="ui.toggleTutor()"
+      >
+        <PhSparkle :size="16" weight="fill" />
+      </button>
+    </template>
 
-      <div class="cc__prose" v-html="html" />
+    <div
+      class="cc__workspace"
+      :class="{ 'cc__workspace--dragging': dragging }"
+      :style="{ '--tutor-w': `${ui.tutorW}px` }"
+    >
+      <article ref="scrollEl" class="cc__reader">
+        <header class="cc__reader-head">
+          <p class="cc__kicker">
+            <PhBookOpen :size="13" />
+            <span>{{ i18n.tl(ccCourseMeta.title) }}</span>
+          </p>
+          <h1 class="cc__chapter-title">
+            <span class="cc__badge">{{ activeChapter.id }}</span>
+            {{ i18n.tl(activeChapter.title) }}
+          </h1>
+        </header>
 
-      <div class="cc__foot-wrap">
-        <ReaderFooter
-          :done="store.isDone(activeId)"
-          :prev="prev ? `${prev.id} · ${i18n.tl(prev.title)}` : null"
-          :next="next ? `${next.id} · ${i18n.tl(next.title)}` : null"
-          @toggle="store.toggleDone(activeId)"
-          @prev="prev && selectChapter(prev.id)"
-          @next="goNext"
-        />
-      </div>
-    </article>
+        <div class="cc__prose" v-html="html" />
+
+        <div class="cc__foot-wrap">
+          <ReaderFooter
+            :done="store.isDone(activeId)"
+            :prev="prev ? `${prev.id} · ${i18n.tl(prev.title)}` : null"
+            :next="next ? `${next.id} · ${i18n.tl(next.title)}` : null"
+            @toggle="store.toggleDone(activeId)"
+            @prev="prev && selectChapter(prev.id)"
+            @next="goNext"
+          />
+        </div>
+      </article>
+
+      <ResizeGutter
+        v-if="ui.tutorOpen"
+        class="cc__gutter"
+        :min="TUTOR_MIN"
+        :max="TUTOR_MAX"
+        :value="ui.tutorW"
+        reverse
+        @resize="ui.setTutorW"
+        @dragstart="dragging = true"
+        @dragend="dragging = false"
+      />
+
+      <AiTutor
+        v-show="ui.tutorOpen"
+        ref="tutorRef"
+        :adapter="tutorAdapter"
+        :chat-key="activeId"
+        :focus-title="i18n.tl(activeChapter.title)"
+        :open="ui.tutorOpen"
+        @close="ui.toggleTutor(false)"
+      />
+    </div>
   </ReaderShell>
 </template>
 
 <style scoped lang="scss">
+.cc__workspace {
+  flex: 1 1 auto;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cc__workspace > .tutor {
+  flex: 0 0 var(--tutor-w, 380px);
+  min-width: 0;
+  transition: flex-basis 0.24s ease;
+}
+
+.cc__workspace--dragging > .tutor {
+  transition: none;
+}
+
+.cc__gutter {
+  background: transparent;
+}
+
+.cc__icon-btn {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.cc__icon-btn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.cc__icon-btn--on {
+  color: var(--color-accent);
+  border-color: transparent;
+  background: var(--color-accent-soft);
+}
+
 .cc__reader {
   flex: 1 1 auto;
   min-width: 0;
@@ -297,6 +401,21 @@ onMounted(() => {
   max-width: 760px;
   margin: 0 auto;
   padding: 8px 28px 48px;
+}
+
+@media (max-width: 900px) {
+  .cc__gutter {
+    display: none;
+  }
+
+  .cc__workspace {
+    display: block;
+  }
+
+  .cc__workspace > .tutor {
+    flex: none;
+    width: auto;
+  }
 }
 
 @media (max-width: 720px) {

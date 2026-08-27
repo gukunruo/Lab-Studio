@@ -10,49 +10,45 @@ import {
   PhWarningCircle,
 } from '@phosphor-icons/vue'
 import { useLocaleStore } from '@/stores/locale'
-import { useAcademyStore } from '@/stores/academy'
 import {
-  buildSystemPrompt,
   getAiConfig,
   streamChat,
   type AiConfig,
   type ChatMessage,
+  type TutorAdapter,
 } from '@/learn/ai'
-import type { LessonMeta } from '@/learn/curriculum'
-import type { Step } from '@/learn/walkthrough'
 
 defineOptions({ name: 'AiTutor' })
 
 const props = defineProps<{
-  lesson: LessonMeta
-  step: Step | null
   open: boolean
+  chatKey: string
+  focusTitle: string
+  adapter: TutorAdapter
 }>()
 const emit = defineEmits<{ close: [] }>()
 
 const i18n = useLocaleStore()
-const academy = useAcademyStore()
 
 const config = ref<AiConfig>({ available: false, model: '', baseUrlMasked: '' })
 const input = ref('')
 const quotedText = ref('')
 const streaming = ref(false)
 const streamingText = ref('')
+const thinking = ref(false)
 const error = ref('')
 const listEl = ref<HTMLElement | null>(null)
 const taEl = ref<HTMLTextAreaElement | null>(null)
 let controller: AbortController | null = null
 let userScrolled = false
 
-const messages = computed(() => academy.getChat(props.lesson.id))
+const messages = computed(() => props.adapter.getMessages())
 const empty = computed(() => messages.value.length === 0 && !streaming.value && !streamingText.value)
 
 const quick = computed(() => [
   {
     label: i18n.t('academy.tutor.explain'),
-    text: props.step
-      ? `用前端工程师能懂的类比，帮我理解「${props.step.title}」这一节的核心概念。`
-      : '帮我理解今天这课的核心概念，用前端能懂的类比。',
+    text: `用前端工程师能懂的类比，帮我理解「${props.focusTitle}」的核心概念。`,
   },
   {
     label: i18n.t('academy.tutor.practice'),
@@ -114,24 +110,28 @@ async function send(text: string) {
   const messageContent = finalContent
   nextTick(autosize)
 
-  academy.addMessage(props.lesson.id, { role: 'user', content: messageContent })
+  props.adapter.addMessage({ role: 'user', content: messageContent })
   streaming.value = true
   streamingText.value = ''
+  thinking.value = false
   userScrolled = false
   scrollToBottom(true)
 
   controller = new AbortController()
-  const system = buildSystemPrompt(props.lesson, props.step)
+  const system = props.adapter.buildSystem()
   try {
     await streamChat({
-      messages: [...academy.getChat(props.lesson.id)],
+      messages: [...props.adapter.getMessages()],
       system,
       onToken: (t) => {
         streamingText.value += t
         scrollToBottom()
       },
+      onThinking: () => {
+        thinking.value = true
+      },
       onDone: (full) => {
-        academy.addMessage(props.lesson.id, { role: 'assistant', content: full || streamingText.value })
+        props.adapter.addMessage({ role: 'assistant', content: full || streamingText.value })
         streamingText.value = ''
         streaming.value = false
         scrollToBottom()
@@ -140,10 +140,11 @@ async function send(text: string) {
     })
   } catch (e) {
     if (streamingText.value) {
-      academy.addMessage(props.lesson.id, { role: 'assistant', content: streamingText.value })
+      props.adapter.addMessage({ role: 'assistant', content: streamingText.value })
     }
     streamingText.value = ''
     streaming.value = false
+    thinking.value = false
     const err = e as Error
     if (err.name !== 'AbortError') {
       error.value = err.message || String(e)
@@ -163,7 +164,7 @@ function clearChat() {
   streamingText.value = ''
   error.value = ''
   userScrolled = false
-  academy.clearChat(props.lesson.id)
+  props.adapter.clearMessages()
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -192,11 +193,12 @@ watch(
 )
 
 watch(
-  () => props.lesson.id,
+  () => props.chatKey,
   () => {
     controller?.abort()
     streaming.value = false
     streamingText.value = ''
+    thinking.value = false
     error.value = ''
     nextTick(scrollToBottom)
   },
@@ -298,7 +300,7 @@ onUnmounted(() => {
             </div>
             <div class="msg__bubble msg__bubble--streaming">
               <span v-if="streamingText" v-html="renderMd(streamingText)" />
-              <span v-if="streaming && !streamingText" class="tutor__typing">{{ i18n.t('academy.tutor.streamHint') }}</span>
+              <span v-if="streaming && !streamingText" class="tutor__typing">{{ thinking ? i18n.t('academy.tutor.thinking') : i18n.t('academy.tutor.streamHint') }}</span>
               <span v-if="streaming" class="tutor__caret" aria-hidden="true" />
             </div>
           </div>

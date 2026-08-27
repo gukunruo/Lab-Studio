@@ -82,6 +82,23 @@ export function ccChapterSource(chapter: CcChapter): string {
   return ccContentByFile[chapter.file] ?? `# Missing\n\n${chapter.file} not found.`
 }
 
+export function buildCcSystemPrompt(chapter: CcChapter): string {
+  return [
+    '你是我的 Claude Code 实战私教，带我读懂每一章并动手构建自己的 Agent。',
+    '',
+    `当前章节：${chapter.id} · ${chapter.title.zh}`,
+    '',
+    '当前章节全文：',
+    ccChapterSource(chapter),
+    '',
+    '规则：',
+    '- 用前端工程师能懂的类比讲概念',
+    '- 实战优先：给出可运行的命令与代码，逐步解释在做什么',
+    '- 不提前讲后面的章节',
+    '- 中文回答；代码注释用中文',
+  ].join('\n')
+}
+
 export function ccChapterById(id: string): CcChapter | undefined {
   if (id === ccIntro.id) return ccIntro
   return ccChapters.find((c) => c.id === id)

@@ -1,3 +1,4 @@
+import { ref, watch } from 'vue'
 import { guideSources, lessonSource, type LessonMeta } from '@/learn/curriculum'
 import type { Step } from '@/learn/walkthrough'
 
@@ -13,6 +14,49 @@ export interface ChatMessage {
   streaming?: boolean
 }
 
+export interface TutorAdapter {
+  getMessages(): ChatMessage[]
+  addMessage(msg: ChatMessage): void
+  clearMessages(): void
+  buildSystem(): string
+}
+
+const LOCAL_CHAT_CAP = 50
+
+export function createLocalChatStore(storageKey: string) {
+  function load(): Record<string, ChatMessage[]> {
+    try {
+      const raw = localStorage.getItem(storageKey)
+      const parsed = raw ? (JSON.parse(raw) as unknown) : null
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, ChatMessage[]>) : {}
+    } catch {
+      return {}
+    }
+  }
+
+  const chats = ref<Record<string, ChatMessage[]>>(load())
+  watch(chats, () => {
+    localStorage.setItem(storageKey, JSON.stringify(chats.value))
+  }, { deep: true })
+
+  return {
+    get(key: string): ChatMessage[] {
+      return chats.value[key] ?? []
+    },
+    add(key: string, msg: ChatMessage) {
+      const list = chats.value[key] ? [...chats.value[key]!] : []
+      list.push(msg)
+      if (list.length > LOCAL_CHAT_CAP) list.splice(0, list.length - LOCAL_CHAT_CAP)
+      chats.value = { ...chats.value, [key]: list }
+    },
+    clear(key: string) {
+      const next = { ...chats.value }
+      delete next[key]
+      chats.value = next
+    },
+  }
+}
+
 export async function getAiConfig(): Promise<AiConfig> {
   try {
     const res = await fetch('/api/ai/config', { credentials: 'include' })
@@ -25,7 +69,7 @@ export async function getAiConfig(): Promise<AiConfig> {
 
 interface SSEEvent {
   type: string
-  delta?: { type: string; text?: string }
+  delta?: { type: string; text?: string; thinking?: string; stop_reason?: string | null }
 }
 
 export async function streamChat(opts: {
@@ -33,10 +77,11 @@ export async function streamChat(opts: {
   system: string
   maxTokens?: number
   onToken: (t: string) => void
+  onThinking?: () => void
   onDone: (full: string) => void
   signal: AbortSignal
 }): Promise<void> {
-  const { messages, system, maxTokens = 2048, onToken, onDone, signal } = opts
+  const { messages, system, maxTokens = 8192, onToken, onThinking, onDone, signal } = opts
 
   const res = await fetch('/api/ai/chat', {
     credentials: 'include',
@@ -59,6 +104,9 @@ export async function streamChat(opts: {
   const decoder = new TextDecoder()
   let buffer = ''
   let full = ''
+  let sawText = false
+  let stopReason: string | null = null
+  let truncated = false
   let finished = false
 
   const finish = () => {
@@ -81,9 +129,15 @@ export async function streamChat(opts: {
     try {
       const evt = JSON.parse(dataStr) as SSEEvent
       if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta' && evt.delta.text) {
+        sawText = true
         full += evt.delta.text
         onToken(evt.delta.text)
+      } else if (evt.type === 'content_block_delta' && evt.delta?.type === 'thinking_delta') {
+        onThinking?.()
+      } else if (evt.type === 'message_delta' && evt.delta?.stop_reason) {
+        stopReason = evt.delta.stop_reason
       } else if (evt.type === 'message_stop') {
+        if (!sawText && stopReason === 'max_tokens') truncated = true
         finish()
         return true
       }
@@ -101,10 +155,14 @@ export async function streamChat(opts: {
     while ((sep = buffer.indexOf('\n\n')) >= 0) {
       const block = buffer.slice(0, sep)
       buffer = buffer.slice(sep + 2)
-      if (flushBlock(block)) return
+      if (flushBlock(block)) {
+        if (truncated) throw new Error('回复被输出额度截断（模型思考占用过多），请重试一次。')
+        return
+      }
     }
   }
   if (buffer.trim()) flushBlock(buffer)
+  if (truncated) throw new Error('回复被输出额度截断（模型思考占用过多），请重试一次。')
   finish()
 }
 

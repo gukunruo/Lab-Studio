@@ -28,7 +28,7 @@ import {
   type LessonMeta,
 } from '@/learn/curriculum'
 import { parseWalkthrough, type Step, type StepKind } from '@/learn/walkthrough'
-import { buildSystemPrompt, streamChat } from '@/learn/ai'
+import { buildSystemPrompt, streamChat, type TutorAdapter } from '@/learn/ai'
 import AiTutor from '@/components/AiTutor.vue'
 import ResizeGutter from '@/components/ResizeGutter.vue'
 import ReaderShell from '@/components/reader/ReaderShell.vue'
@@ -307,7 +307,6 @@ async function requestAiEdit() {
     await streamChat({
       messages: [{ role: 'user', content: `请对下面选中的 Markdown 内容执行这个编辑要求：${aiEditInstruction.value || '优化表达并保持 Markdown 结构不变'}\n\n原文：\n${aiEditSelection.value}` }],
       system: buildSystemPrompt(activeLesson.value, currentStep.value),
-      maxTokens: 2048,
       signal: controller.signal,
       onToken: (token) => { aiEditResult.value += token },
       onDone: (full) => { aiEditResult.value = full },
@@ -505,6 +504,14 @@ const stepIdx = computed(() => {
   return Math.min(Math.max(0, stored), stepCount.value - 1)
 })
 const currentStep = computed<Step | null>(() => steps.value[stepIdx.value] ?? null)
+
+const tutorAdapter = computed<TutorAdapter>(() => ({
+  getMessages: () => academy.getChat(activeLesson.value.id),
+  addMessage: (msg) => academy.addMessage(activeLesson.value.id, msg),
+  clearMessages: () => academy.clearChat(activeLesson.value.id),
+  buildSystem: () => buildSystemPrompt(activeLesson.value, currentStep.value),
+}))
+const tutorFocusTitle = computed(() => currentStep.value?.title ?? i18n.tl(activeLesson.value.title))
 
 const scrollHtml = computed(() => marked.parse(markdownSource.value, { async: false }) as string)
 const stepHtml = computed(() => {
@@ -1030,8 +1037,9 @@ onUnmounted(() => {
       <AiTutor
         v-show="ui.tutorOpen"
         ref="tutorRef"
-        :lesson="activeLesson"
-        :step="currentStep"
+        :adapter="tutorAdapter"
+        :chat-key="activeLesson.id"
+        :focus-title="tutorFocusTitle"
         :open="ui.tutorOpen"
         @close="ui.toggleTutor(false)"
       />
