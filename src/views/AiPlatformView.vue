@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { useModelsStore } from '@/ai-platform/composables/useModels'
@@ -61,6 +62,8 @@ function normalizeRecommendations(generated: AiRecommendation[]): AiRecommendati
 
 const themeStore = useThemeStore()
 const localeStore = useLocaleStore()
+const route = useRoute()
+const router = useRouter()
 const aiThemePreference = ref<AiThemePreference>(themeStore.theme)
 const aiSystemDark = ref(false)
 const aiLocale = ref<'zh' | 'en'>(localeStore.locale)
@@ -116,7 +119,7 @@ async function init() {
     } else {
       console.warn('[ai-platform] preferences unavailable', preferencesResult.reason)
     }
-    await newConversation()
+    await restoreSelectedConversation()
     loaded.value = true
     if (recommendationsResult.status === 'rejected') {
       console.warn('[ai-platform] recommendations unavailable', recommendationsResult.reason)
@@ -161,6 +164,31 @@ async function newConversation() {
     creatingConversation = false
   }
 }
+
+async function restoreSelectedConversation() {
+  const requested = Number(route.query.c)
+  const exists = Number.isInteger(requested) && requested > 0
+    && conversationsStore.conversations.some((item) => item.id === requested)
+  if (!exists) {
+    await newConversation()
+    return
+  }
+  try {
+    await conversationsStore.select(requested)
+  } catch (error) {
+    console.warn('[ai-platform] failed to restore conversation from url', error)
+    await newConversation()
+  }
+}
+
+watch(() => conversationsStore.activeId, (id) => {
+  const unchanged = id === null ? route.query.c === undefined : String(route.query.c ?? '') === String(id)
+  if (unchanged) return
+  const query = { ...route.query }
+  if (id === null) delete query.c
+  else query.c = String(id)
+  void router.replace({ query })
+})
 
 function onSelectModel(model: AiModel) {
   conversationsStore.updateActiveModel(model.modelId)
