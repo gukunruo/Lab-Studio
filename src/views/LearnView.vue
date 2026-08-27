@@ -1,16 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
 import {
-  PhCheck,
-  PhCheckCircle,
   PhHighlighter,
   PhClipboardText,
-  PhArrowLeft,
-  PhArrowRight,
-  PhList,
-  PhSidebarSimple,
   PhX,
   PhDotsThree,
   PhSparkle,
@@ -24,7 +18,7 @@ import {
 } from '@phosphor-icons/vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useAcademyStore } from '@/stores/academy'
-import { useUiStore, SIDE_MIN, SIDE_MAX, TUTOR_MIN, TUTOR_MAX } from '@/stores/ui'
+import { useUiStore, TUTOR_MIN, TUTOR_MAX } from '@/stores/ui'
 import {
   guideSources,
   lessonById,
@@ -37,21 +31,25 @@ import { parseWalkthrough, type Step, type StepKind } from '@/learn/walkthrough'
 import { buildSystemPrompt, streamChat } from '@/learn/ai'
 import AiTutor from '@/components/AiTutor.vue'
 import ResizeGutter from '@/components/ResizeGutter.vue'
+import ReaderShell from '@/components/reader/ReaderShell.vue'
+import ReaderFooter from '@/components/reader/ReaderFooter.vue'
 
 defineOptions({ name: 'LearnView' })
 
 type Pane = 'lesson' | 'readme' | 'profile' | 'resume'
 type Mode = 'walk' | 'scroll'
+const GUIDE_IDS: readonly string[] = ['readme', 'profile', 'resume']
+
+const BOOK_TITLE = { zh: 'AI 应用工程', en: 'AI App Engineering' }
 
 const i18n = useLocaleStore()
+const route = useRoute()
+const router = useRouter()
 const academy = useAcademyStore()
 const ui = useUiStore()
 
-const pane = ref<Pane>('lesson')
 const mode = ref<Mode>('walk')
-const activeId = ref(academy.lastOpened ?? academy.todayLesson.id)
 const readerEl = ref<HTMLElement | null>(null)
-const listEl = ref<HTMLElement | null>(null)
 const tutorRef = ref<{ sendPrompt: (t: string) => void; quote: (t: string) => void } | null>(null)
 const copied = ref(false)
 const menuOpen = ref(false)
@@ -96,28 +94,48 @@ const editorScrollLock = ref(false)
 const aiEditPosition = ref({ x: 0, y: 0 })
 const aiEditDragging = ref(false)
 const aiEditDragOffset = ref({ x: 0, y: 0 })
-const sideOpen = ref(false)
-const readProgress = ref(0)
 const dragging = ref(false)
-const COLLAPSED_SIDE = 72
-const SIDE_COLLAPSE_THRESHOLD = 120
-const SIDE_EXPAND_THRESHOLD = 150
+
+const routeState = computed(() => {
+  const s = String(route.query.s ?? '')
+  if (GUIDE_IDS.includes(s)) return { pane: s as Exclude<Pane, 'lesson'>, lessonId: null }
+  if (s && lessonById(s)) return { pane: 'lesson' as const, lessonId: s }
+  return { pane: 'lesson' as const, lessonId: academy.lastOpened ?? academy.todayLesson.id }
+})
+const pane = computed<Pane>(() => routeState.value.pane)
+const activeId = computed(() => routeState.value.lessonId ?? academy.todayLesson.id)
 
 const activeLesson = computed(() => lessonById(activeId.value) ?? academy.todayLesson)
 const activeIndex = computed(() => lessons.findIndex((l) => l.id === activeLesson.value.id))
-const activePhase = computed(() => phases.find((p) => p.id === activeLesson.value.phase))
 const isGuide = computed(() => pane.value !== 'lesson')
 const effectiveMode = computed<Mode>(() => (isGuide.value ? 'scroll' : mode.value))
-const hasPrev = computed(() => pane.value === 'lesson' && activeIndex.value > 0)
 const hasNext = computed(() => pane.value === 'lesson' && activeIndex.value < lessons.length - 1)
 const isDone = computed(() => academy.isDone(activeLesson.value.id))
 
-const grouped = computed(() =>
-  phases.map((phase) => ({
-    phase,
-    items: lessons.filter((l) => l.phase === phase.id),
+const groups = computed(() => [
+  {
+    id: 'guides',
+    title: { zh: '前言', en: 'Front matter' },
+    items: (['readme', 'profile', 'resume'] as const).map((id) => ({
+      id,
+      label: i18n.t(`academy.guide.${id}`),
+      active: pane.value === id,
+    })),
+  },
+  ...phases.map((phase) => ({
+    id: phase.id,
+    title: phase.title,
+    items: lessons
+      .filter((l) => l.phase === phase.id)
+      .map((lesson) => ({
+        id: lesson.id,
+        badge: String(lesson.day).padStart(2, '0'),
+        label: i18n.tl(lesson.title),
+        done: academy.isDone(lesson.id),
+        active: pane.value === 'lesson' && lesson.id === activeLesson.value.id,
+      })),
   })),
-)
+])
 
 const baseMarkdownSource = computed(() => {
   if (pane.value === 'readme') return guideSources.readme
@@ -501,13 +519,6 @@ const readerHtml = computed(() =>
       : scrollHtml.value,
 )
 
-const topProgress = computed(() => {
-  if (effectiveMode.value === 'walk' && stepCount.value) {
-    return (stepIdx.value + 1) / stepCount.value
-  }
-  return readProgress.value
-})
-
 const stepKindLabel: Record<StepKind, string> = {
   intro: '导言',
   goal: '目标',
@@ -571,54 +582,26 @@ const readerTitle = computed(() => {
   return i18n.tl(activeLesson.value.title)
 })
 
-function scrollActiveIntoView() {
-  nextTick(() => {
-    readerEl.value?.scrollTo({ top: 0 })
-    const active = listEl.value?.querySelector<HTMLElement>('[data-active="true"]')
-    active?.scrollIntoView({ block: 'nearest' })
-  })
-}
-
-function resetReadProgress() {
-  readProgress.value = 0
-  nextTick(() => readerEl.value?.scrollTo({ top: 0 }))
-}
-
-function openLesson(lesson: LessonMeta) {
+function navigate(next: Pane, lessonId?: string) {
   editing.value = false
   documentStatus.value = 'idle'
-  closeSelectionToolbar()
-  pane.value = 'lesson'
-  activeId.value = lesson.id
-  academy.openLesson(lesson.id)
-  sideOpen.value = false
-  menuOpen.value = false
-  resetReadProgress()
-  scrollActiveIntoView()
-}
-
-function openGuide(next: Exclude<Pane, 'lesson'>) {
-  editing.value = false
   savedContent.value = null
   annotations.value = []
   closeSelectionToolbar()
-  pane.value = next
   menuOpen.value = false
-  sideOpen.value = false
-  resetReadProgress()
+  void router.replace({ query: { ...route.query, s: lessonId ?? next } })
+  if (lessonId) academy.openLesson(lessonId)
+}
+
+function onSelect(id: string) {
+  if (GUIDE_IDS.includes(id)) navigate(id as Exclude<Pane, 'lesson'>)
+  else navigate('lesson', id)
 }
 
 function goRelative(delta: number) {
   const idx = activeIndex.value + delta
   if (idx < 0 || idx >= lessons.length) return
-  openLesson(lessons[idx]!)
-}
-
-function completeAndNext() {
-  academy.markDone(activeLesson.value.id)
-  const next = lessons.find((l) => !academy.isDone(l.id) && l.day > activeLesson.value.day)
-  if (next) openLesson(next)
-  else if (hasNext.value) goRelative(1)
+  navigate('lesson', lessons[idx]!.id)
 }
 
 function setStep(i: number) {
@@ -639,6 +622,53 @@ function stepNext() {
 
 function stepPrev() {
   if (stepIdx.value > 0) setStep(stepIdx.value - 1)
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+function lessonLabel(lesson: LessonMeta) {
+  return `${pad2(lesson.day)} · ${i18n.tl(lesson.title)}`
+}
+
+const isLastStep = computed(() =>
+  effectiveMode.value === 'walk' && stepCount.value > 0 && stepIdx.value >= stepCount.value - 1,
+)
+
+const footerPrev = computed<string | null>(() => {
+  if (pane.value !== 'lesson') return null
+  if (effectiveMode.value === 'walk' && stepCount.value && stepIdx.value > 0) {
+    const s = steps.value[stepIdx.value - 1]
+    return s ? `${pad2(stepIdx.value)} · ${stepKindLabel[s.kind]}` : null
+  }
+  const prevLesson = activeIndex.value > 0 ? lessons[activeIndex.value - 1] : null
+  return prevLesson ? lessonLabel(prevLesson) : null
+})
+
+const footerNext = computed<string | null>(() => {
+  if (pane.value !== 'lesson') return null
+  if (effectiveMode.value === 'walk' && stepCount.value && !isLastStep.value) {
+    const s = steps.value[stepIdx.value + 1]
+    return s ? `${pad2(stepIdx.value + 2)} · ${stepKindLabel[s.kind]}` : null
+  }
+  const nextLesson = lessons[activeIndex.value + 1]
+  return nextLesson ? lessonLabel(nextLesson) : null
+})
+
+function onFooterPrev() {
+  if (effectiveMode.value === 'walk' && stepCount.value && stepIdx.value > 0) {
+    stepPrev()
+    return
+  }
+  goRelative(-1)
+}
+
+function onFooterNext() {
+  if (effectiveMode.value === 'walk' && stepCount.value && !isLastStep.value) {
+    stepNext()
+    return
+  }
+  if (!academy.isDone(activeLesson.value.id)) academy.markDone(activeLesson.value.id)
+  goRelative(1)
 }
 
 function askAi() {
@@ -669,54 +699,6 @@ async function copyResume() {
 function onDocClick(e: MouseEvent) {
   const t = e.target as HTMLElement | null
   if (!t?.closest('.learn__more')) menuOpen.value = false
-}
-
-function onReaderScroll() {
-  if (effectiveMode.value !== 'scroll') return
-  const el = readerEl.value
-  if (!el) return
-  const max = el.scrollHeight - el.clientHeight
-  readProgress.value = max > 0 ? Math.min(1, el.scrollTop / max) : 0
-}
-
-function onSideDragStart() {
-  dragging.value = true
-}
-
-function onSideResize(width: number) {
-  if (ui.sideCollapsed) {
-    if (width >= SIDE_EXPAND_THRESHOLD) {
-      ui.toggleSideCollapsed(false)
-      ui.setSideW(width)
-    }
-    return
-  }
-
-  if (width <= SIDE_COLLAPSE_THRESHOLD) {
-    ui.setSideW(COLLAPSED_SIDE)
-    ui.toggleSideCollapsed(true)
-    return
-  }
-
-  ui.setSideW(width)
-}
-
-function onSideDragEnd() {
-  dragging.value = false
-  if (!ui.sideCollapsed && ui.sideW <= SIDE_COLLAPSE_THRESHOLD) {
-    ui.setSideW(COLLAPSED_SIDE)
-    ui.toggleSideCollapsed(true)
-  }
-}
-
-function onSideToggle() {
-  if (ui.sideCollapsed) {
-    ui.toggleSideCollapsed(false)
-    ui.setSideW(Math.max(ui.sideW, SIDE_MIN))
-    return
-  }
-  ui.toggleSideCollapsed(true)
-  ui.setSideW(COLLAPSED_SIDE)
 }
 
 const COPY_ICON =
@@ -791,15 +773,7 @@ watch(readerHtml, () => {
   })
 })
 
-watch(
-  () => academy.todayLesson.id,
-  (id) => {
-    if (!academy.lastOpened) activeId.value = id
-  },
-)
-
 onMounted(() => {
-  scrollActiveIntoView()
   document.addEventListener('click', onDocClick)
   nextTick(() => {
     enhanceDoc()
@@ -813,226 +787,95 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    class="learn"
-    :class="{
-      'learn--side-open': sideOpen,
-      'learn--side-collapsed': ui.sideCollapsed,
-      'learn--tutor-on': ui.tutorOpen,
-      'learn--dragging': dragging,
-    }"
-    :style="{ '--side-w': ui.sideW + 'px', '--tutor-w': ui.tutorW + 'px' }"
+  <ReaderShell
+    back-to="/learn"
+    :title="BOOK_TITLE"
+    :done="academy.doneCount"
+    :total="academy.totalCount"
+    :groups="groups"
+    @select="onSelect"
   >
-    <button
-      v-if="sideOpen"
-      type="button"
-      class="learn__scrim learn__scrim--side"
-      aria-label="关闭课表"
-      @click="sideOpen = false"
-    />
-
-    <aside class="learn__side">
-      <div class="learn__side-head">
-        <RouterLink
-          to="/"
-          class="learn__brand"
-          aria-label="Lab Studio"
-          title="返回 Lab"
-        >
-          <svg class="learn__brand-logo" viewBox="0 0 100 100" aria-hidden="true">
-            <polygon points="50,8 87,29.5 87,70.5 50,92 13,70.5 13,29.5" fill="currentColor" />
-            <circle cx="50" cy="50" r="8" fill="var(--color-accent)" />
-          </svg>
-        </RouterLink>
-        <div class="learn__side-head-inner">
-          <div class="learn__progress">
-            <span class="learn__progress-num">{{ academy.doneCount }}</span>
-            <span class="learn__progress-sep">/</span>
-            <span class="learn__progress-total">{{ academy.totalCount }}</span>
-            <span class="learn__progress-label">{{ i18n.t('academy.progressUnit') }}</span>
-          </div>
-          <div class="learn__track" aria-hidden="true">
-            <div class="learn__fill" :style="{ width: `${academy.progressRatio * 100}%` }" />
-          </div>
-        </div>
+    <template #tools>
+      <div
+        v-if="pane === 'lesson'"
+        class="learn__mode"
+        role="group"
+        :aria-label="i18n.t('academy.mode.walk')"
+      >
         <button
           type="button"
-          class="learn__collapse-btn"
-          :aria-label="ui.sideCollapsed ? '展开课表' : '收起课表'"
-          :title="ui.sideCollapsed ? '展开课表' : '收起课表'"
-          @click="onSideToggle"
+          class="learn__mode-btn"
+          :class="{ 'learn__mode-btn--on': mode === 'walk' }"
+          :aria-label="i18n.t('academy.mode.walkAria')"
+          :title="i18n.t('academy.mode.walk')"
+          @click="mode = 'walk'"
         >
-          <PhSidebarSimple :size="16" />
+          <PhFlowArrow :size="14" />
+        </button>
+        <button
+          type="button"
+          class="learn__mode-btn"
+          :class="{ 'learn__mode-btn--on': mode === 'scroll' }"
+          :aria-label="i18n.t('academy.mode.scrollAria')"
+          :title="i18n.t('academy.mode.scroll')"
+          @click="mode = 'scroll'"
+        >
+          <PhBookOpen :size="14" />
         </button>
       </div>
 
-      <nav ref="listEl" class="learn__nav" :aria-label="i18n.t('academy.curriculum')">
-        <section v-for="group in grouped" :key="group.phase.id" class="learn__group">
-          <p class="learn__group-title">{{ i18n.tl(group.phase.title) }}</p>
-          <ul class="learn__list">
-            <li v-for="lesson in group.items" :key="lesson.id">
-              <button
-                type="button"
-                class="learn__item"
-                :data-active="pane === 'lesson' && lesson.id === activeLesson.id"
-                :class="{
-                  'learn__item--on': pane === 'lesson' && lesson.id === activeLesson.id,
-                  'learn__item--done': academy.isDone(lesson.id),
-                }"
-                :title="ui.sideCollapsed ? `${String(lesson.day).padStart(2, '0')} · ${i18n.tl(lesson.title)}` : undefined"
-                @click="openLesson(lesson)"
-              >
-                <span class="learn__item-mark" aria-hidden="true">
-                  <PhCheckCircle v-if="academy.isDone(lesson.id)" :size="15" weight="fill" />
-                  <PhCircle v-else :size="15" />
-                </span>
-                <span class="learn__item-day">{{ String(lesson.day).padStart(2, '0') }}</span>
-                <span class="learn__item-title">{{ i18n.tl(lesson.title) }}</span>
-              </button>
-            </li>
-          </ul>
-        </section>
-      </nav>
-    </aside>
+      <span
+        v-if="pane === 'lesson' && effectiveMode === 'walk' && stepCount"
+        class="learn__step-count"
+      >
+        {{ pad2(stepIdx + 1) }}<span class="learn__step-sep">/</span>{{ pad2(stepCount) }}
+      </span>
 
-    <ResizeGutter
-      class="learn__gutter learn__gutter--side"
-      :min="ui.sideCollapsed ? COLLAPSED_SIDE : SIDE_MIN"
-      :max="SIDE_MAX"
-      :value="ui.sideCollapsed ? COLLAPSED_SIDE : ui.sideW"
-      @resize="onSideResize"
-      @dragstart="onSideDragStart"
-      @dragend="onSideDragEnd"
-    />
+      <button
+        type="button"
+        class="learn__icon-btn"
+        :class="{ 'learn__icon-btn--on': ui.tutorOpen }"
+        :aria-label="i18n.t('academy.tutor.open')"
+        :title="i18n.t('academy.tutor.open')"
+        @click="ui.toggleTutor()"
+      >
+        <PhSparkle :size="16" weight="fill" />
+      </button>
 
-    <section class="learn__stage">
-      <header class="learn__top">
-        <div class="learn__top-left">
-          <button
-            type="button"
-            class="learn__menu-btn"
-            :aria-label="i18n.t('academy.openList')"
-            @click="sideOpen = true"
-          >
-            <PhList :size="18" />
+      <div class="learn__more">
+        <button
+          type="button"
+          class="learn__icon-btn"
+          :aria-expanded="menuOpen"
+          :aria-label="i18n.t('academy.more')"
+          :title="i18n.t('academy.more')"
+          @click.stop="menuOpen = !menuOpen"
+        >
+          <PhDotsThree :size="16" weight="bold" />
+        </button>
+        <div v-if="menuOpen" class="learn__menu" role="menu">
+          <button v-if="editableDocument && !editing" type="button" role="menuitem" @click="startEditing">
+            <PhPencilSimple :size="15" />
+            编辑文档
           </button>
-
-          <div class="learn__heading">
-            <h1 class="learn__title">
-              <span v-if="pane === 'lesson'" class="learn__kicker">Day {{ String(activeLesson.day).padStart(2, '0') }}</span>
-              <span v-else class="learn__kicker">{{ i18n.t('academy.guideLabel') }}</span>
-              <span class="learn__title-text">{{ readerTitle }}</span>
-            </h1>
-          </div>
+          <button v-if="editing" type="button" role="menuitem" @click="cancelEditing">
+            <PhX :size="15" />
+            退出编辑
+          </button>
+          <button type="button" role="menuitem" @click="copyResume">
+            <PhClipboardText :size="15" />
+            {{ copied ? i18n.t('academy.copied') : i18n.t('academy.copyResume') }}
+          </button>
         </div>
-
-        <div class="learn__top-right">
-          <div v-if="pane === 'lesson'" class="learn__top-group">
-            <div
-              class="learn__mode"
-              role="group"
-              :aria-label="i18n.t('academy.mode.walk')"
-            >
-              <button
-                type="button"
-                class="learn__mode-btn"
-                :class="{ 'learn__mode-btn--on': mode === 'walk' }"
-                :aria-label="i18n.t('academy.mode.walkAria')"
-                :title="i18n.t('academy.mode.walk')"
-                @click="mode = 'walk'"
-              >
-                <PhFlowArrow :size="14" />
-              </button>
-              <button
-                type="button"
-                class="learn__mode-btn"
-                :class="{ 'learn__mode-btn--on': mode === 'scroll' }"
-                :aria-label="i18n.t('academy.mode.scrollAria')"
-                :title="i18n.t('academy.mode.scroll')"
-                @click="mode = 'scroll'"
-              >
-                <PhBookOpen :size="14" />
-              </button>
-            </div>
-
-            <span
-              v-if="effectiveMode === 'walk' && stepCount"
-              class="learn__step-count"
-            >
-              {{ String(stepIdx + 1).padStart(2, '0') }}<span class="learn__step-sep">/</span>{{ String(stepCount).padStart(2, '0') }}
-            </span>
-          </div>
-
-          <span v-if="pane === 'lesson'" class="learn__top-sep" aria-hidden="true" />
-
-          <div class="learn__top-group">
-            <button
-              type="button"
-              class="learn__icon-btn"
-              :class="{ 'learn__icon-btn--on': ui.tutorOpen }"
-              :aria-label="i18n.t('academy.tutor.open')"
-              :title="i18n.t('academy.tutor.open')"
-              @click="ui.toggleTutor()"
-            >
-              <PhSparkle :size="18" weight="fill" />
-            </button>
-
-            <button
-              v-if="pane === 'lesson'"
-              type="button"
-              class="learn__icon-btn"
-              :class="{ 'learn__icon-btn--on': isDone }"
-              :aria-label="isDone ? i18n.t('academy.markUndone') : i18n.t('academy.markDone')"
-              :title="isDone ? i18n.t('academy.markUndone') : i18n.t('academy.markDone')"
-              @click="academy.toggleDone(activeLesson.id)"
-            >
-              <PhCheckCircle :size="18" :weight="isDone ? 'fill' : 'regular'" />
-            </button>
-
-            <div class="learn__more">
-              <button
-                type="button"
-                class="learn__icon-btn"
-                :aria-expanded="menuOpen"
-                :aria-label="i18n.t('academy.more')"
-                :title="i18n.t('academy.more')"
-                @click.stop="menuOpen = !menuOpen"
-              >
-                <PhDotsThree :size="18" weight="bold" />
-              </button>
-              <div v-if="menuOpen" class="learn__menu" role="menu">
-                <button v-if="editableDocument && !editing" type="button" role="menuitem" @click="startEditing">
-                  <PhPencilSimple :size="15" />
-                  编辑文档
-                </button>
-                <button v-if="editing" type="button" role="menuitem" @click="cancelEditing">
-                  <PhX :size="15" />
-                  退出编辑
-                </button>
-                <button type="button" role="menuitem" @click="copyResume">
-                  <PhClipboardText :size="15" />
-                  {{ copied ? i18n.t('academy.copied') : i18n.t('academy.copyResume') }}
-                </button>
-                <button type="button" role="menuitem" @click="openGuide('readme')">
-                  <PhBookOpen :size="15" />
-                  {{ i18n.t('academy.guide.readme') }}
-                </button>
-                <button type="button" role="menuitem" @click="openGuide('profile')">
-                  {{ i18n.t('academy.guide.profile') }}
-                </button>
-                <button type="button" role="menuitem" @click="openGuide('resume')">
-                  {{ i18n.t('academy.guide.resume') }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div class="learn__progress-top" aria-hidden="true">
-        <div class="learn__progress-top-fill" :style="{ width: `${topProgress * 100}%` }" />
       </div>
+    </template>
 
+    <div
+      class="learn__workspace"
+      :class="{ 'learn__workspace--dragging': dragging }"
+      :style="{ '--tutor-w': `${ui.tutorW}px` }"
+    >
+      <section class="learn__stage">
       <div class="learn__reader-wrap">
         <div v-if="editing" class="learn__editor">
           <div class="learn__editor-head">
@@ -1077,16 +920,26 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
-        <article
+        <div
           v-else
           ref="readerEl"
-          class="learn__reader"
-          :class="{ 'learn__reader--walk': effectiveMode === 'walk' }"
-          @scroll="onReaderScroll"
-          @mouseup="onReaderSelection"
-          @mousedown="resetSelectionToolbar"
-          v-html="readerHtml"
-        />
+          class="learn__scroller"
+        >
+          <header class="learn__doc-head" :class="{ 'learn__doc-head--walk': effectiveMode === 'walk' }">
+            <p class="learn__doc-kicker">
+              <template v-if="pane === 'lesson'">Day {{ pad2(activeLesson.day) }}</template>
+              <template v-else>{{ i18n.t('academy.guideLabel') }}</template>
+            </p>
+            <h1 class="learn__doc-title">{{ readerTitle }}</h1>
+          </header>
+          <article
+            class="learn__reader"
+            :class="{ 'learn__reader--walk': effectiveMode === 'walk' }"
+            @mouseup="onReaderSelection"
+            @mousedown="resetSelectionToolbar"
+            v-html="readerHtml"
+          />
+        </div>
         <div
           v-if="selectionToolbar && !editing"
           class="learn__selection-toolbar"
@@ -1144,446 +997,65 @@ onUnmounted(() => {
           取消编辑
         </button>
       </footer>
-      <footer v-else-if="pane === 'lesson' && effectiveMode === 'walk'" class="learn__bar">
-        <button
-          type="button"
-          class="learn__bar-btn learn__bar-btn--ghost"
-          :disabled="stepIdx <= 0"
-          @click="stepPrev"
-        >
-          <PhArrowLeft :size="15" />
-          {{ i18n.t('academy.step.prev') }}
-        </button>
-
-        <button
-          type="button"
-          class="learn__bar-btn learn__bar-btn--primary"
-          @click="stepNext"
-        >
-          <template v-if="stepIdx < stepCount - 1">
-            {{ i18n.t('academy.step.next') }}
-            <PhArrowRight :size="15" />
-          </template>
-          <template v-else>
-            <PhCheck :size="15" weight="bold" />
-            {{ i18n.t('academy.completeNext') }}
-          </template>
-        </button>
-
-        <button
-          v-if="stepAiAction"
-          type="button"
-          class="learn__bar-btn learn__bar-btn--ghost learn__bar-btn--ai"
-          @click="askAi"
-        >
-          <PhSparkle :size="15" weight="fill" />
-          {{ stepAiAction.label }}
-        </button>
-      </footer>
-
-      <footer v-else-if="pane === 'lesson'" class="learn__bar">
-        <button
-          type="button"
-          class="learn__bar-btn learn__bar-btn--ghost"
-          :disabled="!hasPrev"
-          @click="goRelative(-1)"
-        >
-          <PhArrowLeft :size="15" />
-          {{ i18n.t('academy.prev') }}
-        </button>
-
-        <button
-          v-if="!isDone"
-          type="button"
-          class="learn__bar-btn learn__bar-btn--primary"
-          @click="completeAndNext"
-        >
-          <PhCheck :size="15" weight="bold" />
-          {{ i18n.t('academy.completeNext') }}
-        </button>
-        <button
-          v-else
-          type="button"
-          class="learn__bar-btn learn__bar-btn--primary"
-          :disabled="!hasNext"
-          @click="goRelative(1)"
-        >
-          {{ i18n.t('academy.next') }}
-          <PhArrowRight :size="15" />
-        </button>
-
-        <button
-          type="button"
-          class="learn__bar-btn learn__bar-btn--ghost"
-          :class="{ 'learn__bar-btn--done': isDone }"
-          @click="academy.toggleDone(activeLesson.id)"
-        >
-          <PhCheckCircle :size="15" :weight="isDone ? 'fill' : 'regular'" />
-          {{ isDone ? i18n.t('academy.done') : i18n.t('academy.markDone') }}
-        </button>
-      </footer>
-
+      <div v-else-if="pane === 'lesson'" class="learn__foot">
+        <ReaderFooter
+          :done="isDone"
+          :prev="footerPrev"
+          :next="footerNext"
+          @toggle="academy.toggleDone(activeLesson.id)"
+          @prev="onFooterPrev"
+          @next="onFooterNext"
+        />
+      </div>
       <footer v-else class="learn__bar">
-        <button
-          type="button"
-          class="learn__bar-btn learn__bar-btn--primary"
-          @click="openLesson(activeLesson)"
-        >
-          <PhX :size="15" />
+        <button type="button" class="learn__bar-btn learn__bar-btn--ghost" @click="onSelect(activeLesson.id)">
+          <PhBookOpen :size="15" />
           {{ i18n.t('academy.backLesson') }}
         </button>
       </footer>
     </section>
 
-    <ResizeGutter
-      v-if="ui.tutorOpen"
-      class="learn__gutter learn__gutter--tutor"
-      :min="TUTOR_MIN"
-      :max="TUTOR_MAX"
-      :value="ui.tutorW"
-      reverse
-      @resize="ui.setTutorW"
-      @dragstart="dragging = true"
-      @dragend="dragging = false"
-    />
+      <ResizeGutter
+        v-if="ui.tutorOpen"
+        class="learn__gutter learn__gutter--tutor"
+        :min="TUTOR_MIN"
+        :max="TUTOR_MAX"
+        :value="ui.tutorW"
+        reverse
+        @resize="ui.setTutorW"
+        @dragstart="dragging = true"
+        @dragend="dragging = false"
+      />
 
-    <AiTutor
-      v-show="ui.tutorOpen"
-      ref="tutorRef"
-      :lesson="activeLesson"
-      :step="currentStep"
-      :open="ui.tutorOpen"
-      @close="ui.toggleTutor(false)"
-    />
-  </div>
+      <AiTutor
+        v-show="ui.tutorOpen"
+        ref="tutorRef"
+        :lesson="activeLesson"
+        :step="currentStep"
+        :open="ui.tutorOpen"
+        @close="ui.toggleTutor(false)"
+      />
+    </div>
+  </ReaderShell>
 </template>
 
 <style scoped lang="scss">
-.learn {
-  display: grid;
-  grid-template-columns: var(--side-w) 6px minmax(0, 1fr);
-  height: 100%;
-  min-height: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  transition: grid-template-columns 0.24s ease;
-}
-
-.learn--tutor-on {
-  grid-template-columns: var(--side-w) 6px minmax(0, 1fr) 6px var(--tutor-w);
-}
-
-.learn--side-collapsed {
-  grid-template-columns: 72px 6px minmax(0, 1fr);
-}
-
-.learn--side-collapsed.learn--tutor-on {
-  grid-template-columns: 72px 6px minmax(0, 1fr) 6px var(--tutor-w);
-}
-
-.learn--dragging {
-  transition: none;
-}
-
-.learn__scrim {
-  display: none;
-}
-
-/* ---------- Sidebar ---------- */
-.learn__side {
+/* ---------- Workspace (inside ReaderShell body) ---------- */
+.learn__workspace {
+  flex: 1 1 auto;
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--color-surface);
-}
-
-.learn__side-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 60px;
-  padding: 0 var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.learn__brand {
-  flex-shrink: 0;
-  display: inline-flex;
-  width: 40px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--color-text);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-  transition: border-color 0.15s, transform 0.15s;
-}
-
-.learn__brand:hover {
-  border-color: var(--color-accent);
-  transform: scale(1.04);
-}
-
-.learn__brand-logo {
-  width: 22px;
-  height: 22px;
-}
-
-.learn__side-head-inner {
-  flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  overflow: hidden;
-}
-
-.learn__collapse-btn {
-  flex-shrink: 0;
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s;
-}
-
-.learn__collapse-btn:hover {
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.learn--side-collapsed .learn__side-head {
-  flex-direction: row;
-  justify-content: center;
-  gap: 0.5rem;
-  height: 60px;
-  padding: 0 0.35rem;
-}
-
-.learn--side-collapsed .learn__brand {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  box-shadow: none;
-}
-
-.learn--side-collapsed .learn__brand-logo {
-  width: 17px;
-  height: 17px;
-}
-
-.learn--side-collapsed .learn__side-head-inner {
-  display: none;
-}
-
-.learn--side-collapsed .learn__collapse-btn {
-  width: 26px;
-  height: 30px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-}
-
-.learn__progress {
-  display: flex;
-  align-items: baseline;
-  gap: 0.2rem;
-  font-family: var(--font-mono);
-}
-
-.learn__progress-num {
-  font-size: 0.92rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: var(--color-text);
-}
-
-.learn__progress-sep,
-.learn__progress-total {
-  font-size: 0.82rem;
-  color: var(--color-text-muted);
-}
-
-.learn__progress-label {
-  margin-left: 0.3rem;
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
-}
-
-.learn__track {
-  height: 3px;
-  border-radius: var(--radius-full);
-  background: var(--color-surface-2);
-  overflow: hidden;
-}
-
-.learn__fill {
-  height: 100%;
-  background: var(--color-accent);
-  border-radius: inherit;
-  transition: width 0.3s ease;
-}
-
-.learn__nav {
-  flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: var(--space-2) var(--space-2) var(--space-4);
-  scrollbar-width: none;
 }
 
-.learn__nav::-webkit-scrollbar {
-  display: none;
+.learn__workspace > .tutor {
+  flex: 0 0 var(--tutor-w, 360px);
+  min-width: 0;
+  transition: flex-basis 0.24s ease;
 }
 
-.learn--side-collapsed .learn__nav {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--space-2) 0;
-  gap: 2px;
-}
-
-.learn__group + .learn__group {
-  margin-top: var(--space-3);
-}
-
-.learn__group-title {
-  margin: 0;
-  padding: 0.3rem 0.7rem;
-  font-family: var(--font-mono);
-  font-size: 0.64rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.learn__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.learn__item {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 16px 24px minmax(0, 1fr);
-  gap: 0.45rem;
-  align-items: center;
-  padding: 0.45rem 0.6rem;
-  border: none;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-
-.learn__item:hover {
-  background: var(--color-bg);
-}
-
-.learn__item--on {
-  background: var(--color-bg);
-  box-shadow: inset 0 0 0 1px var(--color-border-strong);
-}
-
-.learn__item-mark {
-  display: inline-flex;
-  color: var(--color-text-muted);
-}
-
-.learn__item--done .learn__item-mark {
-  color: var(--color-accent);
-}
-
-.learn__item-day {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--color-text-muted);
-}
-
-.learn__item--on .learn__item-day {
-  color: var(--color-accent);
-}
-
-.learn__item-title {
-  font-size: 0.82rem;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.learn--side-collapsed .learn__group-title {
-  display: block;
-  width: 100%;
-  padding: 0.5rem 0.25rem 0.25rem;
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.58rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--color-text-muted);
-}
-
-.learn--side-collapsed .learn__item-day {
-  display: inline;
-  font-size: 0.62rem;
-  text-align: center;
-}
-
-.learn--side-collapsed .learn__item-title {
-  display: none;
-}
-
-.learn--side-collapsed .learn__item {
-  width: 64px;
-  height: 28px;
-  grid-template-columns: 16px 1fr;
-  gap: 0.25rem;
-  padding: 0 0.4rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-}
-
-.learn--side-collapsed .learn__item-mark {
-  display: flex;
-  justify-content: center;
-}
-
-.learn--side-collapsed .learn__item--on {
-  background: var(--color-bg);
-  border-color: var(--color-accent);
-  box-shadow: none;
-}
-
-.learn--side-collapsed .learn__group {
-  width: 100%;
-  margin-top: 0;
-}
-
-.learn--side-collapsed .learn__list {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+.learn__workspace--dragging > .tutor {
+  transition: none;
 }
 
 /* ---------- Gutters ---------- */
@@ -1593,109 +1065,13 @@ onUnmounted(() => {
 
 /* ---------- Stage ---------- */
 .learn__stage {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   position: relative;
   background: var(--color-bg);
-}
-
-.learn__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: 60px;
-  padding: 0 var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.learn__top-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  flex: 1;
-}
-
-.learn__top-right {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.learn__menu-btn {
-  display: none;
-  width: 34px;
-  height: 34px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: 50%;
-  background: var(--color-bg);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.learn__heading {
-  min-width: 0;
-  overflow: hidden;
-}
-
-.learn__kicker {
-  flex-shrink: 0;
-  padding: 0.15rem 0.5rem;
-  border-radius: var(--radius-full);
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1.4;
-}
-
-.learn__title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0;
-  font-size: clamp(1.2rem, 2vw, 1.55rem);
-  font-weight: 650;
-  letter-spacing: -0.025em;
-  line-height: 1.25;
-  min-width: 0;
-}
-
-.learn__title-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.learn__top-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.learn__top-group {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.learn__top-sep {
-  width: 1px;
-  height: 18px;
-  background: var(--color-border);
-  margin: 0 0.15rem;
-  flex-shrink: 0;
 }
 
 .learn__mode {
@@ -1803,19 +1179,6 @@ onUnmounted(() => {
   color: var(--color-accent);
 }
 
-/* ---------- Top progress hairline ---------- */
-.learn__progress-top {
-  height: 2px;
-  background: var(--color-surface-2);
-  overflow: hidden;
-}
-
-.learn__progress-top-fill {
-  height: 100%;
-  background: var(--color-accent);
-  transition: width 0.2s ease;
-}
-
 /* ---------- Reader ---------- */
 .learn__reader-wrap {
   position: relative;
@@ -1825,18 +1188,53 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-.learn__reader {
+.learn__scroller {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: var(--space-8) clamp(var(--space-4), 5vw, var(--space-8)) var(--space-12);
-  max-width: 48rem;
-  width: 100%;
+  overflow-y: auto;
   scrollbar-width: none;
 }
 
-.learn__reader::-webkit-scrollbar {
+.learn__scroller::-webkit-scrollbar {
   display: none;
+}
+
+.learn__doc-head {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 40px clamp(var(--space-4), 5vw, var(--space-8)) 6px;
+}
+
+.learn__doc-head--walk {
+  max-width: 42rem;
+}
+
+.learn__doc-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.learn__doc-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.learn__reader {
+  max-width: 48rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 8px clamp(var(--space-4), 5vw, var(--space-8)) var(--space-12);
+  box-sizing: border-box;
 }
 
 .learn__editor {
@@ -2008,6 +1406,15 @@ onUnmounted(() => {
 .learn__reader :deep(.learn__annotation) { padding: 0.05em 0.12em; border-radius: 0.2em; color: inherit; }
 
 /* ---------- Footer ---------- */
+
+.learn__foot {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 8px clamp(var(--space-4), 5vw, var(--space-8)) 44px;
+  box-sizing: border-box;
+}
 
 .learn__reader--walk {
   max-width: 42rem;
@@ -2306,79 +1713,35 @@ onUnmounted(() => {
 
 /* ---------- Mobile ---------- */
 @media (max-width: 900px) {
-  .learn,
-  .learn--tutor-on {
-    grid-template-columns: 1fr;
-  }
-
   .learn__gutter {
     display: none;
   }
 
-  .learn__scrim--side {
+  .learn__workspace {
     display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    border: none;
-    background: rgba(0, 0, 0, 0.35);
   }
 
-  .learn__side {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 50;
-    width: min(86vw, 300px);
-    transform: translateX(-105%);
-    transition: transform 0.22s ease;
-    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.12);
-  }
-
-  .learn--side-open .learn__side {
-    transform: translateX(0);
-  }
-
-  .learn:not(.learn--side-open) .learn__scrim--side {
-    display: none;
-  }
-
-  .learn__menu-btn {
-    display: inline-flex;
-  }
-
-  .learn__top {
-    min-height: 60px;
-    padding: 0 var(--space-4);
-    padding-left: calc(44px + var(--space-4) + var(--space-2));
-    gap: var(--space-2);
-  }
-
-  .learn--side-collapsed {
-    grid-template-columns: 1fr;
-  }
-
-  .learn--side-collapsed .learn__side {
-    position: fixed;
-    display: flex;
-  }
-
-  .learn__top-right {
-    gap: 0.3rem;
-  }
-
-  .learn__top-group {
-    gap: 0.3rem;
+  .learn__workspace > .tutor {
+    flex: none;
+    width: auto;
   }
 
   .learn__step-count {
     display: none;
   }
 
+  .learn__doc-head {
+    padding-top: var(--space-5);
+  }
+
   .learn__reader {
-    padding: var(--space-4) var(--space-4) var(--space-8);
+    padding: var(--space-2) var(--space-4) var(--space-8);
     max-width: none;
+  }
+
+  .learn__foot {
+    max-width: none;
+    padding: 8px var(--space-4) 28px;
   }
 
   .learn__editor {
