@@ -297,7 +297,7 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
 .sidebar__item--active .sidebar__item-text { color: var(--color-text); }
 .sidebar__item-meta { flex-shrink: 0; font-size: 10px; color: var(--color-text-muted); opacity: 0.5; font-family: var(--font-mono); transition: opacity 0.18s ease; }
 .sidebar__item:hover .sidebar__item-meta, .sidebar__item:focus-within .sidebar__item-meta { opacity: 0; }
-.sidebar__item:hover .sidebar__item-main, .sidebar__item:focus-within .sidebar__item-main { padding-right: 48px; }
+.sidebar__item:hover .sidebar__item-main, .sidebar__item:focus-within .sidebar__item-main { padding-right: 50px; }
 .sidebar__item-action-wrap { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: flex; align-items: center; gap: 2px; opacity: 0; pointer-events: none; transition: opacity 0.18s ease; }
 .sidebar__item:hover .sidebar__item-action-wrap, .sidebar__item:focus-within .sidebar__item-action-wrap { opacity: 1; pointer-events: auto; }
 .sidebar__item-action { position: relative; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-muted); cursor: pointer; }
