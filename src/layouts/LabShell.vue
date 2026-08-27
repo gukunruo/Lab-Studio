@@ -17,7 +17,7 @@ const player = usePlayerStore()
 const route = useRoute()
 const { isPlaying } = storeToRefs(player)
 
-const isLearn = computed(() => route.name === 'learn')
+const isLearn = computed(() => String(route.name ?? '').startsWith('learn'))
 
 function toggleTheme() {
   theme.toggle()

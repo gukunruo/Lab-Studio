@@ -32,8 +32,23 @@ const router = createRouter({
         { path: '', name: 'home', component: LabHome },
         {
           path: 'learn',
-          name: 'learn',
-          component: () => import('@/views/LearnView.vue'),
+          children: [
+            {
+              path: '',
+              name: 'learn',
+              component: () => import('@/views/LearnShelfView.vue'),
+            },
+            {
+              path: 'academy',
+              name: 'learn-academy',
+              component: () => import('@/views/LearnView.vue'),
+            },
+            {
+              path: 'claude-code',
+              name: 'learn-claude-code',
+              component: () => import('@/views/CcCourseView.vue'),
+            },
+          ],
         },
         {
           path: '3d',
