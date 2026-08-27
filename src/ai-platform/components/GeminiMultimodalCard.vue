@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { PhArrowClockwise, PhDownloadSimple, PhImage, PhSpinnerGap, PhStop, PhXCircle } from '@phosphor-icons/vue'
 import type { GeminiMultimodalAssistantMessage } from '../types'
 import { controlledImageAssetId, isSafeImageUrl } from '../api'
@@ -20,13 +20,48 @@ const imageUrl = computed(() => isSafeImageUrl(props.message.imageUrl) ? props.m
 const hasReferenceImage = computed(() => Boolean(controlledImageAssetId(imageUrl.value)))
 const hasContent = computed(() => Boolean(props.message.content.trim()))
 const renderedContent = computed(() => hasContent.value ? renderMarkdown(props.message.content) : '')
+const generatingCopy = [
+  '可生成文字、图片或两者',
+  '正在理解你的描述',
+  '正在组织画面细节',
+  '正在调整光影与构图',
+]
+const generatingCopyIndex = ref(0)
+let generatingCopyTimer: ReturnType<typeof setInterval> | null = null
+
+function stopGeneratingCopyRotation() {
+  if (generatingCopyTimer) {
+    clearInterval(generatingCopyTimer)
+    generatingCopyTimer = null
+  }
+}
+
+function startGeneratingCopyRotation() {
+  stopGeneratingCopyRotation()
+  generatingCopyIndex.value = 0
+  generatingCopyTimer = setInterval(() => {
+    generatingCopyIndex.value = (generatingCopyIndex.value + 1) % generatingCopy.length
+  }, 3200)
+}
+
+watch(
+  () => props.message.status === 'generating',
+  (isGenerating) => {
+    if (isGenerating) startGeneratingCopyRotation()
+    else stopGeneratingCopyRotation()
+  },
+  { immediate: true },
+)
+
+onUnmounted(stopGeneratingCopyRotation)
+const currentGeneratingCopy = computed(() => generatingCopy[generatingCopyIndex.value])
 </script>
 
 <template>
   <section class="gemini-card">
     <div v-if="message.status === 'generating'" class="gemini-card__status gemini-card__status--generating" aria-live="polite">
       <PhSpinnerGap :size="18" weight="bold" />
-      <div><strong>Gemini 正在创作</strong><span>可生成文字、图片或两者</span></div>
+      <div class="gemini-card__status-copy"><strong>Gemini 正在创作</strong><span>{{ currentGeneratingCopy }}</span></div>
       <button class="gemini-card__secondary-action" type="button" @click="emit('abort')"><PhStop :size="13" weight="fill" /> 停止</button>
     </div>
     <div v-else-if="message.status === 'error'" class="gemini-card__status gemini-card__status--error" role="alert">
@@ -71,6 +106,7 @@ const renderedContent = computed(() => hasContent.value ? renderMarkdown(props.m
 .gemini-card__footer, .gemini-card__status { display: flex; align-items: center; }
 .gemini-card__footer { justify-content: space-between; gap: 12px; padding: 10px 12px; }
 .gemini-card__footer div, .gemini-card__status div { display: grid; gap: 2px; }
+.gemini-card__status-copy { flex: 1; min-width: 0; }
 .gemini-card__footer strong, .gemini-card__status strong { color: var(--color-text); font-size: 12px; }
 .gemini-card__footer span, .gemini-card__status span { color: var(--color-text-muted); font-size: 11px; }
 .gemini-card__download, .gemini-card__secondary-action { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); cursor: pointer; font: 600 11px var(--font-sans); padding: 6px 8px; text-decoration: none; }

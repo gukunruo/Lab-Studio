@@ -39,7 +39,7 @@ const hasReferenceImage = computed(() => Boolean(controlledImageAssetId(imageUrl
     <template v-else>
       <div v-if="isGenerating" class="image-card__status image-card__status--generating" aria-live="polite">
         <PhSpinnerGap :size="18" weight="bold" />
-        <div><strong>正在生成图片</strong><span>{{ message.modelId === 'gpt-image-2' ? 'GPT-Image-2' : 'Gemini 3 Pro Image' }}</span></div>
+        <div class="image-card__status-copy"><strong>正在生成图片</strong><span>{{ message.modelId === 'gpt-image-2' ? 'GPT-Image-2' : 'Gemini 3 Pro Image' }}</span></div>
         <button class="image-card__secondary-action" type="button" @click="emit('abort')"><PhStop :size="13" weight="fill" /> 停止</button>
       </div>
       <div v-else-if="isFailed" class="image-card__status image-card__status--error" role="alert">
@@ -140,6 +140,11 @@ const hasReferenceImage = computed(() => Boolean(controlledImageAssetId(imageUrl
 .image-card__status div {
   display: grid;
   gap: 2px;
+}
+
+.image-card__status-copy {
+  flex: 1;
+  min-width: 0;
 }
 
 .image-card__footer strong,

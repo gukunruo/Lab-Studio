@@ -15,6 +15,8 @@ export interface SeedModel {
   sortOrder: number
 }
 
+export const RETIRED_MODEL_IDS = ['deepseek-chat'] as const
+
 export const SEED_MODELS: SeedModel[] = [
   // OpenAI compatible
   { modelId: 'gpt-5.4', displayName: 'GPT 5.4', provider: 'openai-compatible', category: 'chat', vendor: 'openai', capabilities: ['streaming', 'reasoning_effort'], contextWindow: 128000, rpmLimit: 5, tpmLimit: 10000, sortOrder: 10 },
@@ -40,6 +42,9 @@ export const SEED_MODELS: SeedModel[] = [
 
 export async function seedAiModels(): Promise<void> {
   const now = new Date()
+  for (const modelId of RETIRED_MODEL_IDS) {
+    await db.delete(aiModels).where(eq(aiModels.modelId, modelId))
+  }
   for (const m of SEED_MODELS) {
     const existing = await db.select({ id: aiModels.id }).from(aiModels).where(eq(aiModels.modelId, m.modelId)).get()
     if (existing) {

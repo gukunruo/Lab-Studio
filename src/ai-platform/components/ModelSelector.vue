@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, type ComponentPublicInstance } from 'vue'
-import { useModelsStore } from '../composables/useModels'
+import { RECOMMENDED_CHAT_MODEL_IDS, useModelsStore } from '../composables/useModels'
 import type { AiModel } from '../types'
 import { PhCaretDown } from '@phosphor-icons/vue'
 
@@ -11,20 +11,13 @@ const optionRefs = ref<HTMLButtonElement[]>([])
 const emit = defineEmits<{ select: [model: AiModel] }>()
 const props = defineProps<{ currentModelId: string }>()
 
-const recommendedModelIds = [
-  'glm-5.2',
-  'doubao-seed-2.0-mini',
-  'claude-opus-5',
-  'gpt-5.6-sol',
-  'deepseek-v4-pro',
-  'kimi-k3',
-]
+const recommendedChatModelIdSet = new Set<string>(RECOMMENDED_CHAT_MODEL_IDS)
 
 const allModels = () => [...modelsStore.chatModels, ...modelsStore.reasoningModels]
-const recommendedModels = () => recommendedModelIds
+const recommendedModels = () => RECOMMENDED_CHAT_MODEL_IDS
   .map((modelId) => allModels().find((model) => model.modelId === modelId))
   .filter((model): model is AiModel => Boolean(model))
-const otherChatModels = () => modelsStore.chatModels.filter((model) => !recommendedModelIds.includes(model.modelId))
+const otherChatModels = () => modelsStore.chatModels.filter((model) => !recommendedChatModelIdSet.has(model.modelId))
 
 function availableModels(): AiModel[] {
   return allModels().filter((model) => model.status !== 'unavailable')
