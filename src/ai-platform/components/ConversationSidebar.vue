@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { PhGitBranch, PhNotePencil, PhPushPin, PhTrash } from '@phosphor-icons/vue'
+import { PhGitBranch, PhImage, PhNotePencil, PhPushPin, PhTrash } from '@phosphor-icons/vue'
 import { useConversationsStore } from '../composables/useConversations'
 import UserMenu from '@/layouts/UserMenu.vue'
 
@@ -140,6 +140,7 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
         >
           <button class="sidebar__item-main" type="button" @click="selectConversation(conv.id)">
             <PhPushPin class="sidebar__item-pin sidebar__item-pin--visible" :size="14" weight="fill" />
+            <span v-if="conv.kind === 'image'" class="sidebar__item-kind-icon" title="生图对话"><PhImage :size="13" weight="regular" /></span>
             <span class="sidebar__item-text">{{ conv.title }}</span>
             <span v-if="conv.parentConversationId !== null" class="sidebar__branch" title="分支对话"><PhGitBranch :size="12" weight="bold" /> 分支</span>
             <span class="sidebar__item-meta">{{ timeLabel(conv.updatedAt) }}</span>
@@ -165,8 +166,14 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
           class="sidebar__item"
           :class="{ 'sidebar__item--active': conv.id === store.activeId }"
         >
-          <button class="sidebar__item-main" type="button" @click="selectConversation(conv.id)">
+          <button
+            class="sidebar__item-main"
+            type="button"
+            :title="conv.kind === 'image' ? '生图对话' : undefined"
+            @click="selectConversation(conv.id)"
+          >
             <PhGitBranch v-if="conv.parentConversationId !== null" class="sidebar__item-branch-icon" :size="14" weight="bold" />
+            <PhImage v-else-if="conv.kind === 'image'" class="sidebar__item-branch-icon sidebar__item-kind-icon" :size="14" weight="regular" />
             <span v-else class="sidebar__item-dot" />
             <span class="sidebar__item-text">{{ conv.title }}</span>
             <span v-if="conv.parentConversationId !== null" class="sidebar__branch" title="分支对话">分支</span>
@@ -276,22 +283,25 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
 .sidebar__group-label { padding: 13px 8px 6px; color: var(--color-text-muted); opacity: 0.62; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; }
 .sidebar__new-entry { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); color: var(--color-text); cursor: pointer; font-family: var(--font-sans); font-size: 13px; font-weight: 600; text-align: left; }
 .sidebar__new-entry:hover { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-strong); }
-.sidebar__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 4px 2px 10px; border: none; background: transparent; border-radius: var(--radius-sm); margin-bottom: 1px; text-align: left; }
-.sidebar__item:hover { background: var(--color-surface); }
-.sidebar__item-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 6px 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
-.sidebar__item--active { background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.15); }
+.sidebar__item { --item-fade-color: var(--color-surface); position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 4px 2px 10px; border: none; background: transparent; border-radius: var(--radius-sm); margin-bottom: 1px; text-align: left; }
+.sidebar__item:hover { background: var(--item-fade-color); }
+.sidebar__item-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; width: 100%; padding: 6px 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.sidebar__item--active { background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.15); --item-fade-color: var(--color-accent-soft); }
 .sidebar__item-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-muted); flex-shrink: 0; opacity: 0.5; }
 .sidebar__item--active .sidebar__item-dot { background: var(--color-accent); opacity: 1; box-shadow: 0 0 6px var(--color-accent-glow); }
 .sidebar__item-pin,
 .sidebar__item-branch-icon { flex: 0 0 14px; color: var(--color-accent-strong); }
+.sidebar__item-kind-icon { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--color-accent-strong); }
 .sidebar__branch { flex: 0 0 auto; color: var(--color-accent-strong); font-size: 10px; font-weight: 600; }
 .sidebar__item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--color-text-muted); }
 .sidebar__item--active .sidebar__item-text { color: var(--color-text); }
-.sidebar__item-meta { flex-shrink: 0; font-size: 10px; color: var(--color-text-muted); opacity: 0.5; font-family: var(--font-mono); }
-.sidebar__item-action-wrap { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 2px; }
-.sidebar__item-action { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-muted); cursor: pointer; opacity: 0; }
+.sidebar__item-meta { flex-shrink: 0; font-size: 10px; color: var(--color-text-muted); opacity: 0.5; font-family: var(--font-mono); transition: opacity 0.15s ease; }
+.sidebar__item:hover .sidebar__item-meta, .sidebar__item:focus-within .sidebar__item-meta { opacity: 0; }
+.sidebar__item-action-wrap { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: flex; align-items: center; gap: 2px; padding-left: 32px; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+.sidebar__item-action-wrap::before { content: ''; position: absolute; top: 2px; bottom: 2px; left: 0; width: 40px; background: linear-gradient(to right, transparent, var(--item-fade-color) 70%); pointer-events: none; }
+.sidebar__item:hover .sidebar__item-action-wrap, .sidebar__item:focus-within .sidebar__item-action-wrap { opacity: 1; pointer-events: auto; }
+.sidebar__item-action { position: relative; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-muted); cursor: pointer; }
 .sidebar__item-action--danger:hover { background: color-mix(in srgb, var(--color-danger) 16%, transparent); color: var(--color-danger); }
-.sidebar__item:hover .sidebar__item-action, .sidebar__item-action:focus-visible { opacity: 1; }
 .sidebar__item-action:hover { background: var(--color-accent-soft); color: var(--color-accent-strong); }
 .sidebar__empty { padding: 24px 16px; text-align: center; font-size: 12px; color: var(--color-text-muted); }
 .sidebar__footer { padding: 12px 16px; border-top: 1px solid var(--color-border-subtle); display: flex; align-items: center; gap: 10px; }
