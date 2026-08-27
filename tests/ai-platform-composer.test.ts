@@ -20,6 +20,11 @@ test('Composer sends on Enter and preserves a newline on Shift plus Enter', () =
   assert.equal(composerSubmitMatches({ key: 'Escape', shiftKey: false }), false)
 })
 
+test('Composer does not send while an input method is committing a candidate', () => {
+  assert.equal(composerSubmitMatches({ key: 'Enter', shiftKey: false, isComposing: true, keyCode: 13 }), false)
+  assert.equal(composerSubmitMatches({ key: 'Enter', shiftKey: false, isComposing: false, keyCode: 229 }), false)
+})
+
 test('image mode retains the application-level aspect ratio metadata', () => {
   assert.deepEqual(IMAGE_ASPECT_RATIOS, ['1:1', '16:9', '9:16'])
 })
