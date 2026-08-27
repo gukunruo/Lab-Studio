@@ -1,6 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SEED_MODELS } from '../server/ai-platform-seed'
+import { RETIRED_MODEL_IDS, SEED_MODELS } from '../server/ai-platform-seed'
+import { RECOMMENDED_CHAT_MODEL_IDS } from '../src/ai-platform/composables/useModels'
+
+test('recommended chat models are ranked by the verified benchmark order', () => {
+  assert.deepEqual(RECOMMENDED_CHAT_MODEL_IDS, [
+    'glm-5.2',
+    'doubao-seed-2.0-mini',
+    'claude-opus-5',
+    'gpt-5.6-sol',
+    'deepseek-v4-pro',
+    'kimi-k3',
+  ])
+})
+
+test('retired models are explicitly removed from the deployed inventory', () => {
+  assert.ok(RETIRED_MODEL_IDS.includes('deepseek-chat'))
+})
+
 
 test('seed contains all required models', () => {
   const modelIds = SEED_MODELS.map((m) => m.modelId)

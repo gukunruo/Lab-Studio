@@ -3,6 +3,15 @@ import { ref, computed } from 'vue'
 import type { AiModel, ModelsByCategory } from '../types'
 import { fetchModels } from '../api'
 
+export const RECOMMENDED_CHAT_MODEL_IDS = [
+  'glm-5.2',
+  'doubao-seed-2.0-mini',
+  'claude-opus-5',
+  'gpt-5.6-sol',
+  'deepseek-v4-pro',
+  'kimi-k3',
+] as const
+
 export const useModelsStore = defineStore('ai-models', () => {
   const models = ref<ModelsByCategory>({})
   const loading = ref(false)

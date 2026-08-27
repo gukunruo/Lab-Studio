@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { useModelsStore } from '../composables/useModels'
+import { RECOMMENDED_CHAT_MODEL_IDS, useModelsStore } from '../composables/useModels'
 import type { AiModel } from '../types'
 import { PhCaretDown } from '@phosphor-icons/vue'
 
@@ -9,21 +9,13 @@ const open = ref(false)
 const emit = defineEmits<{ select: [model: AiModel] }>()
 const props = defineProps<{ currentModelId: string }>()
 
-const recommendedModelIds = [
-  'glm-5.2',
-  'doubao-seed-2.0-mini',
-  'claude-opus-5',
-  'gpt-5.6-sol',
-  'deepseek-v4-pro',
-  'kimi-k3',
-]
-
-const recommendedChatModels = computed(() => recommendedModelIds
+const recommendedChatModelIdSet = new Set<string>(RECOMMENDED_CHAT_MODEL_IDS)
+const recommendedChatModels = computed(() => RECOMMENDED_CHAT_MODEL_IDS
   .map((modelId) => modelsStore.chatModels.find((model) => model.modelId === modelId))
   .filter((model): model is AiModel => Boolean(model)))
 
 const otherChatModels = computed(() => modelsStore.chatModels
-  .filter((model) => !recommendedModelIds.includes(model.modelId)))
+  .filter((model) => !recommendedChatModelIdSet.has(model.modelId)))
 
 function toggle() {
   open.value = !open.value
