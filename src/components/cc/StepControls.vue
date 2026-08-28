@@ -46,7 +46,7 @@ const emit = defineEmits<{
         </button>
         <button
           type="button"
-          class="cc-step__btn"
+          class="cc-step__btn cc-step__btn--primary"
           title="播放 / 暂停"
           @click="emit('toggle')"
         >
@@ -125,20 +125,30 @@ const emit = defineEmits<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
 }
 
 .cc-step__btn:hover {
   background: var(--color-surface-2);
   color: var(--color-text);
+}
+
+.cc-step__btn--primary {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.cc-step__btn--primary:hover {
+  background: var(--color-text);
+  opacity: 0.85;
 }
 
 .cc-step__btn--disabled {
