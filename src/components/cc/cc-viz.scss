@@ -105,3 +105,20 @@
   font-size: 12px;
   color: var(--color-text-muted);
 }
+
+// —— 卡片队列过渡：TransitionGroup name="cc-viz-card" ——
+// move 提供兄弟 FLIP 滑动，leave 提供退场淡出；enter 沿用各卡片自带进入动画。
+// 全局以 !important 覆盖卡片 scoped 的 transition/animation（卡片进入动画 fill-mode:both
+// 会永久钉住 transform/opacity，压制 FLIP 的 inline transform，故 move/leave 时需释放）。
+.cc-viz-card-move {
+  animation: none !important;
+  transition: transform 0.3s ease !important;
+}
+.cc-viz-card-leave-active {
+  animation: none !important;
+  transition: opacity 0.2s ease, transform 0.2s ease !important;
+}
+.cc-viz-card-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+}

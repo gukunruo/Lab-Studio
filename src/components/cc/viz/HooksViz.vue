@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, TransitionGroup } from 'vue'
 import type { Component } from 'vue'
 import { useSteppedVisualization } from '../useSteppedVisualization'
 import StepControls from '../StepControls.vue'
@@ -187,7 +187,7 @@ const auditItems = computed(() => AUDIT_ITEMS.slice(0, currentStep.value + 1))
             </span>
             <span class="cc-hooks__surface-title">This turn</span>
           </div>
-          <div class="cc-hooks__turn">
+          <TransitionGroup name="cc-viz-card" tag="div" class="cc-hooks__turn">
             <div :key="turnState.title" class="cc-hooks__turn-card">
               <div class="cc-hooks__turn-head">
                 <component :is="turnState.icon" :size="18" />
@@ -195,7 +195,7 @@ const auditItems = computed(() => AUDIT_ITEMS.slice(0, currentStep.value + 1))
               </div>
               <div class="cc-hooks__turn-body">{{ turnState.body }}</div>
             </div>
-            <div class="cc-hooks__audit">
+            <div key="audit-log" class="cc-hooks__audit">
               <div class="cc-hooks__audit-title">Audit log</div>
               <div class="cc-hooks__audit-list">
                 <div
@@ -205,7 +205,7 @@ const auditItems = computed(() => AUDIT_ITEMS.slice(0, currentStep.value + 1))
                 >{{ item }}</div>
               </div>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
       </div>
 

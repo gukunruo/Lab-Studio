@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, TransitionGroup } from 'vue'
 import { useSteppedVisualization } from '../useSteppedVisualization'
 import StepControls from '../StepControls.vue'
 import {
@@ -145,13 +145,13 @@ function phaseActive(index: number): boolean {
             </span>
             <span class="cc-mem__surface-title">Session B: recall</span>
           </div>
-          <div class="cc-mem__surface-body">
-            <div v-if="!futureVisible" class="cc-mem__empty">future request has not arrived</div>
-            <div v-else class="cc-mem__quote">"Continue improving the web lesson visuals."</div>
-            <div v-if="selected" class="cc-mem__pick">
+          <TransitionGroup name="cc-viz-card" tag="div" class="cc-mem__surface-body">
+            <div v-if="!futureVisible" key="empty" class="cc-mem__empty">future request has not arrived</div>
+            <div v-else key="quote" class="cc-mem__quote">"Continue improving the web lesson visuals."</div>
+            <div v-if="selected" key="pick" class="cc-mem__pick">
               Catalog search selects <span class="cc-mem__mono">lcc_visual_preference.md</span>
             </div>
-            <div v-if="injected" class="cc-mem__stack">
+            <div v-if="injected" key="stack" class="cc-mem__stack">
               <div class="cc-mem__stack-title">Reading stack before LLM</div>
               <div class="cc-mem__stack-list">
                 <div class="cc-mem__stack-item">current request</div>
@@ -164,7 +164,7 @@ function phaseActive(index: number): boolean {
                 </div>
               </div>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
       </div>
 

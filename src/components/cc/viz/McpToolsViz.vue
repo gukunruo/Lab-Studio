@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, TransitionGroup } from 'vue'
 import { useSteppedVisualization } from '../useSteppedVisualization'
 import StepControls from '../StepControls.vue'
 import {
@@ -116,16 +116,14 @@ function shelfActive(...keys: string[]): boolean {
                 {{ connected ? 'connected' : 'offline' }}
               </span>
             </div>
-            <div class="cc-viz__chips cc-viz__chips--3">
-              <template v-if="discovered">
-                <span
-                  v-for="tool in SERVER_TOOLS"
-                  :key="tool.raw"
-                  class="cc-viz__chip cc-viz__chip--external"
-                >{{ tool.raw }}</span>
-              </template>
-              <div v-else class="cc-viz__chip-note">schemas hidden until connected</div>
-            </div>
+            <TransitionGroup name="cc-viz-card" tag="div" class="cc-viz__chips cc-viz__chips--3">
+              <span
+                v-for="tool in discovered ? SERVER_TOOLS : []"
+                :key="tool.raw"
+                class="cc-viz__chip cc-viz__chip--external"
+              >{{ tool.raw }}</span>
+              <div v-if="!discovered" key="hidden-note" class="cc-viz__chip-note">schemas hidden until connected</div>
+            </TransitionGroup>
           </div>
 
           <div
@@ -136,17 +134,15 @@ function shelfActive(...keys: string[]): boolean {
               <span class="cc-viz__shelf-icon"><PhPlugCharging :size="15" /></span>
               <span class="cc-viz__shelf-title">Agent workbench</span>
             </div>
-            <div class="cc-viz__chips cc-viz__chips--2">
-              <template v-if="namespaced">
-                <span
-                  v-for="(tool, i) in NAMESPACED_TOOLS"
-                  :key="tool.namespaced"
-                  class="cc-viz__chip"
-                  :class="{ 'cc-viz__chip--active': called && i === 0 }"
-                >{{ tool.namespaced }}</span>
-              </template>
-              <div v-else class="cc-viz__chip-note">no MCP tools on the belt</div>
-            </div>
+            <TransitionGroup name="cc-viz-card" tag="div" class="cc-viz__chips cc-viz__chips--2">
+              <span
+                v-for="(tool, i) in namespaced ? NAMESPACED_TOOLS : []"
+                :key="tool.namespaced"
+                class="cc-viz__chip"
+                :class="{ 'cc-viz__chip--active': called && i === 0 }"
+              >{{ tool.namespaced }}</span>
+              <div v-if="!namespaced" key="belt-note" class="cc-viz__chip-note">no MCP tools on the belt</div>
+            </TransitionGroup>
           </div>
         </div>
 

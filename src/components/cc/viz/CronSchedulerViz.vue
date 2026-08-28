@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, TransitionGroup } from 'vue'
 import { useSteppedVisualization } from '../useSteppedVisualization'
 import StepControls from '../StepControls.vue'
 import {
@@ -82,23 +82,24 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
             <span class="cc-viz__pane-icon"><PhDatabase :size="15" /></span>
             <span class="cc-viz__pane-title">Schedule book</span>
           </div>
-          <div class="cc-viz__pane-body">
-            <div v-if="currentStep === 0" class="cc-viz__schedule" :class="scheduleTone('blue')">
+          <TransitionGroup name="cc-viz-card" tag="div" class="cc-viz__pane-body">
+            <div v-if="currentStep === 0" key="draft" class="cc-viz__schedule" :class="scheduleTone('blue')">
               <div class="cc-viz__schedule-title">Draft prompt</div>
               <div class="cc-viz__schedule-sub">review open PR every weekday</div>
             </div>
             <div
               v-if="currentStep >= 1"
+              key="cron"
               class="cc-viz__schedule"
               :class="currentStep === 5 ? scheduleTone('emerald') : scheduleTone('blue')"
             >
               <div class="cc-viz__schedule-title">0 9 * * 1-5</div>
               <div class="cc-viz__schedule-sub">review open PR every weekday</div>
             </div>
-            <div class="cc-viz__placeholder">
+            <div key="placeholder" class="cc-viz__placeholder">
               {{ currentStep >= 1 ? 'stored schedules stay here' : 'no saved schedule yet' }}
             </div>
-          </div>
+          </TransitionGroup>
         </div>
 
         <div class="cc-viz__pane" :class="{ 'cc-viz__pane--active': isActive('clock', 'queue') }">
@@ -108,19 +109,22 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
           </div>
           <div class="cc-viz__pane-body">
             <div class="cc-viz__watcher">watcher: {{ currentStep >= 2 ? 'running' : 'waiting' }}</div>
-            <div
-              v-if="currentStep >= 3 && currentStep <= 4"
-              class="cc-viz__schedule"
-              :class="scheduleTone('amber')"
-            >
-              <div class="cc-viz__schedule-title">due copy</div>
-              <div class="cc-viz__schedule-sub">same prompt, current timestamp</div>
-            </div>
-            <div v-if="currentStep < 3" class="cc-viz__placeholder cc-viz__placeholder--tall">queue is empty</div>
-            <div v-if="currentStep === 5" class="cc-viz__schedule" :class="scheduleTone('emerald')">
-              <div class="cc-viz__schedule-title">queue drained</div>
-              <div class="cc-viz__schedule-sub">ready for next tick</div>
-            </div>
+            <TransitionGroup name="cc-viz-card" tag="div" class="cc-viz__queue-stack">
+              <div
+                v-if="currentStep >= 3 && currentStep <= 4"
+                key="due-copy"
+                class="cc-viz__schedule"
+                :class="scheduleTone('amber')"
+              >
+                <div class="cc-viz__schedule-title">due copy</div>
+                <div class="cc-viz__schedule-sub">same prompt, current timestamp</div>
+              </div>
+              <div v-if="currentStep < 3" key="empty" class="cc-viz__placeholder cc-viz__placeholder--tall">queue is empty</div>
+              <div v-if="currentStep === 5" key="drained" class="cc-viz__schedule" :class="scheduleTone('emerald')">
+                <div class="cc-viz__schedule-title">queue drained</div>
+                <div class="cc-viz__schedule-sub">ready for next tick</div>
+              </div>
+            </TransitionGroup>
           </div>
         </div>
 
@@ -129,21 +133,22 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
             <span class="cc-viz__pane-icon"><PhTray :size="15" /></span>
             <span class="cc-viz__pane-title">Agent inbox</span>
           </div>
-          <div class="cc-viz__pane-body">
+          <TransitionGroup name="cc-viz-card" tag="div" class="cc-viz__pane-body">
             <div
               v-if="currentStep >= 4"
+              key="agent-turn"
               class="cc-viz__schedule"
               :class="currentStep >= 5 ? scheduleTone('emerald') : scheduleTone('blue')"
             >
               <div class="cc-viz__schedule-title">agent turn</div>
               <div class="cc-viz__schedule-sub">{{ currentStep >= 5 ? 'result appended' : 'runs like a normal prompt' }}</div>
             </div>
-            <div class="cc-viz__inbox-status">
+            <div key="inbox-status" class="cc-viz__inbox-status">
               <PhCheckCircle v-if="currentStep >= 5" :size="14" />
               <PhRobot v-else :size="14" />
               <span>{{ currentStep >= 5 ? 'review summary saved' : 'agent loop available' }}</span>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
       </div>
     </div>
@@ -309,6 +314,12 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
 }
 
 .cc-viz__pane-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cc-viz__queue-stack {
   display: flex;
   flex-direction: column;
   gap: 12px;
