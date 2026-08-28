@@ -6,7 +6,7 @@ import {
   composerSubmitMatches,
   nextTextareaHeight,
 } from '../composer'
-import { PhGlobe, PhImage, PhLightning, PhPaperPlaneRight, PhSparkle, PhStop, PhX } from '@phosphor-icons/vue'
+import { PhChats, PhGlobe, PhImage, PhLightning, PhPaperPlaneRight, PhSparkle, PhStop } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -109,10 +109,17 @@ async function generateGemini() {
   await autoResize()
 }
 
-function enterImageMode() {
+function setMode(tab: 'chat' | 'gpt-image' | 'gemini') {
   if (props.streaming || props.busy || props.imageGenerating) return
-  imageModelId.value = 'gpt-image-2'
-  mode.value = 'gpt-image'
+  if (tab === 'chat') {
+    mode.value = 'chat'
+  } else if (tab === 'gpt-image') {
+    imageModelId.value = 'gpt-image-2'
+    mode.value = 'gpt-image'
+  } else {
+    imageModelId.value = 'gemini-3-pro-image'
+    mode.value = 'gemini'
+  }
 }
 
 function exitImageMode() {
@@ -160,6 +167,35 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
       <slot name="suggestions" />
     </div>
     <div class="composer" :class="{ 'composer--image': imageMode, 'composer--gemini': mode === 'gemini' }">
+      <div class="composer__modes">
+        <button
+          class="composer__mode"
+          :class="{ 'composer__mode--active': mode === 'chat' }"
+          type="button"
+          :disabled="streaming || busy || imageGenerating"
+          @click="setMode('chat')"
+        >
+          <PhChats :size="13" weight="regular" /> 对话
+        </button>
+        <button
+          class="composer__mode"
+          :class="{ 'composer__mode--active': mode === 'gpt-image' }"
+          type="button"
+          :disabled="streaming || busy || imageGenerating"
+          @click="setMode('gpt-image')"
+        >
+          <PhImage :size="13" weight="regular" /> 生图
+        </button>
+        <button
+          class="composer__mode"
+          :class="{ 'composer__mode--active': mode === 'gemini' }"
+          type="button"
+          :disabled="streaming || busy || imageGenerating"
+          @click="setMode('gemini')"
+        >
+          <PhSparkle :size="13" weight="regular" /> Gemini 创作
+        </button>
+      </div>
       <div v-if="imageMode" class="composer__image-mode">
         <span class="composer__image-label">
           <PhSparkle v-if="mode === 'gemini'" :size="15" weight="fill" />
@@ -179,9 +215,6 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
           <button type="button" @click="emit('clear-reference')">移除参考图</button>
         </span>
         <span class="composer__image-hint">Enter {{ mode === 'gemini' ? '发送' : (gptEditing ? '编辑' : '生成') }}</span>
-        <button class="composer__image-exit" type="button" aria-label="退出图片模式" title="退出图片模式" @click="exitImageMode">
-          <PhX :size="15" weight="bold" />
-        </button>
       </div>
       <textarea
         ref="textareaRef"
@@ -211,20 +244,12 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
             >
               <PhGlobe :size="13" weight="regular" /> 联网
             </button>
-            <button
-              class="composer__tool composer__tool--button"
-              type="button"
-              :disabled="streaming || busy || imageGenerating"
-              @click="enterImageMode"
-            >
-              <PhImage :size="13" weight="regular" /> 生图
-            </button>
-            <span v-if="params.reasoningEffort" class="composer__tool composer__tool--active">
-              <PhLightning :size="12" weight="fill" /> {{ params.reasoningEffort }}
+            <span v-if="params.reasoningEffort" class="composer__badge">
+              <PhLightning :size="11" weight="regular" /> {{ params.reasoningEffort }}
             </span>
-            <span v-if="params.maxTokens" class="composer__tool">max {{ params.maxTokens }}</span>
+            <span v-if="params.maxTokens" class="composer__badge">max {{ params.maxTokens }}</span>
           </template>
-          <span v-else class="composer__tool composer__tool--active">{{ selectedImageModelName }}</span>
+          <span v-else class="composer__badge">{{ selectedImageModelName }}</span>
         </div>
         <button
           v-if="streaming"
@@ -280,8 +305,13 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .composer__reference button { border: 0; background: transparent; color: var(--color-accent-strong); cursor: pointer; font: inherit; font-size: 11px; padding: 0; }
 .composer__reference button:hover { text-decoration: underline; }
 .composer__image-hint { margin-left: auto; color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
-.composer__image-exit { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-text-muted); cursor: pointer; }
-.composer__image-exit:hover { background: var(--color-surface); color: var(--color-text); }
+.composer__modes { display: flex; align-items: center; gap: 2px; padding: 10px 12px 0 18px; }
+.composer__mode { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; transition: color .15s, background .15s; }
+.composer__mode:hover:not(:disabled) { color: var(--color-text); background: var(--color-surface); }
+.composer__mode--active { color: var(--color-accent-strong); background: var(--color-accent-soft); }
+.composer__mode:disabled { cursor: not-allowed; opacity: .45; }
+.composer__mode--active:disabled { opacity: 1; }
+.composer__badge { height: 22px; padding: 0 8px; border-radius: var(--radius-full); background: transparent; color: var(--color-text-muted); font-size: 10.5px; font-family: var(--font-mono); display: inline-flex; align-items: center; gap: 4px; opacity: .75; white-space: nowrap; }
 .composer__input { width: 100%; box-sizing: border-box; background: transparent; border: none; outline: none; color: var(--color-text); font-family: var(--font-sans); font-size: 14px; line-height: 1.6; padding: 14px 18px 0; resize: none; min-height: 24px; max-height: 160px; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
 .composer__input::-webkit-scrollbar { width: 7px; }
 .composer__input::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: var(--radius-full); background: var(--color-border-strong); background-clip: padding-box; }
