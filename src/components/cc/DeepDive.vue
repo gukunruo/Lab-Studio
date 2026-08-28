@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { loadVersions, type LabDiff } from '@/learn/cc-lab'
+import { ccCrosswalkFor } from '@/learn/cc-crosswalks'
 import ExecutionFlow from './ExecutionFlow.vue'
 import ArchDiagram from './ArchDiagram.vue'
 import WhatsNew from './WhatsNew.vue'
 import DesignDecisions from './DesignDecisions.vue'
+import Crosswalk from './Crosswalk.vue'
 
 const props = defineProps<{ labId: string }>()
 
@@ -27,6 +29,8 @@ const hasDiffContent = computed(() => {
   const d = diff.value
   return !!d && (d.newClasses.length > 0 || d.newTools.length > 0 || d.newFunctions.length > 0 || d.locDelta !== 0)
 })
+
+const hasCrosswalk = computed(() => Boolean(ccCrosswalkFor(props.labId)))
 </script>
 
 <template>
@@ -49,6 +53,11 @@ const hasDiffContent = computed(() => {
     <section class="cc-dd-sec">
       <h2 class="cc-dd-sec-title">设计决策</h2>
       <DesignDecisions :lab-id="labId" />
+    </section>
+
+    <section v-if="hasCrosswalk" class="cc-dd-sec">
+      <h2 class="cc-dd-sec-title">落到你的平台</h2>
+      <Crosswalk :lab-id="labId" />
     </section>
   </div>
 </template>

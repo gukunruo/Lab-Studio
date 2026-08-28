@@ -51,7 +51,25 @@
 
 **有意推迟**：Anthropic prompt caching。它在 ai-service.tal.com 网关后难以验证，且收益要在长上下文才明显。等跑在可控 provider 上再引入。
 
-## 4. 应用到后续能力
+## 4. 案例：Agent 工具循环（agent-engine）
+
+**问题**：`server/web-search.ts` 的联网搜索是**单工具、写死**的循环——`streamOpenAiWebSearch` 只认 `web_search` 一个工具、只认 `query` 一个参数、只作用于 openai-compatible 模型。每加一个工具就要改一处循环，且无法让模型在同一轮里组合多个工具。
+
+**方案**：把它泛化成**通用 Agent 工具循环 + 服务端工具注册表**（`server/agent-engine.ts`，双 provider 归一化）：
+
+- **注册表单一事实源**：一条 `AgentTool` = `name + description + parameters + execute`，既是发给上游的工具定义，也是按名字分发执行的依据。「加一个工具 = 注册一行」。
+- **归一化读取**：`readOpenAiTurn` / `readAnthropicTurn` 把两家 SSE 流都归一成统一 `AgentTurn`（`content + toolCalls[] + finishReason + done`），让 `runAgentLoop` 对 openai-compatible 与 anthropic 通用。
+- **统一编排** `runAgentLoop`：读流（`onContent` 已边读边吐字给客户端）→ 分发给注册表 → `appendToolMessages` 回填 → 重建请求继续，直到无工具调用或到轮次上限。向客户端统一输出 **OpenAI 格式 SSE**，前端 `streamChat` 零改动。
+- **预算硬上限**：`maxRounds`（默认 `MAX_AGENT_ROUNDS`=3），达到即强制结束，避免模型无限精化工具递归。
+- **确定性兜底**：工具不存在（「（工具 X 不存在）」）、参数非法、执行异常（「（工具 X 出错：…）」）、下一轮 fetch 失败，都回填提示并 `[DONE]` 结束，绝不抛断流。
+
+**关键函数**：`buildAgentRegistry`（`server/ai-platform.ts`，注册 `web_search` / `web_fetch` / `finance_quote`）、`readOpenAiTurn` / `readAnthropicTurn`（归一化）、`buildOpenAiTools` / `buildAnthropicTools`（按 provider 生成工具定义）、`appendToolMessages`（双 provider 回填）、`runAgentLoop`（编排）、`createWebFetchExecutor` / `createFinanceQuoteExecutor`（工具 executor）。
+
+**验证**：13 个单测覆盖全部纯函数（`tests/agent-engine.test.ts`）；真机实测两个 provider 都能在同一条流里分发三个工具——openai-compatible（gpt-5.4）与 anthropic（claude-sonnet-4.6）各自 `finance_quote` 返回茅台实时行情（现价 1297.40 / 涨跌幅 +0.39%），anthropic `web_search` 检索出当日 AI 新闻，gpt-5.4 `web_fetch` 抓取示例页正文。前端对流式 SSE 渲染正常。
+
+**有意推迟**：工具活动 UI 指示器（模型调工具时转圈 / 显示「正在检索」）、工具结果卡片化展示——本期工具对用户透明，做提示推后。
+
+## 5. 应用到后续能力
 
 写新能力前，自问：
 
@@ -60,7 +78,7 @@
 - 有没有"每次都要带的长文本"（模板、工具描述、记忆）？有 → 考虑分层与缓存，但先确认能在真实 provider 上验证再引入缓存。
 - 边界输入（空、超长、异常格式）会不会坍缩？→ 加确定性兜底。
 
-## 5. 参考实现的可读清单
+## 6. 参考实现的可读清单
 
 - **pi agent**：`truncateHead` 的思路——工具结果哪个部分重要就保留哪部分；一律 truncateHead 会丢掉文件结尾的关键代码。配合分支 / 摘要压缩。核心几百行，值得直接读。
 - **Claude Code**：分层 system prompt（核心指令 + 记忆文件），AGENTS.md / CLAUDE.md 的持久项目记忆，工具结果截断。
