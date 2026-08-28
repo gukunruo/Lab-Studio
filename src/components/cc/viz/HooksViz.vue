@@ -255,15 +255,9 @@ const auditItems = computed(() => AUDIT_ITEMS.slice(0, currentStep.value + 1))
 }
 
 .cc-hooks__note--emerald {
-  border: 1px solid #a7f3d0;
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-hooks__note--emerald {
-  border-color: #064e3b;
-  background: rgba(6, 78, 59, 0.3);
-  color: #a7f3d0;
+  border: 1px solid var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-hooks__note--zinc {
@@ -304,13 +298,8 @@ const auditItems = computed(() => AUDIT_ITEMS.slice(0, currentStep.value + 1))
 }
 
 .cc-hooks__surface--active {
-  border-color: #6ee7b7;
-  background: #ecfdf5;
-}
-
-[data-theme='dark'] .cc-hooks__surface--active {
-  border-color: #064e3b;
-  background: rgba(6, 78, 59, 0.3);
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
 }
 
 .cc-hooks__surface-head {
@@ -346,7 +335,7 @@ const auditItems = computed(() => AUDIT_ITEMS.slice(0, currentStep.value + 1))
 
 .cc-hooks__surface-icon--active,
 [data-theme='dark'] .cc-hooks__surface-icon--active {
-  background: #10b981;
+  background: var(--cc-emerald-fill);
   color: #ffffff;
 }
 
@@ -374,39 +363,21 @@ const auditItems = computed(() => AUDIT_ITEMS.slice(0, currentStep.value + 1))
 }
 
 .cc-hooks__hook--blue {
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-hooks__hook--blue {
-  border-color: #1e3a8a;
-  background: rgba(30, 58, 138, 0.4);
-  color: #bfdbfe;
+  border: 1px solid var(--cc-blue-border);
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-hooks__hook--amber {
-  border: 1px solid #fde68a;
-  background: #fffbeb;
-  color: #92400e;
-}
-
-[data-theme='dark'] .cc-hooks__hook--amber {
-  border-color: #78350f;
-  background: rgba(120, 53, 15, 0.4);
-  color: #fde68a;
+  border: 1px solid var(--cc-amber-border);
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-hooks__hook--emerald {
-  border: 1px solid #a7f3d0;
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-hooks__hook--emerald {
-  border-color: #064e3b;
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
+  border: 1px solid var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-hooks__hook--zinc {
