@@ -7,32 +7,47 @@ const props = defineProps<{
   containerEl: HTMLElement | null
 }>()
 
-const RAIL_WIDTH = 26
-const PAD = 12
+// 布局常量：条高细节 + 几 px 间距 + 上下留白。
+const RAIL_WIDTH = 28
+const BASE_H = 3
+const ACTIVE_H = 5
+const GAP = 3
+const MIN_GAP = 1
+const ROW = BASE_H + GAP
+const MIN_ROW = BASE_H + MIN_GAP
+const BASE_LEN = 12
+const PAD_V = 10
+// hover 波峰：到 hover 条的距离 → 额外长度。
+const PEAK = [14, 7, 3]
 
 interface RoundInfo {
   startIndex: number
   midWithin: number
-  topPx: number
   userContent: string
   kind: 'text' | 'image'
 }
 
 const railRef = ref<HTMLElement | null>(null)
+const barsRef = ref<HTMLElement | null>(null)
 const rounds = ref<RoundInfo[]>([])
 const scrollH = ref(1)
 const clientH = ref(0)
 const activeIndex = ref(-1)
 const hoverIndex = ref(-1)
+const hoverBarTop = ref(0)
+const groupScrollable = ref(false)
+const barsOffset = ref(0)
+const rowPx = ref(ROW)
 
 let containerRO: ResizeObserver | null = null
 let railRO: ResizeObserver | null = null
 let scrollTimer: ReturnType<typeof setTimeout> | null = null
 
-const MIN_ROUNDS = 1
 const scrollable = computed(
-  () => rounds.value.length >= MIN_ROUNDS && scrollH.value > clientH.value + 1,
+  () => rounds.value.length >= 1 && scrollH.value > clientH.value + 1,
 )
+
+const hovered = computed(() => rounds.value[hoverIndex.value] ?? null)
 
 function userPrompt(msg: ChatMessage): { content: string; kind: 'text' | 'image' } {
   if (msg.type === 'image-request') return { content: (msg.prompt || '').trim(), kind: 'image' }
@@ -48,7 +63,6 @@ function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
     roundsArr.push({
       startIndex: i,
       midWithin: 0,
-      topPx: 0,
       userContent: content || (kind === 'image' ? '（图片）' : '（无内容）'),
       kind,
     })
@@ -56,16 +70,32 @@ function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
   return roundsArr
 }
 
-// One bar per round, evenly spaced across the rail and vertically centered.
-function layoutBars() {
+// 组实际高度 = 条高 x N + 间距 x (N-1)。小于可用高度时居中，超出时压缩间距（下限 MIN_GAP）
+// 尽量填满可见区；轮次极多、压缩到极限仍放不下时，退回内部滚动兜底。
+function layout() {
   const railH = railRef.value?.clientHeight ?? 0
-  const usable = Math.max(railH - PAD * 2, 0)
-  const n = Math.max(rounds.value.length, 1)
-  const slot = usable / n
-  rounds.value.forEach((r, i) => {
-    // `top` 即长条中心：translateY(-50%) 已自行居中，无需再减半高。
-    r.topPx = PAD + slot * (i + 0.5)
-  })
+  const avail = Math.max(railH - 2 * PAD_V, 0)
+  const n = rounds.value.length
+  if (n === 0) {
+    groupScrollable.value = false
+    barsOffset.value = 0
+    rowPx.value = ROW
+    return
+  }
+  const fitRow = (avail + MIN_GAP) / n
+  const raw = Math.min(ROW, fitRow)
+  if (raw >= MIN_ROW) {
+    groupScrollable.value = false
+    rowPx.value = raw
+    const gap = rowPx.value - BASE_H
+    const groupH = n * rowPx.value - gap
+    barsOffset.value = avail > 0 ? Math.max((avail - groupH) / 2, 0) : 0
+    if (barsRef.value) barsRef.value.scrollTop = 0
+  } else {
+    groupScrollable.value = true
+    rowPx.value = MIN_ROW
+    barsOffset.value = 0
+  }
 }
 
 function sync() {
@@ -79,18 +109,17 @@ function sync() {
   const maxScroll = Math.max(0, scrollH.value - clientH.value)
   if (container.scrollTop >= maxScroll - 48) {
     activeIndex.value = rounds.value.length - 1
-    return
-  }
-  if (container.scrollTop <= 48) {
+  } else if (container.scrollTop <= 48) {
     activeIndex.value = 0
-    return
+  } else {
+    const anchorY = container.scrollTop + clientH.value * 0.25
+    let best = 0
+    rounds.value.forEach((r, i) => {
+      if (r.midWithin <= anchorY) best = i
+    })
+    activeIndex.value = best
   }
-  const anchorY = container.scrollTop + clientH.value * 0.25
-  let best = 0
-  rounds.value.forEach((r, i) => {
-    if (r.midWithin <= anchorY) best = i
-  })
-  activeIndex.value = best
+  ensureBarVisible(activeIndex.value)
 }
 
 async function measure() {
@@ -109,7 +138,7 @@ async function measure() {
   rounds.value = built
   scrollH.value = Math.max(1, container.scrollHeight)
   clientH.value = Math.max(0, container.clientHeight || 0)
-  layoutBars()
+  layout()
   sync()
 }
 
@@ -120,9 +149,53 @@ function onContainerScroll() {
 function onResize() {
   if (scrollTimer) clearTimeout(scrollTimer)
   scrollTimer = setTimeout(() => {
-    layoutBars()
+    layout()
     sync()
   }, 60)
+}
+
+// 条在 bars（相对定位）内的纵向坐标。绝对定位 + 固定的 top 让条互不影响。
+function barStyle(i: number) {
+  const top = barsOffset.value + i * rowPx.value
+  const width = barWidth(i)
+  const height = i === activeIndex.value ? Math.min(ACTIVE_H, rowPx.value) : BASE_H
+  return { top: `${top}px`, left: `0px`, width: `${width}px`, height: `${height}px` }
+}
+
+// hover 波峰：hover 条最长，左右邻居递减弱，其余保持基础长度。
+function barWidth(i: number) {
+  const hi = hoverIndex.value
+  let w = BASE_LEN
+  if (hi >= 0) {
+    const d = Math.abs(i - hi)
+    if (d < PEAK.length) w += PEAK[d] ?? 0
+  }
+  if (i === activeIndex.value) w = Math.max(w, BASE_LEN + 6)
+  return w
+}
+
+function ensureBarVisible(i: number) {
+  if (!groupScrollable.value || i < 0) return
+  const bars = barsRef.value
+  const bar = bars?.querySelector<HTMLElement>(`[data-bar-index="${i}"]`)
+  if (!bars || !bar) return
+  const target = bar.offsetTop - bars.clientHeight / 2 + bar.offsetHeight / 2
+  bars.scrollTop = Math.max(0, Math.min(target, bars.scrollHeight - bars.clientHeight))
+}
+
+function onBarEnter(i: number) {
+  hoverIndex.value = i
+  ensureBarVisible(i)
+  const rail = railRef.value
+  const bar = barsRef.value?.querySelector<HTMLElement>(`[data-bar-index="${i}"]`)
+  if (!rail || !bar) return
+  const railRect = rail.getBoundingClientRect()
+  const barRect = bar.getBoundingClientRect()
+  hoverBarTop.value = barRect.top - railRect.top
+}
+
+function onBarLeave() {
+  hoverIndex.value = -1
 }
 
 function scrollToRound(r: RoundInfo) {
@@ -137,13 +210,9 @@ function scrollToRound(r: RoundInfo) {
   hoverIndex.value = -1
 }
 
-const hovered = computed(() => rounds.value[hoverIndex.value] ?? null)
-
 const tooltipStyle = computed(() => {
-  const r = hovered.value
-  if (!r) return {}
   const railH = railRef.value?.clientHeight ?? 0
-  const clamped = Math.max(0, Math.min(r.topPx, Math.max(0, railH - 44)))
+  const clamped = Math.max(0, Math.min(hoverBarTop.value, Math.max(0, railH - 48)))
   return { top: `${clamped}px` }
 })
 
@@ -174,7 +243,7 @@ watch(railRef, (el) => {
   if (el) {
     railRO = new ResizeObserver(onResize)
     railRO.observe(el)
-    layoutBars()
+    layout()
     sync()
   }
 })
@@ -196,23 +265,34 @@ onBeforeUnmount(() => {
     :style="{ width: `${RAIL_WIDTH}px` }"
     aria-label="对话缩略进度"
   >
-    <div class="progress-rail__track" />
-    <button
-      v-for="(round, i) in rounds"
-      :key="round.startIndex"
-      class="progress-rail__bar"
-      :class="{
-        'progress-rail__bar--active': i === activeIndex,
-        'progress-rail__bar--hovered': i === hoverIndex,
-      }"
-      type="button"
-      :style="{ top: `${round.topPx}px` }"
-      :title="`第 ${i + 1} 轮`"
-      :aria-label="`跳转到第 ${i + 1} 轮`"
-      @click="scrollToRound(round)"
-      @mouseenter="hoverIndex = i"
-      @mouseleave="hoverIndex = -1"
+    <div
+      class="progress-rail__track"
+      :style="{ top: `${PAD_V}px`, bottom: `${PAD_V}px` }"
     />
+    <div
+      ref="barsRef"
+      class="progress-rail__bars"
+      :class="{ 'progress-rail__bars--scrollable': groupScrollable }"
+      :style="{ top: `${PAD_V}px`, bottom: `${PAD_V}px` }"
+    >
+      <button
+        v-for="(round, i) in rounds"
+        :key="round.startIndex"
+        :data-bar-index="i"
+        class="progress-rail__bar"
+        :class="{
+          'progress-rail__bar--active': i === activeIndex,
+          'progress-rail__bar--hovered': i === hoverIndex,
+        }"
+        :style="barStyle(i)"
+        type="button"
+        :title="`第 ${i + 1} 轮`"
+        :aria-label="`跳转到第 ${i + 1} 轮`"
+        @click="scrollToRound(round)"
+        @mouseenter="onBarEnter(i)"
+        @mouseleave="onBarLeave"
+      />
+    </div>
 
     <div
       v-if="hovered"
@@ -235,38 +315,45 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   align-self: stretch;
   overflow: visible;
-  padding: 12px 0;
   box-sizing: border-box;
 }
 
 .progress-rail__track {
   position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 50%;
-  width: 16px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-border) 40%, transparent);
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--color-border);
+}
+
+.progress-rail__bars {
+  position: absolute;
+  left: 0;
+  right: 0;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.progress-rail__bars--scrollable {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .progress-rail__bar {
   position: absolute;
-  left: 50%;
-  width: 16px;
-  height: 6px;
-  transform: translate(-50%, -50%);
   border: 0;
-  border-radius: 3px;
+  padding: 0;
+  border-radius: 2px;
   background: var(--color-border-strong);
   cursor: pointer;
-  padding: 0;
-  opacity: 0.8;
+  opacity: 0.85;
   transition:
-    height 0.15s,
-    background 0.15s,
-    opacity 0.15s,
-    box-shadow 0.15s;
+    width 0.12s,
+    height 0.12s,
+    background 0.12s,
+    box-shadow 0.12s,
+    opacity 0.12s;
 }
 
 .progress-rail__bar:hover,
@@ -276,10 +363,9 @@ onBeforeUnmount(() => {
 }
 
 .progress-rail__bar--active {
-  height: 8px;
   background: var(--color-accent);
   opacity: 1;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent);
 }
 
 .progress-rail__tooltip {
@@ -295,6 +381,18 @@ onBeforeUnmount(() => {
   background: var(--color-bg-elevated);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
   pointer-events: none;
+}
+
+.progress-rail__tooltip::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 12px;
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-right: 6px solid var(--color-border-strong);
 }
 
 .progress-rail__tooltip-header {
