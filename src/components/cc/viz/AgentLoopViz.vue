@@ -297,6 +297,17 @@ function nodeProps(n: FlowNode) {
 </template>
 
 <style scoped lang="scss">
+.cc-viz--agent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 500px;
+}
+
+.cc-viz__panel {
+  padding: 16px;
+}
+
 .cc-viz__grid {
   display: flex;
   flex-direction: column;
