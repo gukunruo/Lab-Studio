@@ -9,27 +9,21 @@ const props = defineProps<{
 
 const RAIL_WIDTH = 26
 const PAD = 12
-const TICK_SPACING = 9
-const DASH_HEIGHT = 3
 
 interface RoundInfo {
   startIndex: number
   midWithin: number
+  topPx: number
   userContent: string
   kind: 'text' | 'image'
 }
 
-interface Tick {
-  topPx: number
-}
-
 const railRef = ref<HTMLElement | null>(null)
-const ticks = ref<Tick[]>([])
 const rounds = ref<RoundInfo[]>([])
 const scrollH = ref(1)
 const clientH = ref(0)
-const activeTick = ref(-1)
-const hoverTick = ref(-1)
+const activeIndex = ref(-1)
+const hoverIndex = ref(-1)
 
 let containerRO: ResizeObserver | null = null
 let railRO: ResizeObserver | null = null
@@ -54,6 +48,7 @@ function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
     roundsArr.push({
       startIndex: i,
       midWithin: 0,
+      topPx: 0,
       userContent: content || (kind === 'image' ? '（图片）' : '（无内容）'),
       kind,
     })
@@ -61,60 +56,41 @@ function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
   return roundsArr
 }
 
-function buildTicks() {
+// One bar per round, evenly spaced across the rail and vertically centered.
+function layoutBars() {
   const railH = railRef.value?.clientHeight ?? 0
-  const roomH = Math.max(railH - PAD * 2, 0)
-  const count = Math.max(2, Math.floor(roomH / TICK_SPACING) + 1)
-  const next: Tick[] = []
-  for (let i = 0; i < count; i++) {
-    next.push({ topPx: PAD + i * TICK_SPACING })
-  }
-  ticks.value = next
-}
-
-function maxScroll(): number {
-  const container = props.containerEl
-  if (!container) return 0
-  return Math.max(0, container.scrollHeight - container.clientHeight)
-}
-
-function roundForScroll(scrollTop: number): { round: RoundInfo; index: number } | null {
-  if (!rounds.value.length) return null
-  let best = 0
-  let bestDist = Infinity
+  const usable = Math.max(railH - PAD * 2, 0)
+  const n = Math.max(rounds.value.length, 1)
+  const slot = usable / n
   rounds.value.forEach((r, i) => {
-    const d = Math.abs(r.midWithin - scrollTop)
-    if (d < bestDist) {
-      bestDist = d
-      best = i
-    }
+    // `top` 即长条中心：translateY(-50%) 已自行居中，无需再减半高。
+    r.topPx = PAD + slot * (i + 0.5)
   })
-  const round = rounds.value[best]
-  if (!round) return null
-  return { round, index: best }
-}
-
-function roundIndexForTick(i: number): number | null {
-  const found = roundForScroll((i / (ticks.value.length - 1)) * maxScroll())
-  return found ? found.index : null
 }
 
 function sync() {
   const container = props.containerEl
-  const ticksLen = ticks.value.length
-  if (!container || !ticksLen) {
-    activeTick.value = -1
+  if (!container || !rounds.value.length) {
+    activeIndex.value = -1
     return
   }
   scrollH.value = Math.max(1, container.scrollHeight)
   clientH.value = Math.max(0, container.clientHeight || 0)
-  const range = maxScroll()
-  if (range <= 0) {
-    activeTick.value = 0
+  const maxScroll = Math.max(0, scrollH.value - clientH.value)
+  if (container.scrollTop >= maxScroll - 48) {
+    activeIndex.value = rounds.value.length - 1
     return
   }
-  const frac = Math.max(0, Math.min(1, container.scrollTop / range))
-  activeTick.value = Math.round(frac * (ticksLen - 1))
+  if (container.scrollTop <= 48) {
+    activeIndex.value = 0
+    return
+  }
+  const anchorY = container.scrollTop + clientH.value * 0.25
+  let best = 0
+  rounds.value.forEach((r, i) => {
+    if (r.midWithin <= anchorY) best = i
+  })
+  activeIndex.value = best
 }
 
 async function measure() {
@@ -133,7 +109,7 @@ async function measure() {
   rounds.value = built
   scrollH.value = Math.max(1, container.scrollHeight)
   clientH.value = Math.max(0, container.clientHeight || 0)
-  buildTicks()
+  layoutBars()
   sync()
 }
 
@@ -144,33 +120,30 @@ function onContainerScroll() {
 function onResize() {
   if (scrollTimer) clearTimeout(scrollTimer)
   scrollTimer = setTimeout(() => {
-    buildTicks()
+    layoutBars()
     sync()
   }, 60)
 }
 
-function scrollToTick(i: number) {
+function scrollToRound(r: RoundInfo) {
   const container = props.containerEl
-  if (!container || ticks.value.length < 2) return
-  const frac = i / (ticks.value.length - 1)
-  container.scrollTop = frac * maxScroll()
-  hoverTick.value = -1
+  if (!container) return
+  const el = container.querySelector<HTMLElement>(`[data-message-index="${r.startIndex}"]`)
+  if (!el) return
+  const containerRect = container.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  const topWithin = elRect.top - containerRect.top + container.scrollTop
+  container.scrollTop = Math.max(0, topWithin - container.clientHeight * 0.2)
+  hoverIndex.value = -1
 }
 
-const hoveredTick = computed(() => (hoverTick.value >= 0 ? ticks.value[hoverTick.value] ?? null : null))
-
-const hoverInfo = computed(() => {
-  const tick = hoveredTick.value
-  if (!tick || ticks.value.length < 2) return null
-  const frac = hoverTick.value / (ticks.value.length - 1)
-  return roundForScroll(frac * maxScroll())
-})
+const hovered = computed(() => rounds.value[hoverIndex.value] ?? null)
 
 const tooltipStyle = computed(() => {
-  const tick = hoveredTick.value
-  if (!tick) return {}
+  const r = hovered.value
+  if (!r) return {}
   const railH = railRef.value?.clientHeight ?? 0
-  const clamped = Math.max(0, Math.min(tick.topPx, Math.max(0, railH - 44)))
+  const clamped = Math.max(0, Math.min(r.topPx, Math.max(0, railH - 44)))
   return { top: `${clamped}px` }
 })
 
@@ -201,7 +174,7 @@ watch(railRef, (el) => {
   if (el) {
     railRO = new ResizeObserver(onResize)
     railRO.observe(el)
-    buildTicks()
+    layoutBars()
     sync()
   }
 })
@@ -225,33 +198,33 @@ onBeforeUnmount(() => {
   >
     <div class="progress-rail__track" />
     <button
-      v-for="(tick, i) in ticks"
-      :key="i"
-      class="progress-rail__dash"
+      v-for="(round, i) in rounds"
+      :key="round.startIndex"
+      class="progress-rail__bar"
       :class="{
-        'progress-rail__dash--active': i === activeTick,
-        'progress-rail__dash--hovered': i === hoverTick,
+        'progress-rail__bar--active': i === activeIndex,
+        'progress-rail__bar--hovered': i === hoverIndex,
       }"
       type="button"
-      :style="{ top: `${tick.topPx}px` }"
-      :title="roundIndexForTick(i) !== null ? `第 ${(roundIndexForTick(i) ?? 0) + 1} 轮` : '对话进度'"
-      :aria-label="`滚动到进度 ${Math.round((i / (ticks.length - 1)) * 100)}%`"
-      @click="scrollToTick(i)"
-      @mouseenter="hoverTick = i"
-      @mouseleave="hoverTick = -1"
+      :style="{ top: `${round.topPx}px` }"
+      :title="`第 ${i + 1} 轮`"
+      :aria-label="`跳转到第 ${i + 1} 轮`"
+      @click="scrollToRound(round)"
+      @mouseenter="hoverIndex = i"
+      @mouseleave="hoverIndex = -1"
     />
 
     <div
-      v-if="hoverInfo"
+      v-if="hovered"
       class="progress-rail__tooltip"
       :style="tooltipStyle"
       role="tooltip"
     >
       <div class="progress-rail__tooltip-header">
-        <span class="progress-rail__tooltip-turn">第 {{ hoverInfo.index + 1 }} 轮</span>
-        <span v-if="hoverInfo.round.kind === 'image'" class="progress-rail__tooltip-kind">图片</span>
+        <span class="progress-rail__tooltip-turn">第 {{ hoverIndex + 1 }} 轮</span>
+        <span v-if="hovered.kind === 'image'" class="progress-rail__tooltip-kind">图片</span>
       </div>
-      <div class="progress-rail__tooltip-content">{{ hoverInfo.round.userContent }}</div>
+      <div class="progress-rail__tooltip-content">{{ hovered.userContent }}</div>
     </div>
   </aside>
 </template>
@@ -277,14 +250,14 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--color-border) 40%, transparent);
 }
 
-.progress-rail__dash {
+.progress-rail__bar {
   position: absolute;
   left: 50%;
   width: 16px;
-  height: 3px;
+  height: 6px;
   transform: translate(-50%, -50%);
   border: 0;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--color-border-strong);
   cursor: pointer;
   padding: 0;
@@ -296,14 +269,14 @@ onBeforeUnmount(() => {
     box-shadow 0.15s;
 }
 
-.progress-rail__dash:hover,
-.progress-rail__dash--hovered {
+.progress-rail__bar:hover,
+.progress-rail__bar--hovered {
   opacity: 1;
   background: var(--color-text-muted);
 }
 
-.progress-rail__dash--active {
-  height: 7px;
+.progress-rail__bar--active {
+  height: 8px;
   background: var(--color-accent);
   opacity: 1;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
