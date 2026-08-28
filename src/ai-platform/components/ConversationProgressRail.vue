@@ -8,31 +8,36 @@ const props = defineProps<{
 }>()
 
 const RAIL_WIDTH = 26
-const MARKER_HEIGHT = 3
 const PAD = 12
+const TICK_SPACING = 9
+const DASH_HEIGHT = 3
 
-interface TurnMarker {
+interface RoundInfo {
   startIndex: number
   midWithin: number
-  topPx: number
   userContent: string
   kind: 'text' | 'image'
 }
 
+interface Tick {
+  topPx: number
+}
+
 const railRef = ref<HTMLElement | null>(null)
-const markers = ref<TurnMarker[]>([])
+const ticks = ref<Tick[]>([])
+const rounds = ref<RoundInfo[]>([])
 const scrollH = ref(1)
 const clientH = ref(0)
-const activeIndex = ref(-1)
-const hoverIndex = ref(-1)
+const activeTick = ref(-1)
+const hoverTick = ref(-1)
 
 let containerRO: ResizeObserver | null = null
 let railRO: ResizeObserver | null = null
 let scrollTimer: ReturnType<typeof setTimeout> | null = null
 
-const MIN_TURNS = 1
+const MIN_ROUNDS = 1
 const scrollable = computed(
-  () => markers.value.length >= MIN_TURNS && scrollH.value > clientH.value + 1,
+  () => rounds.value.length >= MIN_ROUNDS && scrollH.value > clientH.value + 1,
 )
 
 function userPrompt(msg: ChatMessage): { content: string; kind: 'text' | 'image' } {
@@ -41,69 +46,94 @@ function userPrompt(msg: ChatMessage): { content: string; kind: 'text' | 'image'
   return { content: ((msg as TextMessage).content || '').trim(), kind: 'text' }
 }
 
-function buildTurns(msgs: ChatMessage[]): TurnMarker[] {
-  const turns: TurnMarker[] = []
+function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
+  const roundsArr: RoundInfo[] = []
   msgs.forEach((msg, i) => {
     if (msg.role !== 'user') return
     const { content, kind } = userPrompt(msg)
-    turns.push({
+    roundsArr.push({
       startIndex: i,
       midWithin: 0,
-      topPx: 0,
       userContent: content || (kind === 'image' ? '（图片）' : '（无内容）'),
       kind,
     })
   })
-  return turns
+  return roundsArr
+}
+
+function buildTicks() {
+  const railH = railRef.value?.clientHeight ?? 0
+  const roomH = Math.max(railH - PAD * 2, 0)
+  const count = Math.max(2, Math.floor(roomH / TICK_SPACING) + 1)
+  const next: Tick[] = []
+  for (let i = 0; i < count; i++) {
+    next.push({ topPx: PAD + i * TICK_SPACING })
+  }
+  ticks.value = next
+}
+
+function maxScroll(): number {
+  const container = props.containerEl
+  if (!container) return 0
+  return Math.max(0, container.scrollHeight - container.clientHeight)
+}
+
+function roundForScroll(scrollTop: number): { round: RoundInfo; index: number } | null {
+  if (!rounds.value.length) return null
+  let best = 0
+  let bestDist = Infinity
+  rounds.value.forEach((r, i) => {
+    const d = Math.abs(r.midWithin - scrollTop)
+    if (d < bestDist) {
+      bestDist = d
+      best = i
+    }
+  })
+  const round = rounds.value[best]
+  if (!round) return null
+  return { round, index: best }
+}
+
+function roundIndexForTick(i: number): number | null {
+  const found = roundForScroll((i / (ticks.value.length - 1)) * maxScroll())
+  return found ? found.index : null
 }
 
 function sync() {
   const container = props.containerEl
-  const railH = railRef.value?.clientHeight ?? 0
-  const usable = Math.max(railH - PAD * 2 - MARKER_HEIGHT, 1)
-  const sh = container ? Math.max(1, container.scrollHeight) : 1
-  const ch = container?.clientHeight ?? 0
-  scrollH.value = sh
-  clientH.value = ch
-  for (const m of markers.value) {
-    const ratio = m.midWithin / sh
-    m.topPx = PAD + Math.max(0, Math.min(1, ratio)) * usable
-  }
-  if (!container || !markers.value.length) {
-    activeIndex.value = -1
+  const ticksLen = ticks.value.length
+  if (!container || !ticksLen) {
+    activeTick.value = -1
     return
   }
-  const maxScroll = Math.max(0, sh - ch)
-  if (container.scrollTop >= maxScroll - 48) {
-    activeIndex.value = markers.value.length - 1
+  scrollH.value = Math.max(1, container.scrollHeight)
+  clientH.value = Math.max(0, container.clientHeight || 0)
+  const range = maxScroll()
+  if (range <= 0) {
+    activeTick.value = 0
     return
   }
-  if (container.scrollTop <= 48) {
-    activeIndex.value = 0
-    return
-  }
-  const anchorY = container.scrollTop + ch * 0.25
-  let best = 0
-  markers.value.forEach((m, i) => {
-    if (m.midWithin <= anchorY) best = i
-  })
-  activeIndex.value = best
+  const frac = Math.max(0, Math.min(1, container.scrollTop / range))
+  activeTick.value = Math.round(frac * (ticksLen - 1))
 }
 
 async function measure() {
   await nextTick()
   const container = props.containerEl
   if (!container) return
-  const built = buildTurns(props.messages)
+  const built = buildRounds(props.messages)
   const containerRect = container.getBoundingClientRect()
-  for (const t of built) {
-    const el = container.querySelector<HTMLElement>(`[data-message-index="${t.startIndex}"]`)
+  for (const r of built) {
+    const el = container.querySelector<HTMLElement>(`[data-message-index="${r.startIndex}"]`)
     if (el) {
       const rect = el.getBoundingClientRect()
-      t.midWithin = rect.top - containerRect.top + container.scrollTop + rect.height / 2
+      r.midWithin = rect.top - containerRect.top + container.scrollTop + rect.height / 2
     }
   }
-  markers.value = built
+  rounds.value = built
+  scrollH.value = Math.max(1, container.scrollHeight)
+  clientH.value = Math.max(0, container.clientHeight || 0)
+  buildTicks()
   sync()
 }
 
@@ -114,29 +144,33 @@ function onContainerScroll() {
 function onResize() {
   if (scrollTimer) clearTimeout(scrollTimer)
   scrollTimer = setTimeout(() => {
+    buildTicks()
     sync()
   }, 60)
 }
 
-function scrollToTurn(turn: TurnMarker) {
+function scrollToTick(i: number) {
   const container = props.containerEl
-  if (!container) return
-  const el = container.querySelector<HTMLElement>(`[data-message-index="${turn.startIndex}"]`)
-  if (!el) return
-  const containerRect = container.getBoundingClientRect()
-  const elRect = el.getBoundingClientRect()
-  const topWithin = elRect.top - containerRect.top + container.scrollTop
-  container.scrollTop = Math.max(0, topWithin - container.clientHeight * 0.2)
-  hoverIndex.value = -1
+  if (!container || ticks.value.length < 2) return
+  const frac = i / (ticks.value.length - 1)
+  container.scrollTop = frac * maxScroll()
+  hoverTick.value = -1
 }
 
-const hovered = computed(() => markers.value[hoverIndex.value] ?? null)
+const hoveredTick = computed(() => (hoverTick.value >= 0 ? ticks.value[hoverTick.value] ?? null : null))
+
+const hoverInfo = computed(() => {
+  const tick = hoveredTick.value
+  if (!tick || ticks.value.length < 2) return null
+  const frac = hoverTick.value / (ticks.value.length - 1)
+  return roundForScroll(frac * maxScroll())
+})
 
 const tooltipStyle = computed(() => {
-  const m = markers.value[hoverIndex.value]
-  if (!m) return {}
+  const tick = hoveredTick.value
+  if (!tick) return {}
   const railH = railRef.value?.clientHeight ?? 0
-  const clamped = Math.max(0, Math.min(m.topPx, Math.max(0, railH - 44)))
+  const clamped = Math.max(0, Math.min(tick.topPx, Math.max(0, railH - 44)))
   return { top: `${clamped}px` }
 })
 
@@ -167,6 +201,7 @@ watch(railRef, (el) => {
   if (el) {
     railRO = new ResizeObserver(onResize)
     railRO.observe(el)
+    buildTicks()
     sync()
   }
 })
@@ -190,33 +225,33 @@ onBeforeUnmount(() => {
   >
     <div class="progress-rail__track" />
     <button
-      v-for="(turn, i) in markers"
-      :key="turn.startIndex"
+      v-for="(tick, i) in ticks"
+      :key="i"
       class="progress-rail__dash"
       :class="{
-        'progress-rail__dash--active': i === activeIndex,
-        'progress-rail__dash--hovered': i === hoverIndex,
+        'progress-rail__dash--active': i === activeTick,
+        'progress-rail__dash--hovered': i === hoverTick,
       }"
       type="button"
-      :style="{ top: `${turn.topPx}px` }"
-      :title="`第 ${i + 1} 轮`"
-      :aria-label="`跳转到第 ${i + 1} 轮`"
-      @click="scrollToTurn(turn)"
-      @mouseenter="hoverIndex = i"
-      @mouseleave="hoverIndex = -1"
+      :style="{ top: `${tick.topPx}px` }"
+      :title="roundIndexForTick(i) !== null ? `第 ${(roundIndexForTick(i) ?? 0) + 1} 轮` : '对话进度'"
+      :aria-label="`滚动到进度 ${Math.round((i / (ticks.length - 1)) * 100)}%`"
+      @click="scrollToTick(i)"
+      @mouseenter="hoverTick = i"
+      @mouseleave="hoverTick = -1"
     />
 
     <div
-      v-if="hovered"
+      v-if="hoverInfo"
       class="progress-rail__tooltip"
       :style="tooltipStyle"
       role="tooltip"
     >
       <div class="progress-rail__tooltip-header">
-        <span class="progress-rail__tooltip-turn">第 {{ hoverIndex + 1 }} 轮</span>
-        <span v-if="hovered.kind === 'image'" class="progress-rail__tooltip-kind">图片</span>
+        <span class="progress-rail__tooltip-turn">第 {{ hoverInfo.index + 1 }} 轮</span>
+        <span v-if="hoverInfo.round.kind === 'image'" class="progress-rail__tooltip-kind">图片</span>
       </div>
-      <div class="progress-rail__tooltip-content">{{ hovered.userContent }}</div>
+      <div class="progress-rail__tooltip-content">{{ hoverInfo.round.userContent }}</div>
     </div>
   </aside>
 </template>
@@ -268,7 +303,7 @@ onBeforeUnmount(() => {
 }
 
 .progress-rail__dash--active {
-  height: 5px;
+  height: 7px;
   background: var(--color-accent);
   opacity: 1;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
