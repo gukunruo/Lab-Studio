@@ -19,6 +19,7 @@ import { enhanceReaderDoc } from '@/learn/reader-enhance'
 import { applyReaderAnnotations } from '@/learn/annotations'
 import { labIdForChapter } from '@/learn/cc-lab'
 import { CHAPTER_VIZ } from '@/components/cc/viz'
+import { defineAsyncComponent } from 'vue'
 import { useCcCourseStore } from '@/stores/cc-course'
 import { useLocaleStore } from '@/stores/locale'
 import { useUiStore, TUTOR_MIN, TUTOR_MAX } from '@/stores/ui'
@@ -38,6 +39,25 @@ const scrollEl = ref<HTMLElement | null>(null)
 const proseEl = ref<HTMLElement | null>(null)
 const tutorRef = ref<{ sendPrompt: (t: string) => void; quote: (t: string) => void } | null>(null)
 const dragging = ref(false)
+const activeTab = ref<'learn' | 'simulate' | 'code' | 'deep'>('learn')
+
+const AgentLoopSimulator = defineAsyncComponent(
+  () => import('@/components/cc/AgentLoopSimulator.vue'),
+)
+
+const TABS = [
+  { id: 'learn', label: '学习' },
+  { id: 'simulate', label: '模拟' },
+  { id: 'code', label: '源码' },
+  { id: 'deep', label: '深入探索' },
+] as const
+
+function switchTab(tab: string) {
+  activeTab.value = tab as typeof activeTab.value
+  if (tab !== 'learn') ann.closePopup()
+}
+
+const labId = computed(() => labIdForChapter(activeId.value))
 
 const activeId = computed(() => {
   const requested = String(route.query.s ?? '')
@@ -174,13 +194,50 @@ onMounted(() => {
           <component :is="heroViz" />
         </div>
 
+        <nav class="cc-tabs">
+          <button
+            v-for="tab in TABS"
+            :key="tab.id"
+            type="button"
+            class="cc-tab"
+            :class="{ 'cc-tab--on': activeTab === tab.id }"
+            @click="switchTab(tab.id)"
+          >
+            {{ tab.label }}
+          </button>
+        </nav>
+
         <div
+          v-show="activeTab === 'learn'"
           ref="proseEl"
           class="cc__prose"
           @mouseup="ann.onReaderSelection"
           @mousedown="ann.resetSelectionToolbar"
           v-html="html"
         />
+
+        <div v-show="activeTab === 'simulate'" class="cc__panel">
+          <div class="cc__panel-inner">
+            <AgentLoopSimulator
+              v-if="labId"
+              :key="labId"
+              :lab-id="labId"
+            />
+            <div v-else class="cc__panel-na">该章节暂无模拟内容。</div>
+          </div>
+        </div>
+
+        <div v-show="activeTab === 'code'" class="cc__panel">
+          <div class="cc__panel-inner">
+            <div v-if="!labId" class="cc__panel-na">该章节暂无源码内容。</div>
+          </div>
+        </div>
+
+        <div v-show="activeTab === 'deep'" class="cc__panel">
+          <div class="cc__panel-inner">
+            <div v-if="!labId" class="cc__panel-na">该章节暂无深入探索内容。</div>
+          </div>
+        </div>
 
         <div class="cc__foot-wrap">
           <ReaderFooter
@@ -479,6 +536,60 @@ onMounted(() => {
 
 .cc-viz-hero > * {
   margin: 0;
+}
+
+.cc-tabs {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 6px 28px 0;
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.cc-tab {
+  position: relative;
+  padding: 9px 14px;
+  border: 0;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.cc-tab:hover {
+  color: var(--color-text);
+}
+
+.cc-tab--on {
+  color: var(--color-accent-strong);
+}
+
+.cc-tab--on::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-accent-strong);
+}
+
+.cc__panel {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px 28px 32px;
+}
+
+.cc__panel-na {
+  padding: 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--color-text-muted);
 }
 
 .cc__foot-wrap {
