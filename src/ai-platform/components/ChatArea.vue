@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
 import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from '../types'
 import { controlledImageAssetId, isTextMessage, latestControlledImageAssetId, parseConversationDigest } from '../api'
 import MessageBubble from './MessageBubble.vue'
+import ConversationProgressRail from './ConversationProgressRail.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
 import { useChat } from '../composables/useChat'
@@ -632,8 +633,10 @@ onBeforeUnmount(() => invalidateRequest())
       </div>
     </header>
 
-    <div ref="messagesContainer" class="chat__messages" :class="{ 'chat__messages--empty': !messages.length && !streaming }" @scroll.passive="onMessagesScroll">
-      <div v-if="!messages.length && !streaming" class="chat__empty">
+    <div class="chat__messages-area">
+      <ConversationProgressRail :messages="messages" :container-el="messagesContainer" />
+      <div ref="messagesContainer" class="chat__messages" :class="{ 'chat__messages--empty': !messages.length && !streaming }" @scroll.passive="onMessagesScroll">
+        <div v-if="!messages.length && !streaming" class="chat__empty">
         <div class="chat__empty-icon"><PhLightning :size="28" weight="duotone" /></div>
         <h2 class="chat__empty-title">开始新的对话</h2>
         <p class="chat__empty-subtitle">选择下方推荐话题，或直接输入你想了解的内容</p>
@@ -671,6 +674,7 @@ onBeforeUnmount(() => invalidateRequest())
           <span />
         </div>
       </div>
+    </div>
     </div>
 
     <button
@@ -914,6 +918,15 @@ onBeforeUnmount(() => invalidateRequest())
   background: var(--color-accent-soft);
   border-color: var(--color-accent);
   color: var(--color-accent-strong);
+}
+
+.chat__messages-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
 }
 
 .chat__messages {
