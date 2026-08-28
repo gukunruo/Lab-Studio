@@ -7,17 +7,19 @@ const props = defineProps<{
   containerEl: HTMLElement | null
 }>()
 
-// 布局常量对齐 Paseo 网页版实测值：每格 8px、条高 2px、条长 10px/18px、左侧缩进 4px、轨道宽 36px。
+// 布局常量对齐 Paseo 网页版实测：每格 8px、条宽 10px/18px、左侧缩进 4px、轨道宽 36px。
 const RAIL_WIDTH = 36
-const BAR_H = 2
 const BAR_LEFT = 4
 const TICK = 8
-const MIN_TICK = 4
+const MIN_SPACING = 3
 const BASE_LEN = 10
+const BASE_H = 2
 const ACTIVE_LEN = 18
 const PAD_V = 12
-// hover 波峰：到 hover 条的距离 → 额外长度。
-const PEAK = [12, 6, 3]
+// hover 波峰：到焦点条的距离 → 宽度/高度增量。对齐 Paseo 实测 26×4 / 22×3.5 / 14×2.5 / 10×2。
+const WAVE_W = [16, 12, 4, 0]
+const WAVE_H = [2, 1.5, 0.5, 0]
+const WAVE_RANGE = WAVE_W.length - 1
 
 interface RoundInfo {
   startIndex: number
@@ -35,7 +37,6 @@ const clientH = ref(0)
 const activeIndex = ref(-1)
 const hoverIndex = ref(-1)
 const hoverBarTop = ref(0)
-const groupScrollable = ref(false)
 const barsOffset = ref(0)
 const rowPx = ref(TICK)
 
@@ -70,31 +71,19 @@ function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
   return roundsArr
 }
 
-// 每格固定 8px（Paseo 实测），整组竖向居中；轮次超出可用高度时压缩间距（下限 MIN_TICK），
-// 压缩到极限仍放不下时退回内部滚动兜底，避免首尾条被裁切。
+// 每格固定 8px，整组竖向居中；轮次超出可用高度时压缩间距（下限 MIN_SPACING），
+// 始终保持全部轮次可见，对齐 Paseo 的 flex-shrink 行为。
 function layout() {
   const railH = railRef.value?.clientHeight ?? 0
   const avail = Math.max(railH - 2 * PAD_V, 0)
   const n = rounds.value.length
   if (n === 0) {
-    groupScrollable.value = false
     barsOffset.value = 0
     rowPx.value = TICK
     return
   }
-  const fitRow = avail / n
-  const raw = Math.min(TICK, fitRow)
-  if (raw >= MIN_TICK) {
-    groupScrollable.value = false
-    rowPx.value = raw
-    const groupH = n * rowPx.value
-    barsOffset.value = avail > 0 ? Math.max((avail - groupH) / 2, 0) : 0
-    if (barsRef.value) barsRef.value.scrollTop = 0
-  } else {
-    groupScrollable.value = true
-    rowPx.value = MIN_TICK
-    barsOffset.value = 0
-  }
+  rowPx.value = Math.max(Math.min(TICK, avail / n), MIN_SPACING)
+  barsOffset.value = (avail - n * rowPx.value) / 2
 }
 
 function sync() {
@@ -110,8 +99,7 @@ function sync() {
     activeIndex.value = rounds.value.length - 1
   } else {
     // 阅读线设在视口顶端：长条在「下一轮用户消息顶边到达视口顶端」的瞬间切换，
-    // 与顶端内容严格同步。对齐 Paseo 实测（切换时新轮次顶边距视口顶仅 5~7px），
-    // 避免用消息中心 + 25% 锚点造成的超前/滞后跳变。
+    // 与顶端内容严格同步。对齐 Paseo 实测（切换时新轮次顶边距视口顶仅 5~7px）。
     const line = container.scrollTop
     let best = 0
     rounds.value.forEach((r, i) => {
@@ -119,7 +107,6 @@ function sync() {
     })
     activeIndex.value = best
   }
-  ensureBarVisible(activeIndex.value)
 }
 
 async function measure() {
@@ -154,38 +141,48 @@ function onResize() {
   }, 60)
 }
 
-// 条在 bars（相对定位）内的纵向坐标。绝对定位 + 固定的 top 让条互不影响。
-function barStyle(i: number) {
+function tickStyle(i: number) {
   const top = barsOffset.value + i * rowPx.value
-  return { top: `${top}px`, left: `${BAR_LEFT}px`, width: `${barWidth(i)}px`, height: `${BAR_H}px` }
+  return { top: `${top}px`, height: `${rowPx.value}px` }
 }
 
-// hover 波峰：hover 条最长，左右邻居递减弱，其余保持基础长度；激活条至少为选中长度。
+function barStyle(i: number) {
+  return { left: `${BAR_LEFT}px`, width: `${barWidth(i)}px`, height: `${barHeight(i)}px` }
+}
+
+// hover 波峰：焦点条最长最高，左右邻居按距离递减弱。整条药丸随距离同步缩放宽高。
 function barWidth(i: number) {
+  let w = i === activeIndex.value ? Math.max(BASE_LEN, ACTIVE_LEN) : BASE_LEN
   const hi = hoverIndex.value
-  let w = BASE_LEN
   if (hi >= 0) {
     const d = Math.abs(i - hi)
-    w += PEAK[d] ?? 0
+    if (d <= WAVE_RANGE) w = Math.max(w, BASE_LEN + (WAVE_W[d] ?? 0))
   }
-  if (i === activeIndex.value) w = Math.max(w, ACTIVE_LEN)
   return w
 }
 
-function ensureBarVisible(i: number) {
-  if (!groupScrollable.value || i < 0) return
-  const bars = barsRef.value
-  const bar = bars?.querySelector<HTMLElement>(`[data-bar-index="${i}"]`)
-  if (!bars || !bar) return
-  const target = bar.offsetTop - bars.clientHeight / 2 + bar.offsetHeight / 2
-  bars.scrollTop = Math.max(0, Math.min(target, bars.scrollHeight - bars.clientHeight))
+function barHeight(i: number) {
+  let h = BASE_H
+  const hi = hoverIndex.value
+  if (hi >= 0) {
+    const d = Math.abs(i - hi)
+    if (d <= WAVE_RANGE) h = Math.max(h, BASE_H + (WAVE_H[d] ?? 0))
+  }
+  return h
+}
+
+function tickClass(i: number) {
+  return {
+    'progress-rail__tick--active': i === activeIndex.value,
+    'progress-rail__tick--focused': i === hoverIndex.value,
+  }
 }
 
 function onBarEnter(i: number) {
   hoverIndex.value = i
-  ensureBarVisible(i)
   const rail = railRef.value
-  const bar = barsRef.value?.querySelector<HTMLElement>(`[data-bar-index="${i}"]`)
+  const tick = barsRef.value?.querySelector<HTMLElement>(`[data-bar-index="${i}"]`)
+  const bar = tick?.querySelector<HTMLElement>('.progress-rail__bar')
   if (!rail || !bar) return
   const railRect = rail.getBoundingClientRect()
   const barRect = bar.getBoundingClientRect()
@@ -267,7 +264,6 @@ onBeforeUnmount(() => {
     <div
       ref="barsRef"
       class="progress-rail__bars"
-      :class="{ 'progress-rail__bars--scrollable': groupScrollable }"
       :style="{ top: `${PAD_V}px`, bottom: `${PAD_V}px` }"
     >
       <button
@@ -275,12 +271,9 @@ onBeforeUnmount(() => {
         :key="round.startIndex"
         :data-bar-index="i"
         :data-testid="`chat-outline-tick-${round.startIndex}`"
-        class="progress-rail__bar"
-        :class="{
-          'progress-rail__bar--active': i === activeIndex,
-          'progress-rail__bar--hovered': i === hoverIndex,
-        }"
-        :style="barStyle(i)"
+        class="progress-rail__tick"
+        :class="tickClass(i)"
+        :style="tickStyle(i)"
         type="button"
         role="tab"
         :aria-selected="i === activeIndex"
@@ -288,7 +281,9 @@ onBeforeUnmount(() => {
         @click="scrollToRound(round)"
         @mouseenter="onBarEnter(i)"
         @mouseleave="onBarLeave"
-      />
+      >
+        <span class="progress-rail__bar" :style="barStyle(i)"></span>
+      </button>
     </div>
 
     <div
@@ -323,35 +318,39 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 
-.progress-rail__bars--scrollable {
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
+// 整格 36px 宽作为点击/悬浮命中区，格内用 flex 把长条垂直居中、左侧缩进 4px（对齐 Paseo）。
+.progress-rail__tick {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 0 0 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 .progress-rail__bar {
-  position: absolute;
-  border: 0;
-  padding: 0;
+  flex-shrink: 0;
   border-radius: 9999px;
   background: var(--color-border-strong);
-  cursor: pointer;
-  opacity: 0.9;
   transition:
-    width 0.12s,
-    background 0.12s,
-    opacity 0.12s;
+    width 140ms ease-out,
+    height 140ms ease-out,
+    background 140ms ease-out;
 }
 
-.progress-rail__bar:hover,
-.progress-rail__bar--hovered {
-  opacity: 1;
+.progress-rail__tick--active .progress-rail__bar {
   background: var(--color-text-muted);
 }
 
-.progress-rail__bar--active {
-  opacity: 1;
-  background: var(--color-text-muted);
+// 焦点条（鼠标悬浮命中）用最强前景色（暗色主题近白 / 亮色主题近黑），最高优先级。
+.progress-rail__tick--focused .progress-rail__bar {
+  background: var(--color-text);
 }
 
 .progress-rail__tooltip {
