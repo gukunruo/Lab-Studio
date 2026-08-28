@@ -21,7 +21,8 @@ const PEAK = [12, 6, 3]
 
 interface RoundInfo {
   startIndex: number
-  midWithin: number
+  // 本轮用户消息在滚动内容里的顶边坐标，用于「到达视口顶端即激活」的判定。
+  topWithin: number
   userContent: string
   kind: 'text' | 'image'
 }
@@ -61,7 +62,7 @@ function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
     const { content, kind } = userPrompt(msg)
     roundsArr.push({
       startIndex: i,
-      midWithin: 0,
+      topWithin: 0,
       userContent: content || (kind === 'image' ? '（图片）' : '（无内容）'),
       kind,
     })
@@ -107,13 +108,14 @@ function sync() {
   const maxScroll = Math.max(0, scrollH.value - clientH.value)
   if (container.scrollTop >= maxScroll - 48) {
     activeIndex.value = rounds.value.length - 1
-  } else if (container.scrollTop <= 48) {
-    activeIndex.value = 0
   } else {
-    const anchorY = container.scrollTop + clientH.value * 0.25
+    // 阅读线设在视口顶端：长条在「下一轮用户消息顶边到达视口顶端」的瞬间切换，
+    // 与顶端内容严格同步。对齐 Paseo 实测（切换时新轮次顶边距视口顶仅 5~7px），
+    // 避免用消息中心 + 25% 锚点造成的超前/滞后跳变。
+    const line = container.scrollTop
     let best = 0
     rounds.value.forEach((r, i) => {
-      if (r.midWithin <= anchorY) best = i
+      if (r.topWithin <= line) best = i
     })
     activeIndex.value = best
   }
@@ -130,7 +132,7 @@ async function measure() {
     const el = container.querySelector<HTMLElement>(`[data-message-index="${r.startIndex}"]`)
     if (el) {
       const rect = el.getBoundingClientRect()
-      r.midWithin = rect.top - containerRect.top + container.scrollTop + rect.height / 2
+      r.topWithin = rect.top - containerRect.top + container.scrollTop
     }
   }
   rounds.value = built
