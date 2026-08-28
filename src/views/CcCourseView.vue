@@ -44,6 +44,10 @@ const activeTab = ref<'learn' | 'simulate' | 'code' | 'deep'>('learn')
 const AgentLoopSimulator = defineAsyncComponent(
   () => import('@/components/cc/AgentLoopSimulator.vue'),
 )
+const SourceViewer = defineAsyncComponent(
+  () => import('@/components/cc/SourceViewer.vue'),
+)
+const DeepDive = defineAsyncComponent(() => import('@/components/cc/DeepDive.vue'))
 
 const TABS = [
   { id: 'learn', label: '学习' },
@@ -229,13 +233,15 @@ onMounted(() => {
 
         <div v-show="activeTab === 'code'" class="cc__panel">
           <div class="cc__panel-inner">
-            <div v-if="!labId" class="cc__panel-na">该章节暂无源码内容。</div>
+            <SourceViewer v-if="labId" :key="labId" :lab-id="labId" />
+            <div v-else class="cc__panel-na">该章节暂无源码内容。</div>
           </div>
         </div>
 
         <div v-show="activeTab === 'deep'" class="cc__panel">
           <div class="cc__panel-inner">
-            <div v-if="!labId" class="cc__panel-na">该章节暂无深入探索内容。</div>
+            <DeepDive v-if="labId" :key="labId" :lab-id="labId" />
+            <div v-else class="cc__panel-na">该章节暂无深入探索内容。</div>
           </div>
         </div>
 
