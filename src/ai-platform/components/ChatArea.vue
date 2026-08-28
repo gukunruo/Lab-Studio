@@ -44,6 +44,7 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const composerRef = ref<InstanceType<typeof Composer> | null>(null)
 const composerHeight = ref(130)
 const streamingContent = ref('')
+const streamingModelId = ref<string | undefined>(undefined)
 const waitingForFirstToken = ref(false)
 const generatingDigest = ref(false)
 const digestError = ref('')
@@ -58,6 +59,14 @@ const imageGenerating = computed(() => gptImageGenerating.value || geminiGenerat
 const modelsStore = useModelsStore()
 function isImageModelId(value: string): value is ImageModelId {
   return value === 'gpt-image-2' || value === 'gemini-3-pro-image'
+}
+
+function assistantModelName(msg: ChatMessage): string {
+  if (msg.role === 'assistant' && isTextMessage(msg) && msg.modelId) {
+    const model = modelsStore.findById(msg.modelId)
+    if (model) return model.displayName
+  }
+  return props.currentModel?.displayName ?? 'Assistant'
 }
 
 const imageModels = computed(() => modelsStore.imageModels.flatMap((model) => (
@@ -99,13 +108,14 @@ function invalidateRequest() {
   abortImage()
   abortGemini()
   streamingContent.value = ''
+  streamingModelId.value = undefined
   waitingForFirstToken.value = false
 }
 
 const displayMessages = computed(() => {
   const msgs = [...props.messages]
   if (streaming.value && streamingContent.value) {
-    msgs.push({ role: 'assistant', content: streamingContent.value })
+    msgs.push({ role: 'assistant', content: streamingContent.value, modelId: streamingModelId.value })
   }
   return msgs
 })
@@ -179,14 +189,16 @@ function activeDigest(): ConversationDigest | null {
 
 async function requestReply(messages: ChatMessage[]) {
   const generation = ++requestGeneration
+  const requestModelId = props.modelId
   activeRequestConversation = props.conversationKey ?? props.messages
   streamingContent.value = ''
+  streamingModelId.value = requestModelId
   waitingForFirstToken.value = true
 
   try {
     await send(
       messages,
-      props.modelId,
+      requestModelId,
       props.systemPrompt,
       props.params,
       {
@@ -199,22 +211,25 @@ async function requestReply(messages: ChatMessage[]) {
         onDone: (full) => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
           waitingForFirstToken.value = false
-          emit('update:messages', [...messages, { role: 'assistant', content: full, createdAt: new Date().toISOString() }])
+          streamingModelId.value = undefined
+          emit('update:messages', [...messages, { role: 'assistant', content: full, modelId: requestModelId, createdAt: new Date().toISOString() }])
           streamingContent.value = ''
         },
         onAbort: (full) => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
           waitingForFirstToken.value = false
+          streamingModelId.value = undefined
           const content = full || streamingContent.value
           if (content) {
-            emit('update:messages', [...messages, { role: 'assistant', content, status: 'interrupted', createdAt: new Date().toISOString() }])
+            emit('update:messages', [...messages, { role: 'assistant', content, status: 'interrupted', modelId: requestModelId, createdAt: new Date().toISOString() }])
           }
           streamingContent.value = ''
         },
         onError: () => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
           waitingForFirstToken.value = false
-          emit('update:messages', [...messages, { role: 'assistant', content: '无法完成本次回复，请检查网络或稍后重试。', status: 'error', createdAt: new Date().toISOString() }])
+          streamingModelId.value = undefined
+          emit('update:messages', [...messages, { role: 'assistant', content: '无法完成本次回复，请检查网络或稍后重试。', status: 'error', modelId: requestModelId, createdAt: new Date().toISOString() }])
           streamingContent.value = ''
         },
       },
@@ -629,7 +644,7 @@ onBeforeUnmount(() => invalidateRequest())
         :key="`${msg.createdAt ?? 'streaming'}-${i}`"
         :message="msg"
         :message-index="i"
-        :model-name="currentModel?.displayName"
+        :model-name="assistantModelName(msg)"
         :data-message-index="i"
         :retryable="textMessageFailed(msg) && !streaming && !generatingDigest && !imageGenerating"
         :regenerable="canRegenerate(i, msg) && !streaming && !generatingDigest"

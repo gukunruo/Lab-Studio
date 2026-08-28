@@ -47,6 +47,7 @@ export interface TextMessage {
   content: string
   createdAt?: string
   status?: 'error' | 'interrupted'
+  modelId?: string
 }
 
 export interface ImageRequestMessage {
