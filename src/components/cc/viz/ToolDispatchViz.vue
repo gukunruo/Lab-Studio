@@ -10,13 +10,14 @@ interface ToolDef {
   desc: string
   activeFill: string
   activeBorder: string
+  glow: string
 }
 
 const TOOLS: ToolDef[] = [
-  { name: 'bash', desc: 'Execute shell commands', activeFill: '#f97316', activeBorder: '#ea580c' },
-  { name: 'read_file', desc: 'Read file contents', activeFill: '#0ea5e9', activeBorder: '#0284c7' },
-  { name: 'write_file', desc: 'Create or overwrite a file', activeFill: '#10b981', activeBorder: '#059669' },
-  { name: 'edit_file', desc: 'Apply targeted edits', activeFill: '#8b5cf6', activeBorder: '#7c3aed' },
+  { name: 'bash', desc: 'Execute shell commands', activeFill: '#f97316', activeBorder: '#ea580c', glow: '#f97316' },
+  { name: 'read_file', desc: 'Read file contents', activeFill: '#0ea5e9', activeBorder: '#0284c7', glow: '#0ea5e9' },
+  { name: 'write_file', desc: 'Create or overwrite a file', activeFill: '#10b981', activeBorder: '#059669', glow: '#10b981' },
+  { name: 'edit_file', desc: 'Apply targeted edits', activeFill: '#8b5cf6', activeBorder: '#7c3aed', glow: '#8b5cf6' },
 ]
 
 const ACTIVE_TOOL_PER_STEP: number[] = [-1, 0, 1, 2, 3, 4]
@@ -134,7 +135,10 @@ function isToolActive(i: number): boolean {
             :marker-end="`url(#${isToolActive(i) ? 'cc-tool-arrow' : 'cc-tool-arrow-dim'})`"
             class="cc-viz__edge"
           />
-          <g :class="{ 'cc-viz__node--active': isToolActive(i) }">
+          <g
+            :class="{ 'cc-viz__node--active': isToolActive(i) }"
+            :style="isToolActive(i) ? { filter: `drop-shadow(0 0 5px ${tool.glow})` } : undefined"
+          >
             <rect
               :x="getCardX(i) - CARD_W / 2"
               :y="CARD_Y - CARD_H / 2"
@@ -241,15 +245,11 @@ function isToolActive(i: number): boolean {
 .cc-viz__req {
   padding: 3px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(59, 130, 246, 0.12);
-  color: #1d4ed8;
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
-}
-
-[data-theme='dark'] .cc-viz__req {
-  color: #93c5fd;
 }
 
 .cc-viz__waiting {
@@ -261,11 +261,7 @@ function isToolActive(i: number): boolean {
 .cc-viz__all {
   font-size: 12px;
   font-weight: 600;
-  color: #059669;
-}
-
-[data-theme='dark'] .cc-viz__all {
-  color: #34d399;
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__svg {
@@ -305,11 +301,7 @@ function isToolActive(i: number): boolean {
 }
 
 .cc-viz__kw {
-  color: #2563eb;
-}
-
-[data-theme='dark'] .cc-viz__kw {
-  color: #60a5fa;
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__snippet-tool {
@@ -318,11 +310,7 @@ function isToolActive(i: number): boolean {
 }
 
 .cc-viz__snippet-tool--on {
-  color: #2563eb;
+  color: var(--cc-blue-text);
   font-weight: 700;
-}
-
-[data-theme='dark'] .cc-viz__snippet-tool--on {
-  color: #60a5fa;
 }
 </style>

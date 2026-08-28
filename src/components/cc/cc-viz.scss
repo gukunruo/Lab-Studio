@@ -14,6 +14,28 @@
   --cc-active-text: #ffffff;
   --cc-end: #a855f7;
   --cc-end-stroke: #9333ea;
+
+  // —— 语义步骤色板：各章 Hero 配色的唯一来源，深色在下方统一覆盖 ——
+  --cc-blue-bg: #eff6ff;
+  --cc-blue-border: #bfdbfe;
+  --cc-blue-text: #1d4ed8;
+  --cc-blue-fill: #3b82f6;
+  --cc-emerald-bg: #ecfdf5;
+  --cc-emerald-border: #a7f3d0;
+  --cc-emerald-text: #047857;
+  --cc-emerald-fill: #10b981;
+  --cc-amber-bg: #fffbeb;
+  --cc-amber-border: #fde68a;
+  --cc-amber-text: #b45309;
+  --cc-amber-fill: #f59e0b;
+  --cc-violet-bg: #f5f3ff;
+  --cc-violet-border: #ddd6fe;
+  --cc-violet-text: #6d28d9;
+  --cc-violet-fill: #8b5cf6;
+  --cc-red-bg: #fef2f2;
+  --cc-red-border: #fecaca;
+  --cc-red-text: #b91c1c;
+  --cc-red-fill: #ef4444;
 }
 
 [data-theme='dark'] .cc-viz {
@@ -24,6 +46,28 @@
   --cc-arrow: #71717a;
   --cc-label: #a1a1aa;
   --cc-bg-subtle: #18181b;
+
+  // —— 语义色板深色覆盖：低饱和半透明背景，贴近原站 dark /40 取向 ——
+  --cc-blue-bg: rgba(59, 130, 246, 0.14);
+  --cc-blue-border: rgba(59, 130, 246, 0.32);
+  --cc-blue-text: #93c5fd;
+  --cc-blue-fill: #3b82f6;
+  --cc-emerald-bg: rgba(16, 185, 129, 0.14);
+  --cc-emerald-border: rgba(16, 185, 129, 0.32);
+  --cc-emerald-text: #6ee7b7;
+  --cc-emerald-fill: #10b981;
+  --cc-amber-bg: rgba(245, 158, 11, 0.14);
+  --cc-amber-border: rgba(245, 158, 11, 0.32);
+  --cc-amber-text: #fcd34d;
+  --cc-amber-fill: #f59e0b;
+  --cc-violet-bg: rgba(139, 92, 246, 0.14);
+  --cc-violet-border: rgba(139, 92, 246, 0.32);
+  --cc-violet-text: #c4b5fd;
+  --cc-violet-fill: #8b5cf6;
+  --cc-red-bg: rgba(239, 68, 68, 0.14);
+  --cc-red-border: rgba(239, 68, 68, 0.32);
+  --cc-red-text: #fca5a5;
+  --cc-red-fill: #ef4444;
 }
 
 .cc-viz__node,
