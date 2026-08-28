@@ -313,24 +313,15 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid rgba(37, 99, 235, 0.25);
+  border: 1px solid var(--cc-blue-border);
   border-radius: var(--radius-sm);
-  background: rgba(59, 130, 246, 0.08);
+  background: var(--cc-blue-bg);
   animation: cc-skill-in 0.4s ease both;
-}
-
-[data-theme='dark'] .cc-viz__ask {
-  border-color: rgba(37, 99, 235, 0.45);
-  background: rgba(59, 130, 246, 0.12);
 }
 
 .cc-viz__ask-label {
   font-size: 12px;
-  color: #2563eb;
-}
-
-[data-theme='dark'] .cc-viz__ask-label {
-  color: #60a5fa;
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__ask-code {
@@ -339,13 +330,8 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
-  background: rgba(59, 130, 246, 0.15);
-  color: #1d4ed8;
-}
-
-[data-theme='dark'] .cc-viz__ask-code {
-  background: rgba(59, 130, 246, 0.3);
-  color: #bfdbfe;
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 /* 连接箭头 */
@@ -359,7 +345,7 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
 .cc-viz__arrow-line {
   width: 1px;
   height: 24px;
-  background: #3b82f6;
+  background: var(--cc-blue-fill);
 }
 
 .cc-viz__arrow-head {
@@ -367,7 +353,7 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 6px solid #3b82f6;
+  border-top: 6px solid var(--cc-blue-fill);
 }
 
 /* 展开的 SKILL.md 卡片 */
@@ -389,7 +375,7 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
 }
 
 .cc-viz__card--purple {
-  border-color: #7c3aed;
+  border-color: var(--cc-violet-border);
 }
 
 .cc-viz__card-head {
@@ -409,29 +395,21 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
   width: 8px;
   height: 8px;
   border-radius: 9999px;
-  background: #3b82f6;
+  background: var(--cc-blue-fill);
 }
 
 .cc-viz__card--purple .cc-viz__card-dot {
-  background: #a855f7;
+  background: var(--cc-violet-fill);
 }
 
 .cc-viz__card-title {
   font-size: 12px;
   font-weight: 700;
-  color: #1d4ed8;
-}
-
-[data-theme='dark'] .cc-viz__card-title {
-  color: #93c5fd;
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__card--purple .cc-viz__card-title {
-  color: #7c3aed;
-}
-
-[data-theme='dark'] .cc-viz__card--purple .cc-viz__card-title {
-  color: #c4b5fd;
+  color: var(--cc-violet-text);
 }
 
 .cc-viz__card-badge {
@@ -439,21 +417,13 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
   padding: 2px 6px;
   font-family: var(--font-mono);
   font-size: 10px;
-  background: rgba(59, 130, 246, 0.12);
-  color: #2563eb;
-}
-
-[data-theme='dark'] .cc-viz__card-badge {
-  color: #60a5fa;
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__card--purple .cc-viz__card-badge {
-  background: rgba(168, 85, 247, 0.12);
-  color: #9333ea;
-}
-
-[data-theme='dark'] .cc-viz__card--purple .cc-viz__card-badge {
-  color: #c4b5fd;
+  background: var(--cc-violet-bg);
+  color: var(--cc-violet-text);
 }
 
 .cc-viz__lines {
@@ -472,18 +442,12 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
 /* 机制标注（amber） */
 .cc-viz__annot {
   padding: 8px 12px;
-  border: 1px solid rgba(217, 119, 6, 0.3);
+  border: 1px solid var(--cc-amber-border);
   border-radius: 6px;
-  background: rgba(217, 119, 6, 0.08);
-  color: #b45309;
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
   font-size: 12px;
   animation: cc-skill-in 0.4s ease both;
-}
-
-[data-theme='dark'] .cc-viz__annot {
-  border-color: rgba(217, 119, 6, 0.4);
-  background: rgba(217, 119, 6, 0.12);
-  color: #fbbf24;
 }
 
 /* 最终总览 */
@@ -503,8 +467,8 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
 }
 
 .cc-viz__overview-box--blue {
-  border-color: rgba(37, 99, 235, 0.3);
-  background: rgba(59, 130, 246, 0.08);
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
 }
 
 .cc-viz__overview-label {
@@ -514,11 +478,7 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
 }
 
 .cc-viz__overview-box--blue .cc-viz__overview-label {
-  color: #2563eb;
-}
-
-[data-theme='dark'] .cc-viz__overview-box--blue .cc-viz__overview-label {
-  color: #60a5fa;
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__overview-text {
@@ -527,11 +487,7 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
 }
 
 .cc-viz__overview-box--blue .cc-viz__overview-text {
-  color: #1d4ed8;
-}
-
-[data-theme='dark'] .cc-viz__overview-box--blue .cc-viz__overview-text {
-  color: #93c5fd;
+  color: var(--cc-blue-text);
 }
 
 /* Loaded 计数 */
@@ -569,11 +525,11 @@ const stepInfo = computed(() => STEPS[currentStep.value]!)
 }
 
 .cc-viz__load-fill--blue {
-  background: #3b82f6;
+  background: var(--cc-blue-fill);
 }
 
 .cc-viz__load-fill--emerald {
-  background: #10b981;
+  background: var(--cc-emerald-fill);
 }
 
 .cc-viz__load-count {

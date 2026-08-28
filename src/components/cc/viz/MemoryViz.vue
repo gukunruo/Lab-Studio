@@ -290,18 +290,13 @@ function phaseActive(index: number): boolean {
 }
 
 .cc-mem__phase--active {
-  background: #ede9fe;
-  color: #6d28d9;
+  background: var(--cc-violet-bg);
+  color: var(--cc-violet-text);
 }
 
 [data-theme='dark'] .cc-mem__phase {
   background: #27272a;
   color: #a1a1aa;
-}
-
-[data-theme='dark'] .cc-mem__phase--active {
-  background: rgba(76, 29, 149, 0.3);
-  color: #ddd6fe;
 }
 
 // Two-session row
@@ -326,13 +321,8 @@ function phaseActive(index: number): boolean {
 }
 
 .cc-mem__surface--violet {
-  border-color: #c4b5fd;
-  background: #f5f3ff;
-}
-
-[data-theme='dark'] .cc-mem__surface--violet {
-  border-color: #5b21b6;
-  background: rgba(76, 29, 149, 0.3);
+  border-color: var(--cc-violet-border);
+  background: var(--cc-violet-bg);
 }
 
 .cc-mem__surface--mt {
@@ -373,7 +363,7 @@ function phaseActive(index: number): boolean {
 
 .cc-mem__surface-icon--violet,
 [data-theme='dark'] .cc-mem__surface-icon--violet {
-  background: #8b5cf6;
+  background: var(--cc-violet-fill);
   color: #ffffff;
 }
 
@@ -405,19 +395,13 @@ function phaseActive(index: number): boolean {
 // Amber stamp card
 .cc-mem__stamp {
   padding: 16px;
-  border: 1px solid #fde68a;
+  border: 1px solid var(--cc-amber-border);
   border-radius: 8px;
-  background: #fffbeb;
+  background: var(--cc-amber-bg);
   font-size: 14px;
   line-height: 1.625;
-  color: #92400e;
+  color: var(--cc-amber-text);
   animation: cc-mem-in 0.3s ease both;
-}
-
-[data-theme='dark'] .cc-mem__stamp {
-  border-color: #78350f;
-  background: rgba(120, 53, 15, 0.4);
-  color: #fde68a;
 }
 
 .cc-mem__stamp-title {
@@ -429,18 +413,12 @@ function phaseActive(index: number): boolean {
 // Violet "catalog search selects" card
 .cc-mem__pick {
   padding: 16px;
-  border: 1px solid #c4b5fd;
+  border: 1px solid var(--cc-violet-border);
   border-radius: 8px;
-  background: #f5f3ff;
+  background: var(--cc-violet-bg);
   font-size: 14px;
-  color: #5b21b6;
+  color: var(--cc-violet-text);
   animation: cc-mem-in 0.3s ease both;
-}
-
-[data-theme='dark'] .cc-mem__pick {
-  border-color: #5b21b6;
-  background: rgba(76, 29, 149, 0.4);
-  color: #ddd6fe;
 }
 
 .cc-mem__mono {
@@ -491,23 +469,13 @@ function phaseActive(index: number): boolean {
 }
 
 .cc-mem__stack-item--violet {
-  background: #ede9fe;
-  color: #6d28d9;
-}
-
-[data-theme='dark'] .cc-mem__stack-item--violet {
-  background: rgba(76, 29, 149, 0.4);
-  color: #ddd6fe;
+  background: var(--cc-violet-bg);
+  color: var(--cc-violet-text);
 }
 
 .cc-mem__stack-item--emerald {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-mem__stack-item--emerald {
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 // Library grid (catalog | preview)
@@ -564,13 +532,8 @@ function phaseActive(index: number): boolean {
 }
 
 .cc-mem__catalog-row--selected {
-  border-color: #c4b5fd;
-  background: #f5f3ff;
-}
-
-[data-theme='dark'] .cc-mem__catalog-row--selected {
-  border-color: #5b21b6;
-  background: rgba(76, 29, 149, 0.4);
+  border-color: var(--cc-violet-border);
+  background: var(--cc-violet-bg);
 }
 
 .cc-mem__row-top {
@@ -633,33 +596,18 @@ function phaseActive(index: number): boolean {
 }
 
 .cc-mem__badge--feedback {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-[data-theme='dark'] .cc-mem__badge--feedback {
-  background: rgba(120, 53, 15, 0.4);
-  color: #fde68a;
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-mem__badge--project {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-mem__badge--project {
-  background: rgba(30, 58, 138, 0.4);
-  color: #bfdbfe;
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-mem__badge--reference {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-mem__badge--reference {
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 // Memory file detail
@@ -679,13 +627,8 @@ function phaseActive(index: number): boolean {
 }
 
 .cc-mem__detail--selected {
-  border-color: #c4b5fd;
-  background: #f5f3ff;
-}
-
-[data-theme='dark'] .cc-mem__detail--selected {
-  border-color: #5b21b6;
-  background: rgba(76, 29, 149, 0.4);
+  border-color: var(--cc-violet-border);
+  background: var(--cc-violet-bg);
 }
 
 .cc-mem__detail-head {
@@ -732,7 +675,7 @@ function phaseActive(index: number): boolean {
   gap: 4px;
   padding: 4px 10px;
   border-radius: 9999px;
-  background: #8b5cf6;
+  background: var(--cc-violet-fill);
   color: #ffffff;
   font-size: 12px;
   font-weight: 600;

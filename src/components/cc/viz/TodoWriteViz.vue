@@ -282,7 +282,7 @@ function statusLabel(status: TaskStatus): string {
   right: 0;
   bottom: 0;
   border-radius: 9999px;
-  border: 2px solid #ef4444;
+  border: 2px solid var(--cc-red-border);
   animation: cc-nag-flash 1s ease-in-out infinite;
 }
 
@@ -296,20 +296,14 @@ function statusLabel(status: TaskStatus): string {
 .cc-viz__nag-msg {
   margin-bottom: 12px;
   padding: 8px 12px;
-  border: 1px solid #fca5a5;
+  border: 1px solid var(--cc-red-border);
   border-radius: var(--radius-sm);
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--cc-red-bg);
+  color: var(--cc-red-text);
   text-align: center;
   font-size: 12px;
   font-weight: 700;
   animation: cc-nag-msg 0.4s ease;
-}
-
-[data-theme='dark'] .cc-viz__nag-msg {
-  border-color: #b91c1c;
-  background: rgba(69, 10, 10, 0.3);
-  color: #fca5a5;
 }
 
 @keyframes cc-nag-msg {
@@ -376,43 +370,23 @@ function statusLabel(status: TaskStatus): string {
 }
 
 .cc-viz__col--progress .cc-viz__col-head {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__col--progress .cc-viz__col-count {
-  background: #fde68a;
-  color: #b45309;
-}
-
-[data-theme='dark'] .cc-viz__col--progress .cc-viz__col-head {
-  background: rgba(120, 53, 15, 0.4);
-  color: #fcd34d;
-}
-
-[data-theme='dark'] .cc-viz__col--progress .cc-viz__col-count {
-  background: #92400e;
-  color: #fde68a;
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__col--done .cc-viz__col-head {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__col--done .cc-viz__col-count {
-  background: #a7f3d0;
-  color: #047857;
-}
-
-[data-theme='dark'] .cc-viz__col--done .cc-viz__col-head {
-  background: rgba(6, 78, 59, 0.4);
-  color: #6ee7b7;
-}
-
-[data-theme='dark'] .cc-viz__col--done .cc-viz__col-count {
-  background: #065f46;
-  color: #a7f3d0;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__col-body {
@@ -500,59 +474,31 @@ function statusLabel(status: TaskStatus): string {
 }
 
 .cc-viz__card--in-progress {
-  border-color: #fcd34d;
-  background: #fffbeb;
+  border-color: var(--cc-amber-border);
+  background: var(--cc-amber-bg);
 }
 
 .cc-viz__card--in-progress .cc-viz__card-label {
-  color: #b45309;
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__card--in-progress .cc-viz__card-badge {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-[data-theme='dark'] .cc-viz__card--in-progress {
-  border-color: #b45309;
-  background: rgba(69, 26, 3, 0.3);
-}
-
-[data-theme='dark'] .cc-viz__card--in-progress .cc-viz__card-label {
-  color: #fcd34d;
-}
-
-[data-theme='dark'] .cc-viz__card--in-progress .cc-viz__card-badge {
-  background: rgba(120, 53, 15, 0.4);
-  color: #fcd34d;
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__card--done {
-  border-color: #6ee7b7;
-  background: #ecfdf5;
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
 }
 
 .cc-viz__card--done .cc-viz__card-label {
-  color: #047857;
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__card--done .cc-viz__card-badge {
-  background: #d1fae5;
-  color: #047857;
-}
-
-[data-theme='dark'] .cc-viz__card--done {
-  border-color: #047857;
-  background: rgba(2, 44, 34, 0.3);
-}
-
-[data-theme='dark'] .cc-viz__card--done .cc-viz__card-label {
-  color: #6ee7b7;
-}
-
-[data-theme='dark'] .cc-viz__card--done .cc-viz__card-badge {
-  background: rgba(6, 78, 59, 0.4);
-  color: #6ee7b7;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 // Progress summary
@@ -589,11 +535,11 @@ function statusLabel(status: TaskStatus): string {
 }
 
 .cc-viz__progress-pip--in-progress {
-  background: #fbbf24;
+  background: var(--cc-amber-fill);
 }
 
 .cc-viz__progress-pip--done {
-  background: #10b981;
+  background: var(--cc-emerald-fill);
 }
 
 @media (min-width: 640px) {

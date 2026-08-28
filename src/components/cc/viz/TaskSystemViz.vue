@@ -216,33 +216,18 @@ const LANES: Lane[] = [
 }
 
 .cc-tasks__count--ready {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-[data-theme='dark'] .cc-tasks__count--ready {
-  background: rgba(120, 53, 15, 0.4);
-  color: #fde68a;
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-tasks__count--active {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-tasks__count--active {
-  background: rgba(30, 58, 138, 0.4);
-  color: #bfdbfe;
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-tasks__count--done {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-tasks__count--done {
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-tasks__lanes {
@@ -304,39 +289,21 @@ const LANES: Lane[] = [
 }
 
 .cc-tasks__card--ready {
-  border-color: #fde68a;
-  background: #fffbeb;
-  color: #92400e;
-}
-
-[data-theme='dark'] .cc-tasks__card--ready {
-  border-color: #78350f;
-  background: rgba(120, 53, 15, 0.4);
-  color: #fde68a;
+  border-color: var(--cc-amber-border);
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-tasks__card--active {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-tasks__card--active {
-  border-color: #1e3a8a;
-  background: rgba(30, 58, 138, 0.4);
-  color: #bfdbfe;
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-tasks__card--done {
-  border-color: #a7f3d0;
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-tasks__card--done {
-  border-color: #064e3b;
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-tasks__card-head {
@@ -404,17 +371,11 @@ const LANES: Lane[] = [
 .cc-tasks__note {
   margin-top: 16px;
   padding: 8px 12px;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--cc-blue-border);
   border-radius: var(--radius-sm);
-  background: #eff6ff;
+  background: var(--cc-blue-bg);
   font-size: 12px;
   line-height: 1.625;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-tasks__note {
-  border-color: #1e3a8a;
-  background: rgba(30, 58, 138, 0.3);
-  color: #bfdbfe;
+  color: var(--cc-blue-text);
 }
 </style>

@@ -216,13 +216,8 @@ function shelfActive(...keys: string[]): boolean {
 }
 
 .cc-viz__shelf--active {
-  border-color: #6ee7b7;
-  background: #ecfdf5;
-}
-
-[data-theme='dark'] .cc-viz__shelf--active {
-  border-color: #065f46;
-  background: rgba(2, 44, 34, 0.3);
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
 }
 
 .cc-viz__shelf-head {
@@ -254,7 +249,7 @@ function shelfActive(...keys: string[]): boolean {
 }
 
 .cc-viz__shelf--active .cc-viz__shelf-icon {
-  background: #10b981;
+  background: var(--cc-emerald-fill);
   color: #fff;
 }
 
@@ -315,27 +310,15 @@ function shelfActive(...keys: string[]): boolean {
 }
 
 .cc-viz__chip--active {
-  border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-viz__chip--active {
-  border-color: #1e40af;
-  background: rgba(23, 37, 84, 0.4);
-  color: #bfdbfe;
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__chip--external {
-  border-color: #6ee7b7;
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-viz__chip--external {
-  border-color: #065f46;
-  background: rgba(2, 44, 34, 0.3);
-  color: #a7f3d0;
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 // Dashed placeholder
@@ -383,13 +366,8 @@ function shelfActive(...keys: string[]): boolean {
 }
 
 .cc-viz__conn-badge--on {
-  background: #d1fae5;
-  color: #047857;
-}
-
-[data-theme='dark'] .cc-viz__conn-badge--on {
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 // Call notebook
@@ -419,19 +397,13 @@ function shelfActive(...keys: string[]): boolean {
 .cc-viz__call-result {
   overflow-wrap: break-word;
   padding: 12px;
-  border: 1px solid #a7f3d0;
+  border: 1px solid var(--cc-emerald-border);
   border-radius: var(--radius-sm);
-  background: #ecfdf5;
-  color: #065f46;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
   font-size: 12px;
   line-height: 1.4;
   animation: cc-mcp-result-in 0.2s ease both;
-}
-
-[data-theme='dark'] .cc-viz__call-result {
-  border-color: #064e3b;
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
 }
 
 @keyframes cc-mcp-chip-in {

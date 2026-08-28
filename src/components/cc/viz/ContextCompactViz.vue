@@ -474,7 +474,7 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__block--user {
-  background: #3b82f6;
+  background: var(--cc-blue-fill);
 }
 
 .cc-viz__block--assistant {
@@ -482,7 +482,7 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__block--tool {
-  background: #10b981;
+  background: var(--cc-emerald-fill);
 }
 
 .cc-viz__block--compressed {
@@ -514,7 +514,7 @@ function layerCardClass(layer: CompressionLayer): string {
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 2px dashed #ef4444;
+  border-top: 2px dashed var(--cc-red-border);
   transition: bottom 0.5s ease;
 }
 
@@ -525,7 +525,7 @@ function layerCardClass(layer: CompressionLayer): string {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
-  color: #ef4444;
+  color: var(--cc-red-text);
 }
 
 .cc-viz__token-count {
@@ -587,15 +587,15 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__usage-fill--red {
-  background: #ef4444;
+  background: var(--cc-red-fill);
 }
 
 .cc-viz__usage-fill--amber {
-  background: #f59e0b;
+  background: var(--cc-amber-fill);
 }
 
 .cc-viz__usage-fill--emerald {
-  background: #10b981;
+  background: var(--cc-emerald-fill);
 }
 
 .cc-viz__legend {
@@ -619,7 +619,7 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__swatch--user {
-  background: #3b82f6;
+  background: var(--cc-blue-fill);
 }
 
 .cc-viz__swatch--ast {
@@ -627,7 +627,7 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__swatch--tool {
-  background: #10b981;
+  background: var(--cc-emerald-fill);
 }
 
 .cc-viz__legend-text {
@@ -657,39 +657,21 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__layer--amber {
-  border-color: #fde68a;
-  background: #fffbeb;
-  color: #92400e;
+  border-color: var(--cc-amber-border);
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__layer--blue {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1e40af;
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__layer--emerald {
-  border-color: #a7f3d0;
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-viz__layer--amber {
-  border-color: #78350f;
-  background: rgba(120, 53, 15, 0.3);
-  color: #fde68a;
-}
-
-[data-theme='dark'] .cc-viz__layer--blue {
-  border-color: #1e3a8a;
-  background: rgba(30, 58, 138, 0.3);
-  color: #bfdbfe;
-}
-
-[data-theme='dark'] .cc-viz__layer--emerald {
-  border-color: #064e3b;
-  background: rgba(6, 78, 59, 0.3);
-  color: #a7f3d0;
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__layer--active {
@@ -751,36 +733,23 @@ function layerCardClass(layer: CompressionLayer): string {
 
 .cc-viz__callout {
   margin-top: 12px;
-  border: 1px solid #fcd34d;
+  border: 1px solid var(--cc-amber-border);
   border-radius: var(--radius-md);
   padding: 8px 12px;
-  background: #fffbeb;
+  background: var(--cc-amber-bg);
   animation: cc-viz-fadein 0.4s ease;
-}
-
-[data-theme='dark'] .cc-viz__callout {
-  border-color: #b45309;
-  background: rgba(120, 53, 15, 0.2);
 }
 
 .cc-viz__callout-title {
   font-size: 12px;
   font-weight: 600;
-  color: #b45309;
-}
-
-[data-theme='dark'] .cc-viz__callout-title {
-  color: #fcd34d;
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__callout-desc {
   font-size: 11px;
   line-height: 1.3;
-  color: #d97706;
-}
-
-[data-theme='dark'] .cc-viz__callout-desc {
-  color: #fbbf24;
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__stage {
@@ -794,33 +763,18 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__stage--amber {
-  border-color: #fbbf24;
-  background: #fffbeb;
+  border-color: var(--cc-amber-border);
+  background: var(--cc-amber-bg);
 }
 
 .cc-viz__stage--blue {
-  border-color: #60a5fa;
-  background: #eff6ff;
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
 }
 
 .cc-viz__stage--emerald {
-  border-color: #34d399;
-  background: #ecfdf5;
-}
-
-[data-theme='dark'] .cc-viz__stage--amber {
-  border-color: #d97706;
-  background: rgba(120, 53, 15, 0.2);
-}
-
-[data-theme='dark'] .cc-viz__stage--blue {
-  border-color: #2563eb;
-  background: rgba(30, 58, 138, 0.2);
-}
-
-[data-theme='dark'] .cc-viz__stage--emerald {
-  border-color: #059669;
-  background: rgba(6, 78, 59, 0.2);
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
 }
 
 .cc-viz__stage-title {
@@ -829,27 +783,15 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__stage--amber .cc-viz__stage-title {
-  color: #d97706;
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__stage--blue .cc-viz__stage-title {
-  color: #2563eb;
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__stage--emerald .cc-viz__stage-title {
-  color: #059669;
-}
-
-[data-theme='dark'] .cc-viz__stage--amber .cc-viz__stage-title {
-  color: #fcd34d;
-}
-
-[data-theme='dark'] .cc-viz__stage--blue .cc-viz__stage-title {
-  color: #93c5fd;
-}
-
-[data-theme='dark'] .cc-viz__stage--emerald .cc-viz__stage-title {
-  color: #6ee7b7;
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__stage-desc {
@@ -859,27 +801,15 @@ function layerCardClass(layer: CompressionLayer): string {
 }
 
 .cc-viz__stage--amber .cc-viz__stage-desc {
-  color: #f59e0b;
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__stage--blue .cc-viz__stage-desc {
-  color: #3b82f6;
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__stage--emerald .cc-viz__stage-desc {
-  color: #10b981;
-}
-
-[data-theme='dark'] .cc-viz__stage--amber .cc-viz__stage-desc {
-  color: #fbbf24;
-}
-
-[data-theme='dark'] .cc-viz__stage--blue .cc-viz__stage-desc {
-  color: #60a5fa;
-}
-
-[data-theme='dark'] .cc-viz__stage--emerald .cc-viz__stage-desc {
-  color: #34d399;
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__summary {

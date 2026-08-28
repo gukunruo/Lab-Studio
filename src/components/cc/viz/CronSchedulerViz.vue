@@ -241,15 +241,9 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
 }
 
 .cc-viz__day--active {
-  border-color: #fcd34d;
-  background: #fef3c7;
-  color: #92400e;
-}
-
-[data-theme='dark'] .cc-viz__day--active {
-  border-color: #92400e;
-  background: rgba(69, 26, 3, 0.5);
-  color: #fde68a;
+  border-color: var(--cc-amber-border);
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__grid {
@@ -274,13 +268,8 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
 }
 
 .cc-viz__pane--active {
-  border-color: #93c5fd;
-  background: #eff6ff;
-}
-
-[data-theme='dark'] .cc-viz__pane--active {
-  border-color: #1e40af;
-  background: rgba(23, 37, 84, 0.3);
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
 }
 
 .cc-viz__pane-head {
@@ -309,7 +298,7 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
 }
 
 .cc-viz__pane--active .cc-viz__pane-icon {
-  background: #3b82f6;
+  background: var(--cc-blue-fill);
   color: #fff;
 }
 
@@ -357,39 +346,21 @@ function scheduleTone(tone: 'blue' | 'amber' | 'emerald'): string {
 }
 
 .cc-viz__schedule--blue {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-viz__schedule--blue {
-  border-color: #1e3a8a;
-  background: rgba(30, 58, 138, 0.4);
-  color: #bfdbfe;
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-viz__schedule--amber {
-  border-color: #fde68a;
-  background: #fffbeb;
-  color: #92400e;
-}
-
-[data-theme='dark'] .cc-viz__schedule--amber {
-  border-color: #78350f;
-  background: rgba(120, 53, 15, 0.4);
-  color: #fde68a;
+  border-color: var(--cc-amber-border);
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-viz__schedule--emerald {
-  border-color: #a7f3d0;
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-[data-theme='dark'] .cc-viz__schedule--emerald {
-  border-color: #064e3b;
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
+  border-color: var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-viz__watcher {

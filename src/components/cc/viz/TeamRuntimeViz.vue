@@ -334,15 +334,15 @@ const events = computed<EventItem[]>(() =>
 }
 
 .cc-team__icon--blue {
-  color: #3b82f6;
+  color: var(--cc-blue-text);
 }
 
 .cc-team__icon--amber {
-  color: #f59e0b;
+  color: var(--cc-amber-text);
 }
 
 .cc-team__icon--emerald {
-  color: #10b981;
+  color: var(--cc-emerald-text);
 }
 
 .cc-team__badge {
@@ -365,33 +365,18 @@ const events = computed<EventItem[]>(() =>
 }
 
 .cc-team__badge--blue {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-[data-theme='dark'] .cc-team__badge--blue {
-  background: rgba(23, 37, 84, 0.4);
-  color: #bfdbfe;
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-team__badge--amber {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-[data-theme='dark'] .cc-team__badge--amber {
-  background: rgba(69, 26, 3, 0.4);
-  color: #fde68a;
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-team__badge--emerald {
-  background: #d1fae5;
-  color: #047857;
-}
-
-[data-theme='dark'] .cc-team__badge--emerald {
-  background: rgba(2, 44, 34, 0.4);
-  color: #a7f3d0;
+  background: var(--cc-emerald-bg);
+  color: var(--cc-emerald-text);
 }
 
 .cc-team__rows {
@@ -443,15 +428,9 @@ const events = computed<EventItem[]>(() =>
 }
 
 .cc-team__note--blue {
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-[data-theme='dark'] .cc-team__note--blue {
-  border-color: #1e3a8a;
-  background: rgba(23, 37, 84, 0.3);
-  color: #bfdbfe;
+  border: 1px solid var(--cc-blue-border);
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-team__note-icon {
@@ -542,15 +521,9 @@ const events = computed<EventItem[]>(() =>
 }
 
 .cc-team__task-foot--active {
-  border-color: #fcd34d;
-  background: #fffbeb;
-  color: #92400e;
-}
-
-[data-theme='dark'] .cc-team__task-foot--active {
-  border-color: #92400e;
-  background: rgba(69, 26, 3, 0.3);
-  color: #fde68a;
+  border-color: var(--cc-amber-border);
+  background: var(--cc-amber-bg);
+  color: var(--cc-amber-text);
 }
 
 .cc-team__task-foot-icon {
@@ -575,13 +548,8 @@ const events = computed<EventItem[]>(() =>
 }
 
 .cc-team__dir-card--coordination {
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-}
-
-[data-theme='dark'] .cc-team__dir-card--coordination {
-  border-color: #1e3a8a;
-  background: rgba(23, 37, 84, 0.3);
+  border: 1px solid var(--cc-blue-border);
+  background: var(--cc-blue-bg);
 }
 
 .cc-team__dir-card--zinc {
@@ -605,13 +573,8 @@ const events = computed<EventItem[]>(() =>
 }
 
 .cc-team__dir-card--worktree-active {
-  border: 1px solid #6ee7b7;
-  background: #ecfdf5;
-}
-
-[data-theme='dark'] .cc-team__dir-card--worktree-active {
-  border-color: #065f46;
-  background: rgba(2, 44, 34, 0.3);
+  border: 1px solid var(--cc-emerald-border);
+  background: var(--cc-emerald-bg);
 }
 
 .cc-team__dir-title {
@@ -736,15 +699,9 @@ const events = computed<EventItem[]>(() =>
 }
 
 .cc-team__event--current {
-  border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-[data-theme='dark'] .cc-team__event--current {
-  border-color: #1e3a8a;
-  background: rgba(23, 37, 84, 0.3);
-  color: #bfdbfe;
+  border-color: var(--cc-blue-border);
+  background: var(--cc-blue-bg);
+  color: var(--cc-blue-text);
 }
 
 .cc-team__event--hidden {
