@@ -7,6 +7,14 @@ import {
   normalizeImageGenerationResponse,
   type ChatRequestBody,
 } from '../server/ai-platform'
+import {
+  appendToolLoopMessages,
+  applyOpenAiDelta,
+  buildOpenAiWebSearchTool,
+  createOpenAiStreamAccumulator,
+  extractWebSearchQuery,
+  readOpenAiStream,
+} from '../server/web-search'
 
 test('buildUpstreamRequest formats openai-compatible requests correctly', () => {
   const body: ChatRequestBody = {
@@ -170,4 +178,133 @@ test('buildUpstreamRequest enables Kimi K3 thinking with the selected effort', (
     stream: true,
     reasoning: { mode: 'enabled', effort: 'high' },
   })
+})
+
+// ---- 联网搜索 ----
+
+test('buildUpstreamRequest injects web_search function tool when webSearch enabled', () => {
+  const body: ChatRequestBody = {
+    modelId: 'gpt-5.4',
+    messages: [{ role: 'user', content: '今天 AI 有什么新闻' }],
+    params: { webSearch: true },
+  }
+  const result = buildUpstreamRequest(body, {
+    provider: 'openai-compatible',
+    modelId: 'gpt-5.4',
+    baseUrl: 'http://ai-service.tal.com',
+    appId: '300000636',
+    appKey: 'test-key',
+  })
+  const parsed = JSON.parse(result.body)
+  assert.equal(parsed.tools[0].type, 'function')
+  assert.equal(parsed.tools[0].function.name, 'web_search')
+  assert.deepEqual(Object.keys(parsed.tools[0].function.parameters.properties), ['query'])
+  assert.deepEqual(parsed.tools[0].function.parameters.required, ['query'])
+})
+
+test('buildUpstreamRequest omits tools when webSearch disabled', () => {
+  const body: ChatRequestBody = {
+    modelId: 'gpt-5.4',
+    messages: [{ role: 'user', content: 'hi' }],
+    params: { webSearch: false },
+  }
+  const result = buildUpstreamRequest(body, {
+    provider: 'openai-compatible',
+    modelId: 'gpt-5.4',
+    baseUrl: 'http://ai-service.tal.com',
+    appId: '300000636',
+    appKey: 'test-key',
+  })
+  assert.equal(JSON.parse(result.body).tools, undefined)
+})
+
+test('buildAnthropicPlatformRequest injects native web_search tool when webSearch enabled', () => {
+  const body: ChatRequestBody = {
+    modelId: 'claude-sonnet-4.6',
+    messages: [{ role: 'user', content: 'hi' }],
+    params: { webSearch: true },
+  }
+  const result = buildAnthropicPlatformRequest(body, {
+    apiKey: 'k',
+    baseUrl: 'http://ai-service.tal.com',
+    model: 'claude-sonnet-4.6',
+  })
+  const parsed = JSON.parse(result.body)
+  assert.equal(parsed.tools[0].type, 'web_search_20260209')
+  assert.equal(parsed.tools[0].name, 'web_search')
+  assert.equal(parsed.tools[0].max_uses, 3)
+})
+
+test('applyOpenAiDelta accumulates content and reconcatenates tool_calls by index', () => {
+  const acc = createOpenAiStreamAccumulator()
+  let streamed = ''
+  applyOpenAiDelta(acc, { content: 'Hello' }, (t) => { streamed += t })
+  applyOpenAiDelta(
+    acc,
+    { tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'web_search', arguments: '{"q' } }] },
+  )
+  applyOpenAiDelta(acc, { content: ' world' }, (t) => { streamed += t })
+  applyOpenAiDelta(acc, { tool_calls: [{ index: 0, function: { arguments: 'uery":"x"}' } }] })
+  assert.equal(acc.content, 'Hello world')
+  assert.equal(streamed, 'Hello world')
+  assert.equal(acc.toolCalls.length, 1)
+  assert.equal(acc.toolCalls[0].id, 'call_1')
+  assert.equal(acc.toolCalls[0].name, 'web_search')
+  assert.equal(acc.toolCalls[0].arguments, '{"query":"x"}')
+})
+
+test('extractWebSearchQuery parses query from JSON and falls back to raw', () => {
+  assert.equal(extractWebSearchQuery({ id: '', name: 'web_search', arguments: '{"query":"AI 最新进展"}' }), 'AI 最新进展')
+  assert.equal(extractWebSearchQuery({ id: '', name: 'web_search', arguments: 'not-json' }), 'not-json')
+  assert.equal(extractWebSearchQuery({ id: '', name: 'web_search', arguments: '' }), '')
+})
+
+test('readOpenAiStream accumulates content and tool_calls and stops at [DONE]', async () => {
+  const ev = (obj: unknown) => `data: ${JSON.stringify(obj)}\n\n`
+  const sse = [
+    ev({ choices: [{ delta: { content: 'Hello' }, finish_reason: null }] }),
+    ev({ choices: [{ delta: { content: ' world' } }] }),
+    ev({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'web_search', arguments: '{"query":"' } }] } }] }),
+    ev({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'AI 最新进展"}' } }] } }] }),
+    ev({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
+    'data: [DONE]\n\n',
+  ].join('')
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(sse))
+      controller.close()
+    },
+  })
+  let streamed = ''
+  const acc = await readOpenAiStream(stream, (text) => { streamed += text })
+  assert.equal(acc.content, 'Hello world')
+  assert.equal(streamed, 'Hello world')
+  assert.equal(acc.toolCalls.length, 1)
+  assert.equal(acc.toolCalls[0].id, 'call_1')
+  assert.equal(acc.toolCalls[0].name, 'web_search')
+  assert.equal(acc.toolCalls[0].arguments, '{"query":"AI 最新进展"}')
+  assert.equal(acc.finishReason, 'tool_calls')
+})
+
+test('appendToolLoopMessages appends assistant tool_calls and tool result messages', () => {
+  const base = [{ role: 'user', content: 'hi' }]
+  const next = appendToolLoopMessages(
+    base,
+    { content: null, toolCalls: [{ id: 'call_1', name: 'web_search', arguments: '{"query":"q"}' }] },
+    [{ id: 'call_1', content: '检索结果' }],
+  )
+  assert.equal(next.length, 3)
+  assert.equal(next[1].role, 'assistant')
+  assert.equal(next[1].tool_calls[0].id, 'call_1')
+  assert.equal(next[1].tool_calls[0].function.name, 'web_search')
+  assert.equal(next[2].role, 'tool')
+  assert.equal(next[2].tool_call_id, 'call_1')
+  assert.equal(next[2].content, '检索结果')
+})
+
+test('buildOpenAiWebSearchTool declares a query-only schema', () => {
+  const tools = buildOpenAiWebSearchTool()
+  assert.equal(tools[0].type, 'function')
+  assert.equal(tools[0].function.name, 'web_search')
+  assert.equal(tools[0].function.parameters.type, 'object')
 })

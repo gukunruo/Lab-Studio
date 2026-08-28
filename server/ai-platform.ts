@@ -15,6 +15,18 @@ import {
 } from './ai-image-assets'
 import { seedAiModels } from './ai-platform-seed'
 import { engineerContext } from './context-engine'
+import {
+  appendToolLoopMessages,
+  buildAnthropicWebSearchTools,
+  buildOpenAiWebSearchTool,
+  extractWebSearchQuery,
+  MAX_WEB_SEARCH_ROUNDS,
+  readOpenAiStream,
+  runWebSearch,
+  type AnthropicSearchConfig,
+  type WebSearchChatMessage,
+  type WebSearchRequestBuilder,
+} from './web-search'
 
 const USER_KEY = 'admin'
 
@@ -71,7 +83,7 @@ export interface ChatRequestBody {
   messages: { role: string; content: string }[]
   system?: string
   summary?: string
-  params?: { reasoningEffort?: string; maxTokens?: number }
+  params?: { reasoningEffort?: string; maxTokens?: number; webSearch?: boolean }
 }
 
 interface UpstreamConfig {
@@ -339,6 +351,7 @@ export function buildAnthropicPlatformRequest(body: ChatRequestBody, config: Ant
       max_tokens: body.params?.maxTokens ?? 4096,
       stream: true,
       ...(body.system ? { system: body.system } : {}),
+      ...(body.params?.webSearch ? { tools: buildAnthropicWebSearchTools(3) } : {}),
     }),
   }
 }
@@ -389,6 +402,9 @@ export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConf
   } else if (body.params?.reasoningEffort) {
     payload.reasoning_effort = body.params.reasoningEffort
   }
+  if (body.params?.webSearch) {
+    payload.tools = buildOpenAiWebSearchTool()
+  }
   return {
     url: `${baseUrl.replace(/\/$/, '')}/openai-compatible/v1/chat/completions`,
     headers: new Headers({
@@ -398,6 +414,110 @@ export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConf
     }),
     body: JSON.stringify(payload),
   }
+}
+
+const SSE_RESPONSE_HEADERS: Record<string, string> = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache, no-transform',
+  Connection: 'keep-alive',
+  'X-Accel-Buffering': 'no',
+}
+
+// openai-compatible + 联网搜索：把首轮 SSE 流式转发给客户端，同时服务端累积 content 与
+// tool_calls；模型发起 web_search 时用 Claude web_search 落地检索，回填 tool 结果后继续，
+// 直至无工具调用或达到轮次上限。全程向客户端输出 OpenAI 格式 SSE（前端 streamChat 可解析）。
+function streamOpenAiWebSearch(opts: {
+  messages: WebSearchChatMessage[]
+  modelId: string
+  params?: { reasoningEffort?: string; maxTokens?: number }
+  firstUpstream: Response
+  firstReq: UpstreamRequest
+  buildRequest: WebSearchRequestBuilder
+  executeSearch: ((query: string) => Promise<string>) | null
+  signal?: AbortSignal
+}): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  const writeContent = (controller: ReadableStreamDefaultController<Uint8Array>, text: string) => {
+    if (!text) return
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`))
+    } catch {
+      // 客户端已断开：停止写入即可，后续 fetch 会被 signal 中止。
+    }
+  }
+  const close = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    try {
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      controller.close()
+    } catch {
+      // 客户端已断开
+    }
+  }
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let messages = opts.messages
+      let rounds = 0
+      let currentRes = opts.firstUpstream
+      let currentReq = opts.firstReq
+
+      while (true) {
+        const acc = await readOpenAiStream(
+          currentRes.body ?? new ReadableStream<Uint8Array>(),
+          (text) => writeContent(controller, text),
+          opts.signal,
+        )
+        const toolCalls = acc.toolCalls.filter((tc) => tc.name || tc.arguments)
+        if (toolCalls.length === 0) {
+          close(controller)
+          return
+        }
+        if (rounds >= MAX_WEB_SEARCH_ROUNDS) {
+          writeContent(controller, '\n（已连续联网搜索，以下为本地生成结果）')
+          close(controller)
+          return
+        }
+        const results: { id: string; content: string }[] = []
+        for (const tc of toolCalls) {
+          const query = extractWebSearchQuery(tc)
+          let answer = ''
+          if (!query) {
+            answer = '（未提供有效的搜索关键词）'
+          } else if (!opts.executeSearch) {
+            answer = '（未配置联网检索能力）'
+          } else {
+            try {
+              answer = await opts.executeSearch(query)
+            } catch (e) {
+              answer = `（联网检索出错：${e instanceof Error ? e.message : String(e)}）`
+            }
+          }
+          results.push({ id: tc.id, content: answer })
+        }
+        messages = appendToolLoopMessages(messages, { content: acc.content || null, toolCalls }, results)
+        rounds += 1
+        currentReq = opts.buildRequest(messages, opts.modelId, opts.params)
+        try {
+          currentRes = await fetch(currentReq.url, {
+            method: 'POST',
+            headers: currentReq.headers,
+            body: currentReq.body,
+            signal: opts.signal,
+          })
+        } catch {
+          writeContent(controller, '\n（联网搜索重连失败）')
+          close(controller)
+          return
+        }
+        if (!currentRes.ok || !currentRes.body) {
+          const errText = await currentRes.text().catch(() => currentRes.statusText)
+          writeContent(controller, `\n（联网搜索第二阶段失败：${errText || currentRes.status}）`)
+          close(controller)
+          return
+        }
+      }
+    },
+  })
 }
 
 type ConversationOutlineItem = {
@@ -1164,6 +1284,11 @@ export function registerAiPlatformRoutes(app: Hono): void {
       contextWindow: modelRow.contextWindow ?? null,
       maxTokens: body.params?.maxTokens,
     })
+    const webSearch = body.params?.webSearch ?? true
+    const anthropicConfig = readAnthropicConfig()
+    // openai-compatible 的检索执行依赖 Claude web_search（零新增 Key）；未配置则退化为纯直通。
+    const useWebSearch = webSearch && (modelRow.provider === 'anthropic' || !!anthropicConfig)
+
     const engineeredBody: ChatRequestBody = {
       modelId: body.modelId,
       messages: engineered.messages,
@@ -1171,28 +1296,41 @@ export function registerAiPlatformRoutes(app: Hono): void {
       params: {
         ...body.params,
         maxTokens: engineered.maxTokens,
+        webSearch: useWebSearch,
       },
     }
 
+    let upstreamConfig: UpstreamConfig | null = null
     let upstreamReq: UpstreamRequest
+    let openAiMessagesWithSystem: WebSearchChatMessage[] | null = null
     switch (modelRow.provider) {
       case 'anthropic': {
-        const config = readAnthropicConfig()
-        if (!config) return c.json({ error: 'AI credentials not configured' }, 503)
-        upstreamReq = buildAnthropicPlatformRequest(engineeredBody, config)
+        if (!anthropicConfig) return c.json({ error: 'AI credentials not configured' }, 503)
+        upstreamReq = buildAnthropicPlatformRequest(engineeredBody, anthropicConfig)
         break
       }
       case 'openai-compatible': {
         const appId = process.env.TAL_MLOPS_APP_ID ?? ''
         const appKey = process.env.TAL_MLOPS_APP_KEY ?? ''
         if (!appId || !appKey) return c.json({ error: 'OpenAI-compatible credentials not configured' }, 503)
-        upstreamReq = buildUpstreamRequest(engineeredBody, {
+        upstreamConfig = {
           provider: modelRow.provider,
           modelId: modelRow.modelId,
           baseUrl: process.env.TAL_AI_BASE_URL ?? 'http://ai-service.tal.com',
           appId,
           appKey,
-        })
+        }
+        if (useWebSearch) {
+          openAiMessagesWithSystem = engineeredBody.system
+            ? [{ role: 'system', content: engineeredBody.system }, ...engineeredBody.messages]
+            : [...engineeredBody.messages]
+          upstreamReq = buildUpstreamRequest(
+            { ...engineeredBody, messages: openAiMessagesWithSystem as { role: string; content: string }[], system: '' },
+            upstreamConfig,
+          )
+        } else {
+          upstreamReq = buildUpstreamRequest(engineeredBody, upstreamConfig)
+        }
         break
       }
     }
@@ -1209,18 +1347,52 @@ export function registerAiPlatformRoutes(app: Hono): void {
       return c.json({ error: 'upstream connection failed' }, 502)
     }
 
+    // openai-compatible + 联网搜索：首轮带工具请求被拒绝时，回退为不带工具的纯直通，防止模型不支持
+    // 函数调用导致整个会话报错（联网默认开启）。
+    if (modelRow.provider === 'openai-compatible' && useWebSearch && (!upstream.ok || !upstream.body)) {
+      const plainBody: ChatRequestBody = { ...engineeredBody, params: { ...engineeredBody.params, webSearch: false } }
+      const plainReq = upstreamConfig ? buildUpstreamRequest(plainBody, upstreamConfig) : null
+      if (plainReq) {
+        upstream = await fetch(plainReq.url, {
+          method: 'POST',
+          headers: plainReq.headers,
+          body: plainReq.body,
+          signal: c.req.raw.signal,
+        }).catch(() => null) as Response
+      } else {
+        upstream = null as unknown as Response
+      }
+      if (!upstream || !upstream.ok || !upstream.body) {
+        const errText = await (upstream?.text()).catch(() => upstream?.statusText ?? 'upstream error')
+        return c.json({ error: errText || 'upstream error' }, (upstream?.status ?? 502) as 400 | 401 | 403 | 404 | 429 | 500 | 502 | 503)
+      }
+      return new Response(upstream.body, { headers: SSE_RESPONSE_HEADERS })
+    }
+
     if (!upstream.ok || !upstream.body) {
       const errText = await upstream.text().catch(() => upstream.statusText)
       return c.json({ error: errText || 'upstream error' }, upstream.status as 400 | 401 | 403 | 404 | 429 | 500 | 502 | 503)
     }
 
-    return new Response(upstream.body, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
-    })
+    // openai-compatible + 联网搜索：走服务端工具循环（读首轮流式转发 + 回填检索结果），流式写回 OpenAI 格式 SSE。
+    if (modelRow.provider === 'openai-compatible' && useWebSearch && openAiMessagesWithSystem && upstreamConfig) {
+      const stream = streamOpenAiWebSearch({
+        messages: openAiMessagesWithSystem,
+        modelId: modelRow.modelId,
+        params: engineeredBody.params,
+        firstUpstream: upstream,
+        firstReq: upstreamReq,
+        buildRequest: (messages, modelId, params) =>
+          buildUpstreamRequest(
+            { modelId, messages: messages as { role: string; content: string }[], system: '', params: { ...params, webSearch: true } },
+            upstreamConfig as UpstreamConfig,
+          ),
+        executeSearch: anthropicConfig ? (query) => runWebSearch(query, { apiKey: anthropicConfig.apiKey, baseUrl: anthropicConfig.baseUrl, model: anthropicConfig.model }) : null,
+        signal: c.req.raw.signal,
+      })
+      return new Response(stream, { headers: SSE_RESPONSE_HEADERS })
+    }
+
+    return new Response(upstream.body, { headers: SSE_RESPONSE_HEADERS })
   })
 }
