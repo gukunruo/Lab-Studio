@@ -15,6 +15,7 @@ import {
   extractWebSearchQuery,
   readOpenAiStream,
 } from '../server/web-search'
+import { buildOpenAiTools, type AgentToolRegistry } from '../server/agent-engine'
 
 test('buildUpstreamRequest formats openai-compatible requests correctly', () => {
   const body: ChatRequestBody = {
@@ -182,19 +183,34 @@ test('buildUpstreamRequest enables Kimi K3 thinking with the selected effort', (
 
 // ---- 联网搜索 ----
 
-test('buildUpstreamRequest injects web_search function tool when webSearch enabled', () => {
+test('buildUpstreamRequest injects the provided tools array', () => {
+  const registry: AgentToolRegistry = {
+    web_search: {
+      name: 'web_search',
+      description: '联网检索',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: ['query'],
+      },
+      execute: async () => '',
+    },
+  }
   const body: ChatRequestBody = {
     modelId: 'gpt-5.4',
     messages: [{ role: 'user', content: '今天 AI 有什么新闻' }],
-    params: { webSearch: true },
   }
-  const result = buildUpstreamRequest(body, {
-    provider: 'openai-compatible',
-    modelId: 'gpt-5.4',
-    baseUrl: 'http://ai-service.tal.com',
-    appId: '300000636',
-    appKey: 'test-key',
-  })
+  const result = buildUpstreamRequest(
+    body,
+    {
+      provider: 'openai-compatible',
+      modelId: 'gpt-5.4',
+      baseUrl: 'http://ai-service.tal.com',
+      appId: '300000636',
+      appKey: 'test-key',
+    },
+    buildOpenAiTools(registry),
+  )
   const parsed = JSON.parse(result.body)
   assert.equal(parsed.tools[0].type, 'function')
   assert.equal(parsed.tools[0].function.name, 'web_search')
@@ -202,7 +218,7 @@ test('buildUpstreamRequest injects web_search function tool when webSearch enabl
   assert.deepEqual(parsed.tools[0].function.parameters.required, ['query'])
 })
 
-test('buildUpstreamRequest omits tools when webSearch disabled', () => {
+test('buildUpstreamRequest omits tools when none are provided', () => {
   const body: ChatRequestBody = {
     modelId: 'gpt-5.4',
     messages: [{ role: 'user', content: 'hi' }],

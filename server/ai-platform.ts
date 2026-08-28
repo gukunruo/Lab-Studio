@@ -15,18 +15,19 @@ import {
 } from './ai-image-assets'
 import { seedAiModels } from './ai-platform-seed'
 import { engineerContext } from './context-engine'
+import { buildAnthropicWebSearchTools, runWebSearch } from './web-search'
 import {
-  appendToolLoopMessages,
-  buildAnthropicWebSearchTools,
-  buildOpenAiWebSearchTool,
-  extractWebSearchQuery,
-  MAX_WEB_SEARCH_ROUNDS,
-  readOpenAiStream,
-  runWebSearch,
-  type AnthropicSearchConfig,
-  type WebSearchChatMessage,
-  type WebSearchRequestBuilder,
-} from './web-search'
+  buildAnthropicTools,
+  buildOpenAiTools,
+  createFinanceQuoteExecutor,
+  createWebFetchExecutor,
+  MAX_AGENT_ROUNDS,
+  readAnthropicTurn,
+  readOpenAiTurn,
+  runAgentLoop,
+  type AgentChatMessage,
+  type AgentToolRegistry,
+} from './agent-engine'
 
 const USER_KEY = 'admin'
 
@@ -333,7 +334,11 @@ function hasInvalidReferenceImageId(value: unknown): boolean {
   return value !== undefined && typeof value !== 'string'
 }
 
-export function buildAnthropicPlatformRequest(body: ChatRequestBody, config: AnthropicConfig): UpstreamRequest {
+export function buildAnthropicPlatformRequest(
+  body: ChatRequestBody,
+  config: AnthropicConfig,
+  tools?: unknown[],
+): UpstreamRequest {
   return {
     url: `${config.baseUrl.replace(/\/$/, '')}/v1/messages`,
     headers: new Headers({
@@ -351,12 +356,69 @@ export function buildAnthropicPlatformRequest(body: ChatRequestBody, config: Ant
       max_tokens: body.params?.maxTokens ?? 4096,
       stream: true,
       ...(body.system ? { system: body.system } : {}),
-      ...(body.params?.webSearch ? { tools: buildAnthropicWebSearchTools(3) } : {}),
+      // 显式传入的工具（Agent 循环的客户端工具）优先；否则退回原生 web_search 直通。
+      ...(tools && tools.length ? { tools } : body.params?.webSearch ? { tools: buildAnthropicWebSearchTools(3) } : {}),
     }),
   }
 }
 
-export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConfig): UpstreamRequest {
+// 构建「Agent 工具循环」用的统一工具注册表：单一事实源，既是发给上游的工具定义，
+// 也是按名字分发执行的依据。web_search 的检索执行复用 Claude web_search（零新增 Key），
+// web_fetch / finance_quote 各自走本地 executor。
+function buildAgentRegistry(anthropicConfig: AnthropicConfig | null): AgentToolRegistry {
+  return {
+    web_search: {
+      name: 'web_search',
+      description:
+        '联网检索最新、实时或事实性问题，返回权威来源的摘要。当用户的提问涉及最新信息、时效性问题、或需要核实事实时使用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜索关键词，应精炼并突出核心实体与时间' },
+        },
+        required: ['query'],
+      },
+      execute: async (args) => {
+        const query = typeof args.query === 'string' ? args.query.trim() : ''
+        if (!query) return '（未提供有效的搜索关键词）'
+        if (!anthropicConfig) return '（未配置联网检索能力）'
+        return runWebSearch(query, {
+          apiKey: anthropicConfig.apiKey,
+          baseUrl: anthropicConfig.baseUrl,
+          model: anthropicConfig.model,
+        })
+      },
+    },
+    web_fetch: {
+      name: 'web_fetch',
+      description:
+        '抓取指定 URL 的正文内容并去掉 HTML 标签，用于查看某个具体的网页或来源的详细内容。当模型已有一个明确链接、需要读取其正文时使用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: '要抓取的完整 URL，仅支持 http/https' },
+        },
+        required: ['url'],
+      },
+      execute: createWebFetchExecutor(),
+    },
+    finance_quote: {
+      name: 'finance_quote',
+      description:
+        '查询 A股、港股或指数的实时行情摘要（名称、代码、现价、涨跌幅、今日开高低、成交额、市盈率等）。输入股票名称或代码，如「600519」或「贵州茅台」或「00700」。',
+      parameters: {
+        type: 'object',
+        properties: {
+          q: { type: 'string', description: '标的名称或代码，如 600519 / 贵州茅台 / 00700' },
+        },
+        required: ['q'],
+      },
+      execute: createFinanceQuoteExecutor(),
+    },
+  }
+}
+
+export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConfig, tools?: unknown[]): UpstreamRequest {
   const { provider, modelId, baseUrl, appId, appKey } = config
   const authHeader = `Bearer ${appId}:${appKey}`
 
@@ -402,8 +464,8 @@ export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConf
   } else if (body.params?.reasoningEffort) {
     payload.reasoning_effort = body.params.reasoningEffort
   }
-  if (body.params?.webSearch) {
-    payload.tools = buildOpenAiWebSearchTool()
+  if (tools && tools.length) {
+    payload.tools = tools
   }
   return {
     url: `${baseUrl.replace(/\/$/, '')}/openai-compatible/v1/chat/completions`,
@@ -421,103 +483,6 @@ const SSE_RESPONSE_HEADERS: Record<string, string> = {
   'Cache-Control': 'no-cache, no-transform',
   Connection: 'keep-alive',
   'X-Accel-Buffering': 'no',
-}
-
-// openai-compatible + 联网搜索：把首轮 SSE 流式转发给客户端，同时服务端累积 content 与
-// tool_calls；模型发起 web_search 时用 Claude web_search 落地检索，回填 tool 结果后继续，
-// 直至无工具调用或达到轮次上限。全程向客户端输出 OpenAI 格式 SSE（前端 streamChat 可解析）。
-function streamOpenAiWebSearch(opts: {
-  messages: WebSearchChatMessage[]
-  modelId: string
-  params?: { reasoningEffort?: string; maxTokens?: number }
-  firstUpstream: Response
-  firstReq: UpstreamRequest
-  buildRequest: WebSearchRequestBuilder
-  executeSearch: ((query: string) => Promise<string>) | null
-  signal?: AbortSignal
-}): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder()
-  const writeContent = (controller: ReadableStreamDefaultController<Uint8Array>, text: string) => {
-    if (!text) return
-    try {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`))
-    } catch {
-      // 客户端已断开：停止写入即可，后续 fetch 会被 signal 中止。
-    }
-  }
-  const close = (controller: ReadableStreamDefaultController<Uint8Array>) => {
-    try {
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
-    } catch {
-      // 客户端已断开
-    }
-  }
-
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let messages = opts.messages
-      let rounds = 0
-      let currentRes = opts.firstUpstream
-      let currentReq = opts.firstReq
-
-      while (true) {
-        const acc = await readOpenAiStream(
-          currentRes.body ?? new ReadableStream<Uint8Array>(),
-          (text) => writeContent(controller, text),
-          opts.signal,
-        )
-        const toolCalls = acc.toolCalls.filter((tc) => tc.name || tc.arguments)
-        if (toolCalls.length === 0) {
-          close(controller)
-          return
-        }
-        if (rounds >= MAX_WEB_SEARCH_ROUNDS) {
-          writeContent(controller, '\n（已连续联网搜索，以下为本地生成结果）')
-          close(controller)
-          return
-        }
-        const results: { id: string; content: string }[] = []
-        for (const tc of toolCalls) {
-          const query = extractWebSearchQuery(tc)
-          let answer = ''
-          if (!query) {
-            answer = '（未提供有效的搜索关键词）'
-          } else if (!opts.executeSearch) {
-            answer = '（未配置联网检索能力）'
-          } else {
-            try {
-              answer = await opts.executeSearch(query)
-            } catch (e) {
-              answer = `（联网检索出错：${e instanceof Error ? e.message : String(e)}）`
-            }
-          }
-          results.push({ id: tc.id, content: answer })
-        }
-        messages = appendToolLoopMessages(messages, { content: acc.content || null, toolCalls }, results)
-        rounds += 1
-        currentReq = opts.buildRequest(messages, opts.modelId, opts.params)
-        try {
-          currentRes = await fetch(currentReq.url, {
-            method: 'POST',
-            headers: currentReq.headers,
-            body: currentReq.body,
-            signal: opts.signal,
-          })
-        } catch {
-          writeContent(controller, '\n（联网搜索重连失败）')
-          close(controller)
-          return
-        }
-        if (!currentRes.ok || !currentRes.body) {
-          const errText = await currentRes.text().catch(() => currentRes.statusText)
-          writeContent(controller, `\n（联网搜索第二阶段失败：${errText || currentRes.status}）`)
-          close(controller)
-          return
-        }
-      }
-    },
-  })
 }
 
 type ConversationOutlineItem = {
@@ -1300,13 +1265,22 @@ export function registerAiPlatformRoutes(app: Hono): void {
       },
     }
 
+    // Agent 工具循环：统一注册表（单一事实源）+ 按 provider 生成的工具定义。
+    const agentRegistry = buildAgentRegistry(anthropicConfig)
+    const openAiTools = buildOpenAiTools(agentRegistry)
+    const anthropicTools = buildAnthropicTools(agentRegistry)
+
     let upstreamConfig: UpstreamConfig | null = null
     let upstreamReq: UpstreamRequest
-    let openAiMessagesWithSystem: WebSearchChatMessage[] | null = null
+    let openAiMessagesWithSystem: AgentChatMessage[] | null = null
     switch (modelRow.provider) {
       case 'anthropic': {
         if (!anthropicConfig) return c.json({ error: 'AI credentials not configured' }, 503)
-        upstreamReq = buildAnthropicPlatformRequest(engineeredBody, anthropicConfig)
+        upstreamReq = buildAnthropicPlatformRequest(
+          engineeredBody,
+          anthropicConfig,
+          useWebSearch ? anthropicTools : undefined,
+        )
         break
       }
       case 'openai-compatible': {
@@ -1327,6 +1301,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
           upstreamReq = buildUpstreamRequest(
             { ...engineeredBody, messages: openAiMessagesWithSystem as { role: string; content: string }[], system: '' },
             upstreamConfig,
+            openAiTools,
           )
         } else {
           upstreamReq = buildUpstreamRequest(engineeredBody, upstreamConfig)
@@ -1374,20 +1349,47 @@ export function registerAiPlatformRoutes(app: Hono): void {
       return c.json({ error: errText || 'upstream error' }, upstream.status as 400 | 401 | 403 | 404 | 429 | 500 | 502 | 503)
     }
 
-    // openai-compatible + 联网搜索：走服务端工具循环（读首轮流式转发 + 回填检索结果），流式写回 OpenAI 格式 SSE。
+    // openai-compatible + 联网搜索：走通用 Agent 工具循环（读首轮 → 分发注册表里的工具 →
+    // 回填结果 → 继续），流式写回 OpenAI 格式 SSE。工具对用户在界面上不可见。
     if (modelRow.provider === 'openai-compatible' && useWebSearch && openAiMessagesWithSystem && upstreamConfig) {
-      const stream = streamOpenAiWebSearch({
-        messages: openAiMessagesWithSystem,
+      const stream = runAgentLoop({
+        provider: 'openai-compatible',
+        initialMessages: openAiMessagesWithSystem,
         modelId: modelRow.modelId,
         params: engineeredBody.params,
-        firstUpstream: upstream,
-        firstReq: upstreamReq,
+        registry: agentRegistry,
         buildRequest: (messages, modelId, params) =>
           buildUpstreamRequest(
             { modelId, messages: messages as { role: string; content: string }[], system: '', params: { ...params, webSearch: true } },
             upstreamConfig as UpstreamConfig,
+            openAiTools,
           ),
-        executeSearch: anthropicConfig ? (query) => runWebSearch(query, { apiKey: anthropicConfig.apiKey, baseUrl: anthropicConfig.baseUrl, model: anthropicConfig.model }) : null,
+        readTurn: readOpenAiTurn,
+        initialResponse: upstream,
+        maxRounds: MAX_AGENT_ROUNDS,
+        signal: c.req.raw.signal,
+      })
+      return new Response(stream, { headers: SSE_RESPONSE_HEADERS })
+    }
+
+    // anthropic + 联网搜索：同样走通用 Agent 工具循环（客户端工具），统一成 OpenAI 格式 SSE。
+    // 网关已验证接受任意客户端工具（见 tests 的 probe 记录），故不再走原生 web_search 直通。
+    if (modelRow.provider === 'anthropic' && useWebSearch && anthropicConfig) {
+      const stream = runAgentLoop({
+        provider: 'anthropic',
+        initialMessages: engineeredBody.messages as AgentChatMessage[],
+        modelId: modelRow.modelId,
+        params: engineeredBody.params,
+        registry: agentRegistry,
+        buildRequest: (messages, modelId, params) =>
+          buildAnthropicPlatformRequest(
+            { modelId, messages: messages as { role: string; content: string }[], system: engineeredBody.system, params: { ...params, webSearch: true } },
+            anthropicConfig,
+            anthropicTools,
+          ),
+        readTurn: readAnthropicTurn,
+        initialResponse: upstream,
+        maxRounds: MAX_AGENT_ROUNDS,
         signal: c.req.raw.signal,
       })
       return new Response(stream, { headers: SSE_RESPONSE_HEADERS })

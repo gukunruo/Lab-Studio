@@ -1284,6 +1284,53 @@ export function normalizeFinancePreferences(raw: unknown): FinancePreferences {
   }
 }
 
+// ---- Agent 工具：行情查询（供 server/agent-engine.ts 的 finance_quote 工具使用）----
+
+// 纯函数：把一组实时行情 Quote 压成紧凑摘要（可单测）。
+export function formatQuotesSummary(quotes: Quote[]): string {
+  return quotes
+    .map((q) => {
+      const pct = Number.isFinite(q.pct) ? q.pct : 0
+      const fmt = (v: number, fallback = '—') => (Number.isFinite(v) ? v.toFixed(2) : fallback)
+      const change = Number.isFinite(q.change) ? `${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}` : '—'
+      const peField = Number.isFinite(q.pe) ? ` 市盈率${q.pe.toFixed(2)}` : ''
+      return `${q.name}（${q.code}） 现价${fmt(q.price)} 涨跌幅${pct > 0 ? '+' : ''}${pct.toFixed(2)}%（涨跌${change}） 今开${fmt(q.open)} 最高${fmt(q.high)} 最低${fmt(q.low)} 成交额${fmtWan(q.amount)}${peField}`
+    })
+    .join('\n')
+}
+
+function fmtWan(v: number): string {
+  if (!Number.isFinite(v)) return '—'
+  if (Math.abs(v) >= 10_000) return `${(v / 10_000).toFixed(2)}亿`
+  return `${Math.round(v)}万`
+}
+
+// 解析标的名/代码 → 东方财富搜索 → 转腾讯 symbol → 拉实时行情 → 紧凑摘要。
+export async function agentFinanceQuote(q: string): Promise<string> {
+  const query = (q ?? '').trim()
+  if (!query) return '（未提供有效的标的名或代码）'
+  let items: SearchItem[]
+  try {
+    items = await searchEastmoney(query)
+  } catch {
+    items = []
+  }
+  if (!items.length) return `（未找到标的：${query}，请核对名称或代码）`
+  const symbols = items
+    .map((item) => secidToTencentSymbol(item.quoteId, item.code))
+    .filter((s): s is string => s != null)
+    .slice(0, 3)
+  if (!symbols.length) return `（暂不支持该标的的实时行情：${query}）`
+  let quotes: Quote[]
+  try {
+    quotes = await fetchTencentQuotes(symbols)
+  } catch {
+    quotes = []
+  }
+  if (!quotes.length) return `（行情获取失败：${query}）`
+  return formatQuotesSummary(quotes)
+}
+
 // ---- 路由注册 ----
 export function registerPublicFinanceRoutes(app: Hono): void {
   // 兼容旧指数条接口；板块排行仍由 /finance/boards/:kind 提供。
