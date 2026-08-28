@@ -220,6 +220,12 @@ function statusLabel(status: TaskStatus): string {
 </template>
 
 <style scoped lang="scss">
+.cc-viz--todo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .cc-viz__panel {
   padding: 16px;
 }

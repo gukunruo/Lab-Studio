@@ -293,6 +293,12 @@ const permissionRows = computed<CheckRowData[]>(() => {
 </template>
 
 <style scoped lang="scss">
+.cc-viz--permission {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .cc-viz__panel {
   padding: 16px;
 }

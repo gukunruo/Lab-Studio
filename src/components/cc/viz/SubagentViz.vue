@@ -231,6 +231,12 @@ function blockTop(i: number): number {
 </template>
 
 <style scoped lang="scss">
+.cc-viz--subagent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .cc-viz__panel {
   padding: 16px;
 }

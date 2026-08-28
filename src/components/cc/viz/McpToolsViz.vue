@@ -184,6 +184,11 @@ function shelfActive(...keys: string[]): boolean {
 </template>
 
 <style scoped lang="scss">
+.cc-viz--mcp {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 .cc-viz__panel {
   padding: 16px;
 }

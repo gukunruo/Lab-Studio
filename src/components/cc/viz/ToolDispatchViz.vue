@@ -223,6 +223,12 @@ function isToolActive(i: number): boolean {
 </template>
 
 <style scoped lang="scss">
+.cc-viz--tool {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .cc-viz__panel {
   padding: 16px;
 }

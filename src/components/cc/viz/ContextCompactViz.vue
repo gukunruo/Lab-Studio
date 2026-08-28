@@ -411,6 +411,11 @@ function layerCardClass(layer: CompressionLayer): string {
 </template>
 
 <style scoped lang="scss">
+.cc-viz--compact {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 .cc-viz__compact-panel {
   padding: 16px;
   min-height: 500px;

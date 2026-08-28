@@ -462,6 +462,10 @@ const LANE_META = [
   --qcard-amber-fill: #fef3c7;
   --qcard-amber-text: #b45309;
   --qcard-amber-sub: #92400e;
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 [data-theme='dark'] .cc-viz--bg {
