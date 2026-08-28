@@ -6,7 +6,7 @@ import {
   composerSubmitMatches,
   nextTextareaHeight,
 } from '../composer'
-import { PhImage, PhLightning, PhPaperPlaneRight, PhSparkle, PhStop, PhX } from '@phosphor-icons/vue'
+import { PhGlobe, PhImage, PhLightning, PhPaperPlaneRight, PhSparkle, PhStop, PhX } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -30,6 +30,7 @@ const emit = defineEmits<{
   'clear-reference': []
   abort: []
   'abort-image': []
+  'update:params': [params: ChatParams]
 }>()
 
 const mode = ref<'chat' | 'gpt-image' | 'gemini'>('chat')
@@ -58,6 +59,12 @@ const selectedImageModelName = computed(() =>
     ?? (imageModelId.value === 'gpt-image-2' ? 'GPT-Image-2' : 'Gemini 3 Pro Image'),
 )
 const hasReference = computed(() => Boolean(props.referenceImageId))
+// 联网搜索默认开启：params 未显式记录时按开对待。
+const webSearchOn = computed(() => props.params.webSearch ?? true)
+
+function toggleWebSearch() {
+  emit('update:params', { ...props.params, webSearch: !webSearchOn.value })
+}
 const imageMode = computed(() => mode.value !== 'chat')
 const gptEditing = computed(() => mode.value === 'gpt-image' && hasReference.value)
 
@@ -193,6 +200,17 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
       <div class="composer__bar">
         <div class="composer__tools">
           <template v-if="mode === 'chat'">
+            <button
+              class="composer__tool composer__tool--button"
+              :class="{ 'composer__tool--active': webSearchOn }"
+              type="button"
+              :disabled="streaming || busy || imageGenerating"
+              :title="webSearchOn ? '联网搜索已开启，需最新/实时信息时 AI 会联网' : '联网搜索已关闭'"
+              :aria-pressed="webSearchOn"
+              @click="toggleWebSearch"
+            >
+              <PhGlobe :size="13" weight="regular" /> 联网
+            </button>
             <button
               class="composer__tool composer__tool--button"
               type="button"

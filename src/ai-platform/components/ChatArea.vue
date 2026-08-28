@@ -703,6 +703,7 @@ onBeforeUnmount(() => invalidateRequest())
       @clear-reference="selectReferenceImage(null)"
       @abort="abort"
       @abort-image="abortImageGeneration"
+      @update:params="emit('update:params', $event)"
     >
       <template #suggestions>
         <div v-if="!messages.length && !streaming" class="chat__suggestions" aria-label="推荐话题">

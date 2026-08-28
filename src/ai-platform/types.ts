@@ -101,6 +101,7 @@ export type ChatMessage = TextMessage | ImageRequestMessage | ImageResultMessage
 export interface ChatParams {
   reasoningEffort?: 'low' | 'medium' | 'high'
   maxTokens?: number
+  webSearch?: boolean
 }
 
 export interface ConversationOutlineItem {
