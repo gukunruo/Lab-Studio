@@ -14,6 +14,7 @@ import {
   type DecodedImage,
 } from './ai-image-assets'
 import { seedAiModels } from './ai-platform-seed'
+import { engineerContext } from './context-engine'
 
 const USER_KEY = 'admin'
 
@@ -69,6 +70,7 @@ export interface ChatRequestBody {
   modelId: string
   messages: { role: string; content: string }[]
   system?: string
+  summary?: string
   params?: { reasoningEffort?: string; maxTokens?: number }
 }
 
@@ -1154,19 +1156,37 @@ export function registerAiPlatformRoutes(app: Hono): void {
     if (modelRow.category === 'image') return c.json({ error: 'image models must use the image generation API' }, 400)
     if (!isSupportedModelProvider(modelRow.provider)) return c.json({ error: 'unsupported provider' }, 400)
 
+    // 上下文工程：分层系统提示 + 窗口化压缩 + 内容截断 + 上下文窗口预算。
+    const engineered = engineerContext({
+      messages: body.messages,
+      system: body.system ?? '',
+      summary: typeof body.summary === 'string' ? body.summary : '',
+      contextWindow: modelRow.contextWindow ?? null,
+      maxTokens: body.params?.maxTokens,
+    })
+    const engineeredBody: ChatRequestBody = {
+      modelId: body.modelId,
+      messages: engineered.messages,
+      system: engineered.system,
+      params: {
+        ...body.params,
+        maxTokens: engineered.maxTokens,
+      },
+    }
+
     let upstreamReq: UpstreamRequest
     switch (modelRow.provider) {
       case 'anthropic': {
         const config = readAnthropicConfig()
         if (!config) return c.json({ error: 'AI credentials not configured' }, 503)
-        upstreamReq = buildAnthropicPlatformRequest(body, config)
+        upstreamReq = buildAnthropicPlatformRequest(engineeredBody, config)
         break
       }
       case 'openai-compatible': {
         const appId = process.env.TAL_MLOPS_APP_ID ?? ''
         const appKey = process.env.TAL_MLOPS_APP_KEY ?? ''
         if (!appId || !appKey) return c.json({ error: 'OpenAI-compatible credentials not configured' }, 503)
-        upstreamReq = buildUpstreamRequest(body, {
+        upstreamReq = buildUpstreamRequest(engineeredBody, {
           provider: modelRow.provider,
           modelId: modelRow.modelId,
           baseUrl: process.env.TAL_AI_BASE_URL ?? 'http://ai-service.tal.com',

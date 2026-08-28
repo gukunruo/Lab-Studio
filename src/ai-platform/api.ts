@@ -129,6 +129,7 @@ export interface StreamChatOptions {
   modelId: string
   messages: ChatMessage[]
   system?: string
+  summary?: string
   params?: ChatParams
   onToken: (token: string) => void
   onDone: (full: string) => void
@@ -274,6 +275,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
       modelId: opts.modelId,
       messages: toUpstreamMessages(opts.messages),
       system: opts.system ?? '',
+      summary: opts.summary ?? '',
       params: opts.params ?? {},
     }),
     signal: opts.signal,

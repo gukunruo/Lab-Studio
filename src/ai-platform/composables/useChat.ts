@@ -18,6 +18,7 @@ export function useChat() {
       onError: (err: string) => void
       onAbort: (full: string) => void
     },
+    summary = '',
   ) {
     if (streaming.value) return
     streaming.value = true
@@ -34,6 +35,7 @@ export function useChat() {
         modelId,
         messages,
         system,
+        summary,
         params,
         onToken: callbacks.onToken,
         onDone: (full) => {

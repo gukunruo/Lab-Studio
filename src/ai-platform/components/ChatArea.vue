@@ -170,10 +170,6 @@ function useSuggestion(suggestion: AiRecommendation) {
   void handleSend(suggestion.query)
 }
 
-function digestSystemPrompt(): string {
-  return `${props.systemPrompt}\n\n已整理的早期上下文（以原消息为准）：\n${props.digest?.summary ?? ''}`
-}
-
 function activeDigest(): ConversationDigest | null {
   const digest = props.digest
   return digest && digest.sourceMessageCount > 0 && digest.sourceMessageCount <= props.messages.length
@@ -191,7 +187,7 @@ async function requestReply(messages: ChatMessage[]) {
     await send(
       messages,
       props.modelId,
-      activeDigest() ? digestSystemPrompt() : props.systemPrompt,
+      props.systemPrompt,
       props.params,
       {
         onToken: (token) => {
@@ -222,6 +218,7 @@ async function requestReply(messages: ChatMessage[]) {
           streamingContent.value = ''
         },
       },
+      activeDigest()?.summary ?? '',
     )
   } finally {
     if (generation === requestGeneration) waitingForFirstToken.value = false
