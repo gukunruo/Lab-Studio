@@ -7,18 +7,17 @@ const props = defineProps<{
   containerEl: HTMLElement | null
 }>()
 
-// 布局常量：条高细节 + 几 px 间距 + 上下留白。
-const RAIL_WIDTH = 28
-const BASE_H = 3
-const ACTIVE_H = 5
-const GAP = 3
-const MIN_GAP = 1
-const ROW = BASE_H + GAP
-const MIN_ROW = BASE_H + MIN_GAP
-const BASE_LEN = 12
-const PAD_V = 10
+// 布局常量对齐 Paseo 网页版实测值：每格 8px、条高 2px、条长 10px/18px、左侧缩进 4px、轨道宽 36px。
+const RAIL_WIDTH = 36
+const BAR_H = 2
+const BAR_LEFT = 4
+const TICK = 8
+const MIN_TICK = 4
+const BASE_LEN = 10
+const ACTIVE_LEN = 18
+const PAD_V = 12
 // hover 波峰：到 hover 条的距离 → 额外长度。
-const PEAK = [14, 7, 3]
+const PEAK = [12, 6, 3]
 
 interface RoundInfo {
   startIndex: number
@@ -37,7 +36,7 @@ const hoverIndex = ref(-1)
 const hoverBarTop = ref(0)
 const groupScrollable = ref(false)
 const barsOffset = ref(0)
-const rowPx = ref(ROW)
+const rowPx = ref(TICK)
 
 let containerRO: ResizeObserver | null = null
 let railRO: ResizeObserver | null = null
@@ -70,8 +69,8 @@ function buildRounds(msgs: ChatMessage[]): RoundInfo[] {
   return roundsArr
 }
 
-// 组实际高度 = 条高 x N + 间距 x (N-1)。小于可用高度时居中，超出时压缩间距（下限 MIN_GAP）
-// 尽量填满可见区；轮次极多、压缩到极限仍放不下时，退回内部滚动兜底。
+// 每格固定 8px（Paseo 实测），整组竖向居中；轮次超出可用高度时压缩间距（下限 MIN_TICK），
+// 压缩到极限仍放不下时退回内部滚动兜底，避免首尾条被裁切。
 function layout() {
   const railH = railRef.value?.clientHeight ?? 0
   const avail = Math.max(railH - 2 * PAD_V, 0)
@@ -79,21 +78,20 @@ function layout() {
   if (n === 0) {
     groupScrollable.value = false
     barsOffset.value = 0
-    rowPx.value = ROW
+    rowPx.value = TICK
     return
   }
-  const fitRow = (avail + MIN_GAP) / n
-  const raw = Math.min(ROW, fitRow)
-  if (raw >= MIN_ROW) {
+  const fitRow = avail / n
+  const raw = Math.min(TICK, fitRow)
+  if (raw >= MIN_TICK) {
     groupScrollable.value = false
     rowPx.value = raw
-    const gap = rowPx.value - BASE_H
-    const groupH = n * rowPx.value - gap
+    const groupH = n * rowPx.value
     barsOffset.value = avail > 0 ? Math.max((avail - groupH) / 2, 0) : 0
     if (barsRef.value) barsRef.value.scrollTop = 0
   } else {
     groupScrollable.value = true
-    rowPx.value = MIN_ROW
+    rowPx.value = MIN_TICK
     barsOffset.value = 0
   }
 }
@@ -157,20 +155,18 @@ function onResize() {
 // 条在 bars（相对定位）内的纵向坐标。绝对定位 + 固定的 top 让条互不影响。
 function barStyle(i: number) {
   const top = barsOffset.value + i * rowPx.value
-  const width = barWidth(i)
-  const height = i === activeIndex.value ? Math.min(ACTIVE_H, rowPx.value) : BASE_H
-  return { top: `${top}px`, left: `0px`, width: `${width}px`, height: `${height}px` }
+  return { top: `${top}px`, left: `${BAR_LEFT}px`, width: `${barWidth(i)}px`, height: `${BAR_H}px` }
 }
 
-// hover 波峰：hover 条最长，左右邻居递减弱，其余保持基础长度。
+// hover 波峰：hover 条最长，左右邻居递减弱，其余保持基础长度；激活条至少为选中长度。
 function barWidth(i: number) {
   const hi = hoverIndex.value
   let w = BASE_LEN
   if (hi >= 0) {
     const d = Math.abs(i - hi)
-    if (d < PEAK.length) w += PEAK[d] ?? 0
+    w += PEAK[d] ?? 0
   }
-  if (i === activeIndex.value) w = Math.max(w, BASE_LEN + 6)
+  if (i === activeIndex.value) w = Math.max(w, ACTIVE_LEN)
   return w
 }
 
@@ -263,12 +259,9 @@ onBeforeUnmount(() => {
     ref="railRef"
     class="progress-rail"
     :style="{ width: `${RAIL_WIDTH}px` }"
+    role="tablist"
     aria-label="对话缩略进度"
   >
-    <div
-      class="progress-rail__track"
-      :style="{ top: `${PAD_V}px`, bottom: `${PAD_V}px` }"
-    />
     <div
       ref="barsRef"
       class="progress-rail__bars"
@@ -279,6 +272,7 @@ onBeforeUnmount(() => {
         v-for="(round, i) in rounds"
         :key="round.startIndex"
         :data-bar-index="i"
+        :data-testid="`chat-outline-tick-${round.startIndex}`"
         class="progress-rail__bar"
         :class="{
           'progress-rail__bar--active': i === activeIndex,
@@ -286,8 +280,9 @@ onBeforeUnmount(() => {
         }"
         :style="barStyle(i)"
         type="button"
-        :title="`第 ${i + 1} 轮`"
-        :aria-label="`跳转到第 ${i + 1} 轮`"
+        role="tab"
+        :aria-selected="i === activeIndex"
+        :aria-label="`${i + 1} of ${rounds.length}: ${round.userContent}`"
         @click="scrollToRound(round)"
         @mouseenter="onBarEnter(i)"
         @mouseleave="onBarLeave"
@@ -318,14 +313,6 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 
-.progress-rail__track {
-  position: absolute;
-  left: 0;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--color-border);
-}
-
 .progress-rail__bars {
   position: absolute;
   left: 0;
@@ -344,15 +331,13 @@ onBeforeUnmount(() => {
   position: absolute;
   border: 0;
   padding: 0;
-  border-radius: 2px;
+  border-radius: 9999px;
   background: var(--color-border-strong);
   cursor: pointer;
-  opacity: 0.85;
+  opacity: 0.9;
   transition:
     width 0.12s,
-    height 0.12s,
     background 0.12s,
-    box-shadow 0.12s,
     opacity 0.12s;
 }
 
@@ -363,9 +348,8 @@ onBeforeUnmount(() => {
 }
 
 .progress-rail__bar--active {
-  background: var(--color-accent);
   opacity: 1;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  background: var(--color-text-muted);
 }
 
 .progress-rail__tooltip {
