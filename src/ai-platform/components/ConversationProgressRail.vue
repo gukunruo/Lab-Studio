@@ -7,12 +7,13 @@ const props = defineProps<{
   containerEl: HTMLElement | null
 }>()
 
-const RAIL_WIDTH = 20
-const MARKER_HEIGHT = 6
+const RAIL_WIDTH = 26
+const MARKER_HEIGHT = 3
+const PAD = 12
 
 interface TurnMarker {
   startIndex: number
-  topWithin: number
+  midWithin: number
   topPx: number
   userContent: string
   kind: 'text' | 'image'
@@ -47,7 +48,7 @@ function buildTurns(msgs: ChatMessage[]): TurnMarker[] {
     const { content, kind } = userPrompt(msg)
     turns.push({
       startIndex: i,
-      topWithin: 0,
+      midWithin: 0,
       topPx: 0,
       userContent: content || (kind === 'image' ? '（图片）' : '（无内容）'),
       kind,
@@ -59,21 +60,19 @@ function buildTurns(msgs: ChatMessage[]): TurnMarker[] {
 function sync() {
   const container = props.containerEl
   const railH = railRef.value?.clientHeight ?? 0
-  const usable = Math.max(railH - MARKER_HEIGHT, 1)
+  const usable = Math.max(railH - PAD * 2 - MARKER_HEIGHT, 1)
   const sh = container ? Math.max(1, container.scrollHeight) : 1
   const ch = container?.clientHeight ?? 0
   scrollH.value = sh
   clientH.value = ch
   for (const m of markers.value) {
-    m.topPx = Math.max(0, Math.min(1, m.topWithin / sh)) * usable
+    const ratio = m.midWithin / sh
+    m.topPx = PAD + Math.max(0, Math.min(1, ratio)) * usable
   }
   if (!container || !markers.value.length) {
     activeIndex.value = -1
     return
   }
-  // Between the extremes, highlight the round whose content sits around the top
-  // quarter of the viewport; clamp the top/bottom so round 1 lights up at the
-  // very top and the last round lights up at the very bottom.
   const maxScroll = Math.max(0, sh - ch)
   if (container.scrollTop >= maxScroll - 48) {
     activeIndex.value = markers.value.length - 1
@@ -86,7 +85,7 @@ function sync() {
   const anchorY = container.scrollTop + ch * 0.25
   let best = 0
   markers.value.forEach((m, i) => {
-    if (m.topWithin <= anchorY) best = i
+    if (m.midWithin <= anchorY) best = i
   })
   activeIndex.value = best
 }
@@ -99,9 +98,10 @@ async function measure() {
   const containerRect = container.getBoundingClientRect()
   for (const t of built) {
     const el = container.querySelector<HTMLElement>(`[data-message-index="${t.startIndex}"]`)
-    t.topWithin = el
-      ? el.getBoundingClientRect().top - containerRect.top + container.scrollTop
-      : 0
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      t.midWithin = rect.top - containerRect.top + container.scrollTop + rect.height / 2
+    }
   }
   markers.value = built
   sync()
@@ -129,6 +129,8 @@ function scrollToTurn(turn: TurnMarker) {
   container.scrollTop = Math.max(0, topWithin - container.clientHeight * 0.2)
   hoverIndex.value = -1
 }
+
+const hovered = computed(() => markers.value[hoverIndex.value] ?? null)
 
 const tooltipStyle = computed(() => {
   const m = markers.value[hoverIndex.value]
@@ -160,8 +162,6 @@ watch(
   { immediate: true },
 )
 
-// The rail is v-if'd on `scrollable`, which only becomes true mid-measure, so it
-// mounts after markers are first positioned. Re-sync once it has a real height.
 watch(railRef, (el) => {
   railRO?.disconnect()
   if (el) {
@@ -188,13 +188,14 @@ onBeforeUnmount(() => {
     :style="{ width: `${RAIL_WIDTH}px` }"
     aria-label="对话缩略进度"
   >
+    <div class="progress-rail__track" />
     <button
       v-for="(turn, i) in markers"
       :key="turn.startIndex"
-      class="progress-rail__marker"
+      class="progress-rail__dash"
       :class="{
-        'progress-rail__marker--active': i === activeIndex,
-        'progress-rail__marker--hovered': i === hoverIndex,
+        'progress-rail__dash--active': i === activeIndex,
+        'progress-rail__dash--hovered': i === hoverIndex,
       }"
       type="button"
       :style="{ top: `${turn.topPx}px` }"
@@ -206,16 +207,16 @@ onBeforeUnmount(() => {
     />
 
     <div
-      v-if="hoverIndex >= 0 && markers[hoverIndex]"
+      v-if="hovered"
       class="progress-rail__tooltip"
       :style="tooltipStyle"
       role="tooltip"
     >
-      <div class="progress-rail__tooltip-label">
+      <div class="progress-rail__tooltip-header">
         <span class="progress-rail__tooltip-turn">第 {{ hoverIndex + 1 }} 轮</span>
-        <span v-if="markers[hoverIndex].kind === 'image'" class="progress-rail__tooltip-kind">图片</span>
+        <span v-if="hovered.kind === 'image'" class="progress-rail__tooltip-kind">图片</span>
       </div>
-      <div class="progress-rail__tooltip-content">{{ markers[hoverIndex].userContent }}</div>
+      <div class="progress-rail__tooltip-content">{{ hovered.userContent }}</div>
     </div>
   </aside>
 </template>
@@ -226,39 +227,51 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   align-self: stretch;
   overflow: visible;
-  padding: 24px 0;
+  padding: 12px 0;
   box-sizing: border-box;
 }
 
-.progress-rail__marker {
+.progress-rail__track {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 16px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 40%, transparent);
+}
+
+.progress-rail__dash {
   position: absolute;
   left: 50%;
-  width: 12px;
-  height: 5px;
+  width: 16px;
+  height: 3px;
   transform: translate(-50%, -50%);
   border: 0;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--color-border-strong);
   cursor: pointer;
   padding: 0;
-  opacity: 0.75;
+  opacity: 0.8;
   transition:
-    height 0.16s,
-    background 0.16s,
-    opacity 0.16s;
+    height 0.15s,
+    background 0.15s,
+    opacity 0.15s,
+    box-shadow 0.15s;
 }
 
-.progress-rail__marker:hover,
-.progress-rail__marker--hovered {
+.progress-rail__dash:hover,
+.progress-rail__dash--hovered {
   opacity: 1;
   background: var(--color-text-muted);
 }
 
-.progress-rail__marker--active {
-  height: 7px;
+.progress-rail__dash--active {
+  height: 5px;
   background: var(--color-accent);
   opacity: 1;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .progress-rail__tooltip {
@@ -276,7 +289,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.progress-rail__tooltip-label {
+.progress-rail__tooltip-header {
   display: flex;
   align-items: center;
   gap: 6px;
