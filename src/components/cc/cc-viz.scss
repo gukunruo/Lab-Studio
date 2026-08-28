@@ -1,0 +1,63 @@
+// CC 书交互可视化（原站 Hero 图）的共享样式与 SVG 主题变量。
+// 每章可视化组件根元素均带 .cc-viz；active 高亮色为教育图品牌色，不随主题变化。
+
+.cc-viz {
+  --cc-node-fill: #e2e8f0;
+  --cc-node-stroke: #cbd5e1;
+  --cc-node-text: #475569;
+  --cc-edge: #cbd5e1;
+  --cc-arrow: #94a3b8;
+  --cc-label: #94a3b8;
+  --cc-bg-subtle: #f8fafc;
+  --cc-active: #3b82f6;
+  --cc-active-stroke: #2563eb;
+  --cc-active-text: #ffffff;
+  --cc-end: #a855f7;
+  --cc-end-stroke: #9333ea;
+}
+
+[data-theme='dark'] .cc-viz {
+  --cc-node-fill: #27272a;
+  --cc-node-stroke: #3f3f46;
+  --cc-node-text: #d4d4d8;
+  --cc-edge: #52525b;
+  --cc-arrow: #71717a;
+  --cc-label: #a1a1aa;
+  --cc-bg-subtle: #18181b;
+}
+
+.cc-viz__node,
+.cc-viz__edge {
+  transition: fill 0.3s, stroke 0.3s, opacity 0.3s;
+}
+
+.cc-viz__node {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 0.3s, stroke 0.3s, opacity 0.3s, transform 0.3s;
+}
+
+.cc-viz__node--active {
+  transform: scale(1.04);
+}
+
+.cc-viz__glow {
+  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.55));
+}
+
+.cc-viz__glow--end {
+  filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.55));
+}
+
+.cc-viz__panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.cc-viz__panel-head {
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}

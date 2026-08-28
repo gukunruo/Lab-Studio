@@ -17,6 +17,8 @@ import { createLocalChatStore, type TutorAdapter } from '@/learn/ai'
 import { useTextAnnotations } from '@/learn/annotations'
 import { enhanceReaderDoc } from '@/learn/reader-enhance'
 import { applyReaderAnnotations } from '@/learn/annotations'
+import { labIdForChapter } from '@/learn/cc-lab'
+import { CHAPTER_VIZ } from '@/components/cc/viz'
 import { useCcCourseStore } from '@/stores/cc-course'
 import { useLocaleStore } from '@/stores/locale'
 import { useUiStore, TUTOR_MIN, TUTOR_MAX } from '@/stores/ui'
@@ -42,6 +44,10 @@ const activeId = computed(() => {
   return ccChapterById(requested) ? requested : store.lastOpened ?? ccIntro.id
 })
 const activeChapter = computed(() => ccChapterById(activeId.value) ?? ccIntro)
+const heroViz = computed(() => {
+  const lab = labIdForChapter(activeId.value)
+  return lab ? CHAPTER_VIZ[lab] : undefined
+})
 const html = computed(() =>
   marked.parse(ccChapterSource(activeChapter.value).replace(/^# .+\n/, ''), { async: false }) as string)
 
@@ -163,6 +169,10 @@ onMounted(() => {
             {{ i18n.tl(activeChapter.title) }}
           </h1>
         </header>
+
+        <div v-if="heroViz" class="cc-viz-hero">
+          <component :is="heroViz" />
+        </div>
 
         <div
           ref="proseEl"
@@ -459,6 +469,16 @@ onMounted(() => {
   margin: 26px 0;
   border: 0;
   border-top: 1px solid var(--color-border-subtle);
+}
+
+.cc-viz-hero {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px 28px 4px;
+}
+
+.cc-viz-hero > * {
+  margin: 0;
 }
 
 .cc__foot-wrap {
