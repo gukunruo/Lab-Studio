@@ -1,10 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import {
   adaptMcpTool,
   capMcpTools,
+  closeMcpClients,
   getMcpServerConfigs,
   isSafeMcpUrl,
+  loadAllMcpTools,
   mergeMcpTools,
   namespaceMcpToolName,
   parseMcpServerConfig,
@@ -142,6 +145,27 @@ test('parseMcpServerConfig parses a valid array and applies defaults', () => {
   assert.equal(configs[1]?.transport, 'sse')
 })
 
+test('parseMcpServerConfig parses stdio entries into command/args/env/cwd', () => {
+  const raw = JSON.stringify([
+    { id: 'sdk', name: 'SDK Weather', transport: 'stdio', command: 'node', args: ['/path/server.js'], env: { LANG: 'en' }, cwd: '/tmp' },
+    { id: 'no-command', transport: 'stdio', args: ['x'] },
+    { id: 'no-url', transport: 'streamable-http' },
+    { id: 'no-url-default' },
+  ])
+  const configs = parseMcpServerConfig(raw)
+  assert.equal(configs.length, 1)
+  assert.deepEqual(configs[0], {
+    id: 'sdk',
+    name: 'SDK Weather',
+    enabled: true,
+    transport: 'stdio',
+    command: 'node',
+    args: ['/path/server.js'],
+    env: { LANG: 'en' },
+    cwd: '/tmp',
+  })
+})
+
 test('parseMcpServerConfig tolerates empty, malformed, and non-array input', () => {
   assert.deepEqual(parseMcpServerConfig(undefined), [])
   assert.deepEqual(parseMcpServerConfig(''), [])
@@ -154,4 +178,21 @@ test('getMcpServerConfigs reads MCP_SERVERS from the passed environment', () => 
   const configs = getMcpServerConfigs({ MCP_SERVERS: JSON.stringify([{ id: 'a', url: 'https://a.example.com' }]) } as Record<string, string | undefined>)
   assert.equal(configs.length, 1)
   assert.equal(configs[0]?.id, 'a')
+})
+
+test('loadAllMcpTools connects to a real stdio server and calls a tool', { timeout: 20000 }, async () => {
+  // SDK 自带示例 stdio server：单个 get_weather 工具，纯 mock、无网络/文件系统依赖。
+  const server = path.resolve(process.cwd(), 'node_modules/@modelcontextprotocol/sdk/dist/esm/examples/server/mcpServerOutputSchema.js')
+  const config: McpServerConfig = { id: 'sdk', name: 'SDK Weather', enabled: true, transport: 'stdio', command: process.execPath, args: [server] }
+
+  try {
+    const tools = await loadAllMcpTools([config])
+    const weather = tools.find((tool) => tool.name === 'mcp__sdk__get_weather')
+    assert.ok(weather, 'should load mcp__sdk__get_weather from the stdio server')
+    const out = await weather.execute({ city: 'Beijing', country: 'CN' })
+    assert.equal(typeof out, 'string')
+    assert.match(out, /celsius|temperature/, 'weather result should be a JSON string')
+  } finally {
+    await closeMcpClients()
+  }
 })
