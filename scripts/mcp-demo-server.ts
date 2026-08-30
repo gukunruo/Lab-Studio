@@ -20,22 +20,34 @@ const PORT = Number(process.env.MCP_DEMO_PORT ?? 8765)
 function buildServer(): McpServer {
   const server = new McpServer({ name: 'lab-studio-demo', version: '1.0.0' })
 
+  // 记录每次工具调用，便于真机验证时确认 mcp-client 确实把调用打到了本 server。
+  const logCall = (name: string, args: unknown) => console.log(`[mcp-demo] tools/call ${name} ${JSON.stringify(args)}`)
+
   server.registerTool(
     'echo',
     { description: '原样回显给定的一段文本，用于测试工具调用链路。', inputSchema: { text: z.string() } },
-    async ({ text }) => ({ content: [{ type: 'text', text }] }),
+    async ({ text }) => {
+      logCall('echo', { text })
+      return { content: [{ type: 'text', text }] }
+    },
   )
 
   server.registerTool(
     'add',
     { description: '把两个整数相加并返回结果。', inputSchema: { a: z.number(), b: z.number() } },
-    async ({ a, b }) => ({ content: [{ type: 'text', text: String(a + b) }] }),
+    async ({ a, b }) => {
+      logCall('add', { a, b })
+      return { content: [{ type: 'text', text: String(a + b) }] }
+    },
   )
 
   server.registerTool(
     'greet',
     { description: '根据名字生成一句问候语。', inputSchema: { name: z.string() } },
-    async ({ name }) => ({ content: [{ type: 'text', text: `你好，${name}！` }] }),
+    async ({ name }) => {
+      logCall('greet', { name })
+      return { content: [{ type: 'text', text: `你好，${name}！` }] }
+    },
   )
 
   return server
