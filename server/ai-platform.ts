@@ -16,6 +16,7 @@ import {
 import { seedAiModels } from './ai-platform-seed'
 import { engineerContext } from './context-engine'
 import { buildAnthropicWebSearchTools, runWebSearch } from './web-search'
+import { enrichImagePrompt } from './image-prompt-enricher'
 import {
   buildAnthropicTools,
   buildOpenAiTools,
@@ -1132,9 +1133,14 @@ export function registerAiPlatformRoutes(app: Hono): void {
     const config = readImageGenerationConfig()
     if (!config) return c.json({ error: '图片生成服务暂未配置。' }, 503)
 
+    // 联网增强：图片模型不接受工具，先用 Claude 原生 web_search 消除歧义实体（如「豆包」），
+    // 再交给 gpt-image-2 生成；未配置 Claude 检索环境时退化为原提示词直通。
+    const anthropicConfig = readAnthropicConfig()
+    const finalPrompt = anthropicConfig ? await enrichImagePrompt(prompt, anthropicConfig) : prompt
+
     let upstream: Response
     try {
-      const request = buildGptImageRequest({ ...body, prompt }, config, reference ?? undefined)
+      const request = buildGptImageRequest({ ...body, prompt: finalPrompt }, config, reference ?? undefined)
       upstream = await fetch(request.url, {
         method: 'POST',
         headers: request.headers,
@@ -1193,9 +1199,13 @@ export function registerAiPlatformRoutes(app: Hono): void {
     const config = readImageGenerationConfig()
     if (!config) return c.json({ error: '图片创作服务暂未配置。' }, 503)
 
+    // 联网增强：同样先用 Claude 原生 web_search 消除歧义实体，再交给 Gemini 创作模型。
+    const anthropicConfig = readAnthropicConfig()
+    const finalPrompt = anthropicConfig ? await enrichImagePrompt(prompt, anthropicConfig) : prompt
+
     let upstream: Response
     try {
-      const request = buildGeminiMultimodalRequest({ ...body, prompt }, config, reference ?? undefined)
+      const request = buildGeminiMultimodalRequest({ ...body, prompt: finalPrompt }, config, reference ?? undefined)
       upstream = await fetch(request.url, {
         method: 'POST',
         headers: request.headers,
