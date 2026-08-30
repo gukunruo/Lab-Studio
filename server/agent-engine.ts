@@ -58,6 +58,8 @@ export type AgentProvider = 'openai-compatible' | 'anthropic'
 
 // 每轮最多落地这么多次工具调用，超出即在下一轮强制结束，避免模型无限精化工具查询递归。
 export const MAX_AGENT_ROUNDS = 3
+// tool_call 事件里返回预览的最大长度，避免把工具大结果（如 web_fetch 全文）原样塞进 SSE。
+export const TOOL_CALL_RESULT_PREVIEW = 200
 
 // ---- 工具参数解析 ----
 
@@ -287,6 +289,21 @@ export function runAgentLoop(opts: {
       // 客户端已断开
     }
   }
+  // 每次执行工具时吐一条 tool_call 事件，前端据此渲染「模型调了哪个工具、入参、
+  // 返回预览」，让 agent 的工具使用对用户可见。内置工具与 MCP 工具通用。
+  const writeToolCall = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    name: string,
+    args: Record<string, unknown>,
+    result: string,
+  ) => {
+    const preview = result.length > TOOL_CALL_RESULT_PREVIEW ? `${result.slice(0, TOOL_CALL_RESULT_PREVIEW)}…` : result
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_call: { name, arguments: args ?? {}, result: preview } })}\n\n`))
+    } catch {
+      // 客户端已断开
+    }
+  }
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -322,6 +339,7 @@ export function runAgentLoop(opts: {
               content = `（工具 ${tc.name} 出错：${e instanceof Error ? e.message : String(e)}）`
             }
           }
+          writeToolCall(controller, tc.name, tc.arguments, content)
           results.push({ id: tc.id, name: tc.name, content })
         }
         messages = appendToolMessages(messages, turn, results, opts.provider)

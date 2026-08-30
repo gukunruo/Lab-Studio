@@ -232,6 +232,51 @@ test('runAgentLoop dispatches multiple tools in one round, streams content, and 
   assert.ok(toolMsgs.some((m) => (m.content as string).startsWith('fetch:')))
 })
 
+test('runAgentLoop emits a tool_call event per executed tool, truncating the result preview', async () => {
+  const registry: AgentToolRegistry = {
+    finance_quote: { name: 'finance_quote', description: '', parameters: {}, execute: async () => 'x'.repeat(300) },
+  }
+  const turns: AgentTurn[] = [
+    { content: '准备调用', toolCalls: [{ id: 'c1', name: 'finance_quote', arguments: { q: '600519' } }], finishReason: 'tool_calls', done: true },
+    { content: '最终答案', toolCalls: [], finishReason: 'stop', done: true },
+  ]
+  let idx = 0
+  const readTurn = async (_stream: ReadableStream<Uint8Array>, onContent?: (t: string) => void) => {
+    const turn = turns[idx++]
+    if (turn.content) onContent?.(turn.content)
+    return turn
+  }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response('')
+  let consumed = ''
+  try {
+    const out = runAgentLoop({
+      provider: 'openai-compatible',
+      initialMessages: [{ role: 'user', content: 'hi' }],
+      modelId: 'm',
+      params: {},
+      registry,
+      buildRequest: () => ({ url: 'http://upstream.test', headers: new Headers(), body: '' }),
+      readTurn,
+      initialResponse: new Response(''),
+      maxRounds: 3,
+    })
+    const parts: string[] = []
+    for await (const chunk of out) parts.push(new TextDecoder().decode(chunk))
+    consumed = parts.join('')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  assert.ok(consumed.includes('"tool_call"'))
+  assert.ok(consumed.includes('"name":"finance_quote"'))
+  assert.ok(consumed.includes('"arguments":{"q":"600519"}'))
+  // 结果预览截断到 TOOL_CALL_RESULT_PREVIEW(200) + 省略号。
+  const previewMatch = consumed.match(/"result":"(x+)…"/)
+  assert.ok(previewMatch, 'should contain a truncated result preview ending with …')
+  assert.equal(previewMatch?.[1]?.length, 200)
+})
+
 test('runAgentLoop falls back gracefully when the tool is not registered', async () => {
   const registry: AgentToolRegistry = {
     finance_quote: { name: 'finance_quote', description: '', parameters: {}, execute: async (args) => `quote:${args.q}` },
