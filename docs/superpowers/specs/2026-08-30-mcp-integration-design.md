@@ -1,7 +1,7 @@
 # MCP（Model Context Protocol）接入设计
 
 > 日期：2026-08-30
-> 方案：远程 HTTP/SSE MCP client、服务端配置、工具自动注入、通用示例打通链路
+> 方案：远程 HTTP/SSE + 本地 stdio 的 MCP client、服务端配置、工具自动注入、通用示例打通链路
 
 ## 1. 目标与范围
 
@@ -13,15 +13,15 @@
 
 ### 第一期范围
 
-- 新增一个 MCP client，通过**远程 HTTP/SSE** 连接 MCP server，把 `tools/list` 暴露的工具适配成 `AgentTool` 合入注册表。
+- 新增一个 MCP client，通过**远程 HTTP/SSE 或本地 stdio**连接 MCP server，把 `tools/list` 暴露的工具适配成 `AgentTool` 合入注册表。
 - **服务端配置**接入哪些 MCP server（env / 配置文件），用户侧不任意填 URL。
 - 工具**自动注入**给模型，对用户不可见（延续现有「联网开关」式的隐式管道）。
 - 首个用**通用示例**（本地起的 HTTP MCP demo server）打通整条链路，后续替换为真实远程 server 只改配置。
 
 ### 第一期范围外
 
+- 本地 stdio 子进程 MCP server（`transport: 'stdio'`）已纳入：由服务端 `MCP_SERVERS` 配置 `command`/`args`/`env`/`cwd`，spawn 本地命令；子进程随服务端退出统一关闭，避免残留。
 - 不做前端 MCP 管理 / 工具勾选 UI（最多预留一个开关/指示位，后加）。
-- 不做本地 stdio 子进程 MCP server（本期只走 HTTP/SSE）。
 - 不改图片 / Gemini 多模态创作路径（图片模型不接受工具）。
 - 不做 MCP `resources` / `prompts`（只接 `tools`）。
 
@@ -41,12 +41,15 @@
 
 新增 `server/mcp-client.ts`（纯模块 + 连接缓存）：
 
-- `McpServerConfig { id, name, url, transport: 'streamable-http' | 'sse', enabled }`
+- `McpServerConfig` 判别联合（`id`/`name`/`enabled` 为公共字段）：
+  - `HttpMcpServerConfig { transport: 'streamable-http' | 'sse', url }`
+  - `StdioMcpServerConfig { transport: 'stdio', command, args?, env?, cwd? }`
 - `loadMcpTools(config)`：连接 server → `listTools()` → 每个 MCP tool 适配成 `AgentTool`：
   - name 命名空间化为 `mcp__<serverId>__<toolName>`（避免与内置工具撞名，符合 MCP namespaced 心智）。
   - `parameters` = 上游 inputSchema；`description` 截断。
   - `execute(args)` = 调 `tools/call`，把 result content 序列化成字符串回填模型（与现有 executor 返回 string 的契约一致）。
 - **进程级缓存**连接 + 工具列表，避免每个 `/chat` 请求都重连；连接或 `listTools` 失败返回空并降级，不影响主流程。
+- stdio 子进程生命周期：同一 serverId 复用客户端连接；服务端退出（SIGINT/SIGTERM）时 `closeMcpClients()` 统一关闭所有客户端，终止子进程，避免残留孤儿。
 - 工具总数上限（如 ≤ 25），超出截断，避免上游 payload 过大。
 
 ### 工具适配要点
@@ -78,6 +81,7 @@
 
 - 只连服务端 allowlist（env）里的 URL，**前端 / 用户不能任意填**（防 SSRF）。
 - 校验 url 为 `http:`/`https:`，否则丢弃并记日志。
+- stdio 同理：spawn 哪个本地命令/参数由服务端 `MCP_SERVERS` 决定，前端不可填；信任边界与远程 URL 一致。
 - MCP 工具在其 server 侧执行，本服务只做按名转发。远程 MCP server 默认被信任；接外部 server 前需确认其可信（本层无法阻断 server 自身的恶意行为，随文档对使用者说明）。
 
 ## 6. 测试

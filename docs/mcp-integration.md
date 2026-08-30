@@ -31,9 +31,28 @@
 | --- | --- |
 | `id` | 唯一标识，作为工具命名空间前缀（`mcp__<id>__<tool>`）。必填。 |
 | `name` | 展示名，缺省用 `id`。 |
-| `url` | server 端点，只接受 `http:` / `https:`。必填，非法则整条丢弃。 |
-| `transport` | `streamable-http`（默认）或 `sse`。 |
+| `transport` | `streamable-http`（默认）、`sse` 或 `stdio`。 |
+| `url` | HTTP/SSE 端点的 server 地址，只接受 `http:` / `https:`。`transport` 非 `stdio` 时必填，非法则整条丢弃。 |
+| `command` | `stdio` 时要 spawn 的本地命令（如 `node`、`npx`）。`transport: stdio` 时必填。 |
+| `args` | `stdio` 命令的参数数组（可选）。 |
+| `env` | 传给 `stdio` 子进程的环境变量对象（可选）。 |
+| `cwd` | `stdio` 子进程的工作目录（可选）。 |
 | `enabled` | `false` 时整条忽略，默认 `true`。 |
+
+`stdio` 条目示例（本地起 SDK 自带的 `get_weather` 示例 server）：
+
+```json
+[
+  {
+    "id": "sdk",
+    "name": "SDK Weather",
+    "transport": "stdio",
+    "command": "node",
+    "args": ["node_modules/@modelcontextprotocol/sdk/dist/esm/examples/server/mcpServerOutputSchema.js"],
+    "enabled": true
+  }
+]
+```
 
 解析在 `server/mcp-client.ts` 的 `parseMcpServerConfig` 纯函数里。默认未配置 `MCP_SERVERS` 时模块整体禁用，不发生任何连接。
 
@@ -77,4 +96,5 @@ agent 工具循环 → 模型发起 tool_use(mcp__demo__add) → mcp-client 调 
 
 - 只连服务端 allowlist（`MCP_SERVERS`）里的 URL，**前端 / 用户不能任意填**（防 SSRF）。
 - 仅接受 `http:`/`https:`，其他协议（`file:`、`ws:` 等）直接丢弃。
+- `stdio` 同理：spawn 哪个本地命令/参数由服务端 `MCP_SERVERS` 决定，前端不可填；信任边界与远程 URL 一致。
 - MCP 工具在其 server 侧执行，本服务只做按名转发。远程 MCP server 默认被信任；接外部 server 前需确认其可信——本层无法阻断 server 自身的恶意行为。
