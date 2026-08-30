@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
 import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from '../types'
-import { controlledImageAssetId, isTextMessage, latestControlledImageAssetId, parseConversationDigest } from '../api'
+import { controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
 import MessageBubble from './MessageBubble.vue'
 import ConversationProgressRail from './ConversationProgressRail.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -86,10 +86,10 @@ function currentConversation(): object | number {
 }
 
 const referenceImageId = computed(() => {
-  if (selectedReferenceConversation !== currentConversation()) return latestControlledImageAssetId(props.messages)
-  return selectedReferenceImageId.value === undefined
-    ? latestControlledImageAssetId(props.messages)
-    : selectedReferenceImageId.value
+  // 显式引用：默认不带参考图。只有用户点了「作为参考 / 编辑」才会设置，
+  // 点了「移除参考图」就置空并固定生效，不再自动回退到会话里最近一张图。
+  if (selectedReferenceConversation !== currentConversation()) return null
+  return selectedReferenceImageId.value ?? null
 })
 
 function selectReferenceImage(assetId: string | null) {
@@ -166,7 +166,11 @@ onMounted(() => {
   if (!element) return
   composerObserver = new ResizeObserver((entries) => {
     const entry = entries[0]
-    if (entry) composerHeight.value = Math.ceil(entry.contentRect.height)
+    if (entry) {
+      // 用 border-box 高度（含 padding），否则 latest-button 会低估输入区高度而重叠。
+      const blockSize = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
+      composerHeight.value = Math.ceil(blockSize)
+    }
   })
   composerObserver.observe(element)
   composerHeight.value = Math.ceil(element.getBoundingClientRect().height)
@@ -401,11 +405,11 @@ function editImage(index: number) {
   const request = imageRequestForResult(result)
   if (!request) return
   if (request.modelId !== 'gpt-image-2') return
-  selectReferenceImage(request.referenceImageId ?? null)
+  // 编辑的对象就是这张结果图本身，用它作为参考；不能沿用请求的上一张参考。
+  selectReferenceImage(controlledImageAssetId(result.imageUrl))
   composerRef.value?.restoreImageDraft({
     prompt: request.prompt,
     aspectRatio: request.aspectRatio,
-    ...(request.referenceImageId ? { referenceImageId: request.referenceImageId } : {}),
   })
 }
 
@@ -432,8 +436,8 @@ function editGemini(index: number) {
   if (!result || result.type !== 'gemini-multimodal-assistant') return
   const request = geminiUserForResult(result)
   if (!request) return
-  if (request.referenceImageId) selectReferenceImage(request.referenceImageId)
-  else selectReferenceImage(null)
+  // 优先用结果图自身作为参考延续视觉，其次回退到请求的参考图。
+  selectReferenceImage(controlledImageAssetId(result.imageUrl) ?? request.referenceImageId ?? null)
   composerRef.value?.restoreGeminiDraft({ prompt: request.content })
 }
 
@@ -541,8 +545,11 @@ function isImageResult(message: ChatMessage): message is ImageResultMessage {
 watch(() => props.conversationKey, (key, previousKey) => {
   if ((streaming.value || imageGenerating.value) && key !== previousKey) invalidateRequest()
   if (key !== previousKey) {
+    // 切换会话后回到最下方，迎接当前会话的最新内容（而不是停在顶部）。
+    userScrolledAway.value = false
     selectedReferenceConversation = null
     selectedReferenceImageId.value = undefined
+    void nextTick(() => scrollToBottom(true))
   }
 }, { flush: 'sync' })
 
@@ -1001,7 +1008,7 @@ onBeforeUnmount(() => invalidateRequest())
 .chat__latest-button {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--composer-height) + 10px);
+  bottom: calc(var(--composer-height) + 12px);
   transform: translateX(-50%);
   z-index: 5;
   width: 32px;
