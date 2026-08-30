@@ -458,6 +458,8 @@ export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConf
     model: modelId,
     messages,
     stream: true,
+    // 与 Anthropic 路径保持一致：限输出长度，未显式设置时用 4096。
+    max_tokens: body.params?.maxTokens ?? 4096,
   }
   if (modelId === 'doubao-seed-2.0-mini') {
     payload.stream_options = { include_usage: true }

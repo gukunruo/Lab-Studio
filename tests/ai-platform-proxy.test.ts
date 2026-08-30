@@ -38,10 +38,27 @@ test('buildUpstreamRequest formats openai-compatible requests correctly', () => 
   assert.equal(parsed.model, 'gpt-5.4')
   assert.equal(parsed.stream, true)
   assert.equal(parsed.reasoning_effort, 'high')
+  // openai-compatible 同样限制输出长度，默认 4096
+  assert.equal(parsed.max_tokens, 4096)
   // system message should be prepended to messages
   assert.equal(parsed.messages[0].role, 'system')
   assert.equal(parsed.messages[0].content, 'You are helpful.')
   assert.equal(parsed.messages[1].role, 'user')
+})
+
+test('buildUpstreamRequest honors an explicit maxTokens for openai-compatible', () => {
+  const result = buildUpstreamRequest({
+    modelId: 'gpt-5.4',
+    messages: [{ role: 'user', content: 'long answer please' }],
+    params: { maxTokens: 2048 },
+  }, {
+    provider: 'openai-compatible',
+    modelId: 'gpt-5.4',
+    baseUrl: 'http://ai-service.tal.com',
+    appId: '300000636',
+    appKey: 'test-key',
+  })
+  assert.equal(JSON.parse(result.body).max_tokens, 2048)
 })
 
 test('buildImageGenerationRequest maps each image model to its confirmed endpoint', () => {
@@ -177,6 +194,7 @@ test('buildUpstreamRequest enables Kimi K3 thinking with the selected effort', (
     model: 'kimi-k3',
     messages: [{ role: 'user', content: '解释数据库索引' }],
     stream: true,
+    max_tokens: 4096,
     reasoning: { mode: 'enabled', effort: 'high' },
   })
 })
