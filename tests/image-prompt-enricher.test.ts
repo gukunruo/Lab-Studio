@@ -32,6 +32,16 @@ test('buildImageEnrichmentRequest includes system, user prompt, and native web_s
   assert.deepEqual(body.tools, [{ type: 'web_search_20260209', name: 'web_search', max_uses: 2 }])
 })
 
+test('buildImageEnrichmentRequest urges brand/IP disambiguation to avoid literal food', () => {
+  const request = buildImageEnrichmentRequest('帮我生成一个豆包', config, 2)
+  const system = String(JSON.parse(String(request.body)).system)
+
+  // 明确要求把知名品牌/产品还原成官方拟人化形象，而非按字面生成食物/物品
+  assert.match(system, /官方拟人化形象/)
+  assert.match(system, /豆包/)
+  assert.match(system, /不要按字面/)
+})
+
 test('buildImageEnrichmentRequest uses the cheapest model instead of the chat model', () => {
   const request = buildImageEnrichmentRequest('生成一只橘猫', config, 2)
   const body = JSON.parse(String(request.body))
