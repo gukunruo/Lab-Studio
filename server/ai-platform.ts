@@ -219,6 +219,14 @@ export function buildImageGenerationRequest(body: ImageGenerationRequestBody, co
     : buildGptImageRequest(body, config)
 }
 
+// 兜底对用户透明：上游失败时把真实状态码透出一点点，而不是一律「服务暂时不可用」，
+// 否则 429 限流与 400 参数被上游拒绝都显示成一条误导性提示，无从诊断。
+export function imageUpstreamErrorMessage(status: number, service: '创作' | '生成'): string {
+  if (status === 429) return `图片${service}请求过于频繁，请稍后重试。`
+  if (status === 400 || status === 422) return `图片${service}请求未被上游接受，请调整描述后重试。`
+  return `图片${service}服务暂时不可用，请稍后重试。`
+}
+
 function asHttpsUrl(value: unknown): string | null {
   if (typeof value !== 'string' || !value) return null
   try {
@@ -1133,11 +1141,13 @@ export function registerAiPlatformRoutes(app: Hono): void {
         body: request.body,
         signal: c.req.raw.signal,
       })
-    } catch {
+    } catch (error) {
+      console.error('[ai-platform] gpt-image upstream fetch failed', error)
       return c.json({ error: '图片生成服务暂时不可用，请稍后重试。' }, 502)
     }
     if (!upstream.ok) {
-      return c.json({ error: '图片生成服务暂时不可用，请稍后重试。' }, 502)
+      console.error('[ai-platform] gpt-image upstream', upstream.status, (await upstream.text().catch(() => '')).slice(0, 500))
+      return c.json({ error: imageUpstreamErrorMessage(upstream.status, '生成') }, 502)
     }
 
     const result = normalizeImageGenerationResponse(await upstream.json().catch(() => null))
@@ -1192,11 +1202,13 @@ export function registerAiPlatformRoutes(app: Hono): void {
         body: request.body,
         signal: c.req.raw.signal,
       })
-    } catch {
+    } catch (error) {
+      console.error('[ai-platform] gemini upstream fetch failed', error)
       return c.json({ error: '图片创作服务暂时不可用，请稍后重试。' }, 502)
     }
     if (!upstream.ok) {
-      return c.json({ error: '图片创作服务暂时不可用，请稍后重试。' }, 502)
+      console.error('[ai-platform] gemini upstream', upstream.status, (await upstream.text().catch(() => '')).slice(0, 500))
+      return c.json({ error: imageUpstreamErrorMessage(upstream.status, '创作') }, 502)
     }
 
     const result = normalizeGeminiMultimodalResponse(await upstream.json().catch(() => null))

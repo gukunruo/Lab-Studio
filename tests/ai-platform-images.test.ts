@@ -16,6 +16,7 @@ import {
   buildGptImageRequest,
   buildImageGenerationRequest,
   imageAssetResponse,
+  imageUpstreamErrorMessage,
   normalizeGeminiMultimodalResponse,
   normalizeImageGenerationResponse,
 } from '../server/ai-platform'
@@ -300,6 +301,14 @@ test('buildGeminiMultimodalRequest includes a server-side image content block', 
     'image_url',
   ])
   assert.deepEqual(body.modalities, ['text', 'image'])
+})
+
+test('imageUpstreamErrorMessage surfaces the real upstream failure, not a blanket message', () => {
+  assert.equal(imageUpstreamErrorMessage(429, '创作'), '图片创作请求过于频繁，请稍后重试。')
+  assert.equal(imageUpstreamErrorMessage(400, '创作'), '图片创作请求未被上游接受，请调整描述后重试。')
+  assert.equal(imageUpstreamErrorMessage(422, '创作'), '图片创作请求未被上游接受，请调整描述后重试。')
+  assert.equal(imageUpstreamErrorMessage(500, '生成'), '图片生成服务暂时不可用，请稍后重试。')
+  assert.equal(imageUpstreamErrorMessage(502, '生成'), '图片生成服务暂时不可用，请稍后重试。')
 })
 
 test('buildGptImageRequest uses multipart edits only with a private reference image', () => {
