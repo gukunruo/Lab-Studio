@@ -31,6 +31,7 @@ const emit = defineEmits<{
 }>()
 
 const textMessage = computed(() => isTextMessage(props.message) ? props.message : null)
+const toolCalls = computed(() => textMessage.value?.toolCalls ?? [])
 const imageMessage = computed(() => props.message.type === 'image-request' || props.message.type === 'image-result' ? props.message : null)
 const geminiUserMessage = computed(() => props.message.type === 'gemini-multimodal-user' ? props.message : null)
 const geminiAssistantMessage = computed(() => props.message.type === 'gemini-multimodal-assistant' ? props.message : null)
@@ -84,6 +85,30 @@ function onEditKeydown(event: KeyboardEvent) {
     submitEdit()
   }
 }
+
+const BUILTIN_TOOL_LABELS: Record<string, string> = {
+  web_search: '联网搜索',
+  web_fetch: '网页抓取',
+  finance_quote: '行情查询',
+}
+
+function prettyToolName(name: string): string {
+  if (BUILTIN_TOOL_LABELS[name]) return BUILTIN_TOOL_LABELS[name]
+  return name.replace(/^mcp__/, '').replace(/__/g, ' · ')
+}
+
+function hasArgs(args: Record<string, unknown> | undefined): boolean {
+  return Boolean(args && Object.keys(args).length)
+}
+
+function formatArgs(args: Record<string, unknown>): string {
+  try { return JSON.stringify(args, null, 2) } catch { return String(args) }
+}
+
+function truncateResult(result: string): string {
+  if (!result) return '（无返回内容）'
+  return result.length > 200 ? `${result.slice(0, 200)}…` : result
+}
 </script>
 
 <template>
@@ -134,6 +159,25 @@ function onEditKeydown(event: KeyboardEvent) {
             </div>
           </template>
           <template v-else>
+            <div v-if="toolCalls.length" class="message__toolcalls" role="list" aria-label="工具调用">
+              <details v-for="(tc, i) in toolCalls" :key="i" class="message__toolcall" :open="i === toolCalls.length - 1">
+                <summary class="message__toolcall-summary">
+                  <span class="message__toolcall-dot" />
+                  <span class="message__toolcall-name">{{ prettyToolName(tc.name) }}</span>
+                  <span class="message__toolcall-hint">工具已调用</span>
+                </summary>
+                <div class="message__toolcall-body">
+                  <div v-if="hasArgs(tc.arguments)" class="message__toolcall-row">
+                    <span class="message__toolcall-label">入参</span>
+                    <code class="message__toolcall-code">{{ formatArgs(tc.arguments) }}</code>
+                  </div>
+                  <div class="message__toolcall-row">
+                    <span class="message__toolcall-label">返回</span>
+                    <code class="message__toolcall-code">{{ truncateResult(tc.result) }}</code>
+                  </div>
+                </div>
+              </details>
+            </div>
             <div v-if="isAssistant" class="message__markdown" v-html="renderedContent" />
             <div v-else class="message__plain">{{ textMessage?.content }}</div>
             <span v-if="isStreaming" class="message__cursor" />
@@ -210,6 +254,84 @@ function onEditKeydown(event: KeyboardEvent) {
 }
 
 .message__plain { white-space: pre-wrap; }
+
+.message__toolcalls {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.message__toolcall {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.message__toolcall-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--color-text);
+  font-size: 12px;
+  user-select: none;
+}
+
+.message__toolcall-summary::-webkit-details-marker { display: none; }
+
+.message__toolcall-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.message__toolcall-name {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.message__toolcall-hint {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.message__toolcall-body {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.message__toolcall-row {
+  display: grid;
+  gap: 3px;
+}
+
+.message__toolcall-label {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.message__toolcall-code {
+  display: block;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
 
 .message__edit-input {
   display: block;

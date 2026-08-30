@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
-import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from '../types'
+import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from '../types'
 import { buildGeminiSubThreadHistory, controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
 import MessageBubble from './MessageBubble.vue'
 import ConversationProgressRail from './ConversationProgressRail.vue'
@@ -46,6 +46,7 @@ const composerRef = ref<InstanceType<typeof Composer> | null>(null)
 const composerHeight = ref(130)
 const streamingContent = ref('')
 const streamingModelId = ref<string | undefined>(undefined)
+const streamingToolCalls = ref<ToolCallTrace[]>([])
 const waitingForFirstToken = ref(false)
 const generatingDigest = ref(false)
 const digestError = ref('')
@@ -111,13 +112,19 @@ function invalidateRequest() {
   abortGemini()
   streamingContent.value = ''
   streamingModelId.value = undefined
+  streamingToolCalls.value = []
   waitingForFirstToken.value = false
 }
 
 const displayMessages = computed(() => {
   const msgs = [...props.messages]
-  if (streaming.value && streamingContent.value) {
-    msgs.push({ role: 'assistant', content: streamingContent.value, modelId: streamingModelId.value })
+  if (streaming.value && (streamingContent.value || streamingToolCalls.value.length)) {
+    msgs.push({
+      role: 'assistant',
+      content: streamingContent.value,
+      modelId: streamingModelId.value,
+      toolCalls: streamingToolCalls.value.length ? streamingToolCalls.value : undefined,
+    })
   }
   return msgs
 })
@@ -214,6 +221,7 @@ async function requestReply(messages: ChatMessage[]) {
   activeRequestConversation = props.conversationKey ?? props.messages
   streamingContent.value = ''
   streamingModelId.value = requestModelId
+  streamingToolCalls.value = []
   waitingForFirstToken.value = true
 
   try {
@@ -229,12 +237,18 @@ async function requestReply(messages: ChatMessage[]) {
             streamingContent.value += token
           }
         },
+        onToolCall: (tc) => {
+          if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
+          waitingForFirstToken.value = false
+          streamingToolCalls.value.push(tc)
+        },
         onDone: (full) => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
           waitingForFirstToken.value = false
           streamingModelId.value = undefined
-          emit('update:messages', [...messages, { role: 'assistant', content: full, modelId: requestModelId, createdAt: new Date().toISOString() }])
+          emit('update:messages', [...messages, { role: 'assistant', content: full, modelId: requestModelId, toolCalls: streamingToolCalls.value.length ? streamingToolCalls.value : undefined, createdAt: new Date().toISOString() }])
           streamingContent.value = ''
+          streamingToolCalls.value = []
         },
         onAbort: (full) => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
@@ -242,16 +256,18 @@ async function requestReply(messages: ChatMessage[]) {
           streamingModelId.value = undefined
           const content = full || streamingContent.value
           if (content) {
-            emit('update:messages', [...messages, { role: 'assistant', content, status: 'interrupted', modelId: requestModelId, createdAt: new Date().toISOString() }])
+            emit('update:messages', [...messages, { role: 'assistant', content, status: 'interrupted', modelId: requestModelId, toolCalls: streamingToolCalls.value.length ? streamingToolCalls.value : undefined, createdAt: new Date().toISOString() }])
           }
           streamingContent.value = ''
+          streamingToolCalls.value = []
         },
         onError: () => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
           waitingForFirstToken.value = false
           streamingModelId.value = undefined
-          emit('update:messages', [...messages, { role: 'assistant', content: '无法完成本次回复，请检查网络或稍后重试。', status: 'error', modelId: requestModelId, createdAt: new Date().toISOString() }])
+          emit('update:messages', [...messages, { role: 'assistant', content: '无法完成本次回复，请检查网络或稍后重试。', status: 'error', modelId: requestModelId, toolCalls: streamingToolCalls.value.length ? streamingToolCalls.value : undefined, createdAt: new Date().toISOString() }])
           streamingContent.value = ''
+          streamingToolCalls.value = []
         },
       },
       activeDigest()?.summary ?? '',

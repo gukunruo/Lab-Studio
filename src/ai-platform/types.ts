@@ -46,6 +46,14 @@ export type GeminiContextMessage = {
   content: string
 }
 
+// 一次工具调用的可见痕迹：模型调了哪个工具、入参、以及结果预览（后端已截断）。
+// 只出现在 assistant 文本消息上，用于在界面展示 agent 的工具使用。
+export interface ToolCallTrace {
+  name: string
+  arguments: Record<string, unknown>
+  result: string
+}
+
 export interface TextMessage {
   type?: 'text'
   role: 'user' | 'assistant'
@@ -53,6 +61,7 @@ export interface TextMessage {
   createdAt?: string
   status?: 'error' | 'interrupted'
   modelId?: string
+  toolCalls?: ToolCallTrace[]
 }
 
 export interface ImageRequestMessage {

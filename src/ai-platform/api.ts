@@ -1,4 +1,4 @@
-import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from './types'
+import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from './types'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
   const res = await fetch('/api/ai-platform/models', { credentials: 'include' })
@@ -132,6 +132,7 @@ export interface StreamChatOptions {
   summary?: string
   params?: ChatParams
   onToken: (token: string) => void
+  onToolCall?: (tc: ToolCallTrace) => void
   onDone: (full: string) => void
   onError: (error: string) => void
   signal: AbortSignal
@@ -355,6 +356,14 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
         // Anthropic format
         type?: string
         delta?: { type?: string; text?: string }
+        // tool-call visibility
+        tool_call?: ToolCallTrace
+      }
+
+      // tool-call visibility
+      if (evt.tool_call) {
+        opts.onToolCall?.(evt.tool_call)
+        return
       }
 
       // OpenAI format

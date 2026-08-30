@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { ChatMessage, ChatParams } from '../types'
+import type { ChatMessage, ChatParams, ToolCallTrace } from '../types'
 import { streamChat } from '../api'
 
 export function useChat() {
@@ -14,6 +14,7 @@ export function useChat() {
     params: ChatParams,
     callbacks: {
       onToken: (token: string) => void
+      onToolCall?: (tc: ToolCallTrace) => void
       onDone: (full: string) => void
       onError: (err: string) => void
       onAbort: (full: string) => void
@@ -38,6 +39,7 @@ export function useChat() {
         summary,
         params,
         onToken: callbacks.onToken,
+        onToolCall: callbacks.onToolCall,
         onDone: (full) => {
           settled = true
           if (aborted) callbacks.onAbort(full)
