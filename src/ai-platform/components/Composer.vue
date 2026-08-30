@@ -65,6 +65,13 @@ const webSearchOn = computed(() => props.params.webSearch ?? true)
 function toggleWebSearch() {
   emit('update:params', { ...props.params, webSearch: !webSearchOn.value })
 }
+
+const REASONING_EFFORTS: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high']
+function cycleReasoning() {
+  const current = props.params.reasoningEffort ?? 'low'
+  const next = REASONING_EFFORTS[(REASONING_EFFORTS.indexOf(current) + 1) % REASONING_EFFORTS.length]
+  emit('update:params', { ...props.params, reasoningEffort: next })
+}
 const imageMode = computed(() => mode.value !== 'chat')
 const gptEditing = computed(() => mode.value === 'gpt-image' && hasReference.value)
 
@@ -244,9 +251,16 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
             >
               <PhGlobe :size="13" weight="regular" /> 联网
             </button>
-            <span v-if="params.reasoningEffort" class="composer__badge">
+            <button
+              v-if="params.reasoningEffort"
+              class="composer__badge composer__badge--button"
+              type="button"
+              :title="`推理强度：${params.reasoningEffort}（点击切换）`"
+              :aria-pressed="params.reasoningEffort === 'high'"
+              @click="cycleReasoning"
+            >
               <PhLightning :size="11" weight="regular" /> {{ params.reasoningEffort }}
-            </span>
+            </button>
             <span v-if="params.maxTokens" class="composer__badge">max {{ params.maxTokens }}</span>
           </template>
           <span v-else class="composer__badge">{{ selectedImageModelName }}</span>
@@ -312,6 +326,8 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .composer__mode:disabled { cursor: not-allowed; opacity: .45; }
 .composer__mode--active:disabled { opacity: 1; }
 .composer__badge { height: 22px; padding: 0 8px; border-radius: var(--radius-full); background: transparent; color: var(--color-text-muted); font-size: 10.5px; font-family: var(--font-mono); display: inline-flex; align-items: center; gap: 4px; opacity: .75; white-space: nowrap; }
+.composer__badge--button { border: 0; cursor: pointer; }
+.composer__badge--button:hover { background: var(--color-accent-soft); color: var(--color-accent-strong); opacity: 1; }
 .composer__input { width: 100%; box-sizing: border-box; background: transparent; border: none; outline: none; color: var(--color-text); font-family: var(--font-sans); font-size: 14px; line-height: 1.6; padding: 14px 18px 0; resize: none; min-height: 24px; max-height: 160px; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
 .composer__input::-webkit-scrollbar { width: 7px; }
 .composer__input::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: var(--radius-full); background: var(--color-border-strong); background-clip: padding-box; }

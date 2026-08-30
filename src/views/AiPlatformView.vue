@@ -307,6 +307,7 @@ watch(aiTheme, (resolved) => {
         @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
         @new-conversation="newConversation"
         @update:messages="onUpdateMessages"
+        @update:params="onUpdateParams"
         @branch="onCreateBranch"
         @update:digest="onUpdateDigest"
         @digest-error="onDigestError"
