@@ -14,7 +14,6 @@
     "preview": "vite preview",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx server/db/migrate.ts",
-    "benchmark:ai": "tsx scripts/ai-platform-benchmark.ts",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s \"lint:*\"",
@@ -24,6 +23,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@phosphor-icons/vue": "^2.2.1",
     "NeteaseCloudMusicApi": "4.32.0",
     "better-sqlite3": "^13.0.2",
