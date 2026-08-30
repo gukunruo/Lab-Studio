@@ -80,6 +80,7 @@ let activeRequestConversation: object | number | null = null
 let selectedReferenceConversation: object | number | null = null
 const selectedReferenceImageId = ref<string | null | undefined>(undefined)
 let composerObserver: ResizeObserver | null = null
+let childImageLoadHandler: ((event: Event) => void) | null = null
 
 function currentConversation(): object | number {
   return props.conversationKey ?? props.messages
@@ -161,6 +162,17 @@ function onViewportChange() {
 }
 
 onMounted(() => {
+  // 会话数据在挂载前已就绪（父组件 v-if="loaded"），两个 scroll watch 都不会在
+  // 挂载时触发，因此刷新整页会停在顶部。这里在首帧布局后强制滚到底，
+  // 与点击切换会话走 conversationKey watch 的效果保持一致。
+  userScrolledAway.value = false
+  void scrollToBottom(true)
+  // 图片异步加载会把容器撑高，onMounted 落定时高度不足、滚不到真正底部；
+  // 用捕获阶段监听容器内图片 load，加载完兜底滚到底（仅在用户未上滑时）。
+  childImageLoadHandler = () => {
+    if (!userScrolledAway.value) void scrollToBottom()
+  }
+  messagesContainer.value?.addEventListener('load', childImageLoadHandler, true)
   window.addEventListener('resize', onViewportChange)
   const element = composerRef.value?.composerWrapRef
   if (!element) return
@@ -178,6 +190,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onViewportChange)
+  if (childImageLoadHandler) {
+    messagesContainer.value?.removeEventListener('load', childImageLoadHandler, true)
+    childImageLoadHandler = null
+  }
   composerObserver?.disconnect()
 })
 
