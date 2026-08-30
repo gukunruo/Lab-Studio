@@ -4,7 +4,8 @@
 // 设计（见 docs/superpowers/specs/2026-08-30-mcp-integration-design.md）：
 // - 纯函数为主：命名空间化、工具适配、注册表合并、数量裁剪、描述截断、config 解析、结果序列化
 //   都不依赖网络，便于单测；网络 IO（连接、listTools、callTool）集中在连接层，带进程级缓存。
-// - 只接远端 HTTP/SSE（streamable-http / sse），不做本地 stdio 子进程。
+// - 支持远端 HTTP/SSE（streamable-http / sse）与本地 stdio 子进程（spawn 本地命令）。
+//   常量子进程由服务端 MCP_SERVERS 配置决定，前端不可填；服务端退出时统一 closeMcpClients 清理。
 // - 失败降级：连不上 / listTools 失败时返回空并记日志，不影响主流程。
 // - 安全：只连服务端 allowlist（env MCP_SERVERS）里的 http/https URL，前端不可任意填（防 SSRF）。
 
@@ -12,6 +13,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { AgentTool, AgentToolRegistry } from './agent-engine'
 
 // ---- 常量与类型 ----
@@ -22,13 +24,26 @@ export const MCP_DESCRIPTION_MAX = 800
 // 单个 MCP server 的加载超时：连接或 listTools 卡死时降级为空，避免挂起 /chat 请求。
 export const MCP_LOAD_TIMEOUT_MS = 8000
 
-export interface McpServerConfig {
+export interface BaseMcpServerConfig {
   id: string
   name: string
-  url: string
-  transport: 'streamable-http' | 'sse'
   enabled: boolean
 }
+
+export interface HttpMcpServerConfig extends BaseMcpServerConfig {
+  transport: 'streamable-http' | 'sse'
+  url: string
+}
+
+export interface StdioMcpServerConfig extends BaseMcpServerConfig {
+  transport: 'stdio'
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd?: string
+}
+
+export type McpServerConfig = HttpMcpServerConfig | StdioMcpServerConfig
 
 export interface McpTool {
   name: string
@@ -149,13 +164,31 @@ export function parseMcpServerConfig(raw: string | null | undefined): McpServerC
     if (!item || typeof item !== 'object') return []
     const obj = item as Record<string, unknown>
     const id = typeof obj.id === 'string' ? obj.id.trim() : ''
-    const url = typeof obj.url === 'string' ? obj.url.trim() : ''
-    if (!id || !isSafeMcpUrl(url)) return []
+    if (!id) return []
     const name = typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : id
-    const transport = obj.transport === 'sse' ? 'sse' : 'streamable-http'
     const enabled = obj.enabled !== false
     if (!enabled) return []
-    return [{ id, name, url, transport, enabled }]
+    const transport = obj.transport === 'sse' || obj.transport === 'stdio' ? obj.transport : 'streamable-http'
+
+    if (transport === 'stdio') {
+      const command = typeof obj.command === 'string' ? obj.command.trim() : ''
+      if (!command) return []
+      const args = Array.isArray(obj.args) ? obj.args.filter((a): a is string => typeof a === 'string') : undefined
+      const env = obj.env && typeof obj.env === 'object' && !Array.isArray(obj.env)
+        ? Object.fromEntries(Object.entries(obj.env as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>
+        : undefined
+      const cwd = typeof obj.cwd === 'string' && obj.cwd.trim() ? obj.cwd.trim() : undefined
+      return [{
+        id, name, enabled, transport: 'stdio', command,
+        ...(args && args.length ? { args } : {}),
+        ...(env && Object.keys(env).length ? { env } : {}),
+        ...(cwd ? { cwd } : {}),
+      }]
+    }
+
+    const url = typeof obj.url === 'string' ? obj.url.trim() : ''
+    if (!isSafeMcpUrl(url)) return []
+    return [{ id, name, enabled, transport, url }]
   })
 }
 
@@ -166,6 +199,9 @@ export function getMcpServerConfigs(env: Record<string, string | undefined> = pr
 // ---- 网络层：transport 创建 + 连接缓存 + 工具加载 ----
 
 function createMcpTransport(config: McpServerConfig): Transport {
+  if (config.transport === 'stdio') {
+    return new StdioClientTransport({ command: config.command, args: config.args, env: config.env, cwd: config.cwd })
+  }
   const url = new URL(config.url)
   if (config.transport === 'sse') return new SSEClientTransport(url)
   return new StreamableHTTPClientTransport(url)
@@ -228,4 +264,16 @@ async function loadMcpToolsForServer(config: McpServerConfig): Promise<AgentTool
 export async function loadAllMcpTools(configs: McpServerConfig[]): Promise<AgentTool[]> {
   const results = await Promise.all(configs.map((config) => loadMcpToolsForServer(config)))
   return results.flat()
+}
+
+// 关闭所有 MCP 客户端连接（HTTP/SSE 断开，stdio 终止子进程），并清空进程级缓存。
+// 服务端退出（SIGINT/SIGTERM）时调用，避免 stdio 子进程变成孤儿。
+export async function closeMcpClients(): Promise<void> {
+  const clients = [...mcpClients.values()]
+  mcpClients.clear()
+  mcpToolLists.clear()
+  mcpConnecting.clear()
+  await Promise.all(clients.map(async (client) => {
+    try { await client.close() } catch { /* 关闭失败不阻断退出 */ }
+  }))
 }
