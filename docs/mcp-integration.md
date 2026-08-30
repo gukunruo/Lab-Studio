@@ -7,7 +7,7 @@
 
 平台内置了一套通用 Agent 工具循环（`server/agent-engine.ts` 的 `runAgentLoop` + 注册表 `AgentToolRegistry`），注册表当前有 3 个静态工具：`web_search`、`web_fetch`、`finance_quote`。MCP 接入就是把外接 MCP server 通过 `tools/list` 暴露的工具，适配成 `AgentTool` 合入这张注册表，复用现有工具循环——不新造一套 agent 执行器。
 
-模型侧看到的工具名按 `mcp__<serverId>__<toolName>` 命名空间化，例如本机 demo server 的 `add` 工具对外是 `mcp__demo__add`。工具对用户不可见（延续「联网开关」式的隐式管道）。
+模型侧看到的工具名按 `mcp__<serverId>__<toolName>` 命名空间化，例如本机 demo server 的 `add` 工具对外是 `mcp__demo__add`。每次工具执行，服务端会在 SSE 里发一条 `tool_call` 事件（入参 + 截断的结果预览），前端渲染成 assistant 消息里的可折叠「工具调用」块，让 agent 的工具使用对用户可见——内置工具（`web_search`/`web_fetch`/`finance_quote`）与 MCP 工具都走这套。
 
 ## 配置（服务端）
 
