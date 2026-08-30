@@ -1,4 +1,4 @@
-import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from './types'
+import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from './types'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
   const res = await fetch('/api/ai-platform/models', { credentials: 'include' })
@@ -202,6 +202,24 @@ export function latestControlledImageAssetId(messages: ChatMessage[]): string | 
   return null
 }
 
+export function buildGeminiSubThreadHistory(messages: ChatMessage[]): GeminiContextMessage[] {
+  const history: GeminiContextMessage[] = []
+  // 从尾部向前收集「连续」的 Gemini 创作回合，遇到非 Gemini 消息就停，
+  // 这样只带本会话的 Gemini 子线程，不混入无关的 GLM 文本对话。
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (!message) continue
+    if (message.type === 'gemini-multimodal-user') {
+      history.unshift({ role: 'user', content: message.content })
+    } else if (message.type === 'gemini-multimodal-assistant') {
+      if (message.content) history.unshift({ role: 'assistant', content: message.content })
+    } else {
+      break
+    }
+  }
+  return history
+}
+
 async function responsePayload(res: Response): Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown } | null> {
   return res.json().catch(() => null) as Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown } | null>
 }
@@ -236,9 +254,11 @@ export async function generateImage(input: ImageGenerationInput): Promise<ImageG
 export async function generateGeminiMultimodal(input: {
   prompt: string
   referenceImageId?: string
+  history?: GeminiContextMessage[]
   signal: AbortSignal
 }): Promise<GeminiMultimodalResponse> {
   const referenceImageId = input.referenceImageId?.toLowerCase()
+  const history = input.history?.length ? input.history.slice(0, 20) : undefined
   const res = await fetch('/api/ai-platform/images/gemini', {
     credentials: 'include',
     method: 'POST',
@@ -248,6 +268,7 @@ export async function generateGeminiMultimodal(input: {
       ...(referenceImageId && CONTROLLED_IMAGE_ASSET_PATH.test(`/api/ai-platform/images/${referenceImageId}`)
         ? { referenceImageId }
         : {}),
+      ...(history ? { history } : {}),
     }),
     signal: input.signal,
   })

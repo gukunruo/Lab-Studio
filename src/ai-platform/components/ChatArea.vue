@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
 import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage } from '../types'
-import { controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
+import { buildGeminiSubThreadHistory, controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
 import MessageBubble from './MessageBubble.vue'
 import ConversationProgressRail from './ConversationProgressRail.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -326,6 +326,9 @@ function updateGeminiResult(requestId: string, update: (message: GeminiMultimoda
 
 async function handleGenerateGemini(input: { prompt: string; referenceImageId?: string | null }) {
   if (streaming.value || generatingDigest.value || imageGenerating.value) return
+  // 携带本会话连续 Gemini 子线程作为上下文，让语言追问（"背景改暖一点"）能延续；
+  // 视觉延续仍靠参考图。在 push 新消息前读取，正好取到「先前的」子线程。
+  const history = buildGeminiSubThreadHistory(props.messages)
   const requestId = crypto.randomUUID()
   const createdAt = new Date().toISOString()
   const reference = input.referenceImageId === undefined ? referenceImageId.value : input.referenceImageId
@@ -352,6 +355,7 @@ async function handleGenerateGemini(input: { prompt: string; referenceImageId?: 
   await generateGemini({
     prompt: input.prompt,
     ...(reference ? { referenceImageId: reference } : {}),
+    ...(history.length ? { history } : {}),
   }, {
     onDone: (result) => {
       if (generation !== geminiRequestGeneration || !isCurrentConversation(conversation)) return

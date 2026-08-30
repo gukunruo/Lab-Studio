@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildAnthropicPlatformRequest,
+  buildGeminiMultimodalRequest,
   buildImageGenerationRequest,
   buildUpstreamRequest,
   normalizeImageGenerationResponse,
@@ -16,6 +17,8 @@ import {
   readOpenAiStream,
 } from '../server/web-search'
 import { buildOpenAiTools, type AgentToolRegistry } from '../server/agent-engine'
+import { buildGeminiSubThreadHistory } from '../src/ai-platform/api'
+import type { ChatMessage } from '../src/ai-platform/types'
 
 test('buildUpstreamRequest formats openai-compatible requests correctly', () => {
   const body: ChatRequestBody = {
@@ -87,6 +90,46 @@ test('buildImageGenerationRequest maps each image model to its confirmed endpoin
     messages: [{ role: 'user', content: '生成一个猫咪图片' }],
     modalities: ['text', 'image'],
   })
+})
+
+test('buildGeminiMultimodalRequest prepends scoped history before the new prompt', () => {
+  const config = {
+    baseUrl: 'https://ai.example.test/',
+    appId: 'test-app',
+    appKey: 'test-key',
+  }
+  const result = buildGeminiMultimodalRequest({
+    prompt: '把背景改暖一点',
+    history: [
+      { role: 'user', content: '一只穿宇航服的橘猫站在月球表面' },
+      { role: 'assistant', content: '好的，这是深夜都市的图' },
+    ],
+  }, config)
+  assert.deepEqual(JSON.parse(result.body), {
+    model: 'gemini-3-pro-image',
+    messages: [
+      { role: 'user', content: '一只穿宇航服的橘猫站在月球表面' },
+      { role: 'assistant', content: '好的，这是深夜都市的图' },
+      { role: 'user', content: '把背景改暖一点' },
+    ],
+    modalities: ['text', 'image'],
+  })
+})
+
+test('buildGeminiSubThreadHistory collects only contiguous trailing gemini turns', () => {
+  const history = buildGeminiSubThreadHistory([
+    { type: 'text', role: 'user', content: '无关的 GLM 对话' },
+    { type: 'gemini-multimodal-user', role: 'user', content: '一只橘猫', requestId: 'r1', createdAt: '' },
+    { type: 'gemini-multimodal-assistant', role: 'assistant', content: '好的', requestId: 'r1', status: 'completed', createdAt: '' },
+    { type: 'gemini-multimodal-user', role: 'user', content: '换个背景', requestId: 'r2', createdAt: '' },
+    { type: 'gemini-multimodal-assistant', role: 'assistant', content: '已完成', requestId: 'r2', status: 'completed', createdAt: '' },
+  ] as ChatMessage[])
+  assert.deepEqual(history, [
+    { role: 'user', content: '一只橘猫' },
+    { role: 'assistant', content: '好的' },
+    { role: 'user', content: '换个背景' },
+    { role: 'assistant', content: '已完成' },
+  ])
 })
 
 test('normalizeImageGenerationResponse only accepts HTTPS image URLs', () => {

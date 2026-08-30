@@ -109,9 +109,15 @@ export type ImageGenerationRequestBody = {
   referenceImageId?: string
 }
 
+export type GeminiContextMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export type GeminiMultimodalRequestBody = {
   prompt: string
   referenceImageId?: string
+  history?: GeminiContextMessage[]
 }
 
 export type GeminiMultimodalResponse = {
@@ -203,12 +209,17 @@ export function buildGeminiMultimodalRequest(
       })()
     : body.prompt
 
+  const history = body.history ?? []
+
   return {
     url: `${config.baseUrl.replace(/\/$/, '')}/openai-compatible/v1/chat/completions`,
     headers: imageUpstreamHeaders(config, 'application/json'),
     body: JSON.stringify({
       model: 'gemini-3-pro-image',
-      messages: [{ role: 'user', content }],
+      messages: [
+        ...history.map((message) => ({ role: message.role, content: message.content })),
+        { role: 'user', content },
+      ],
       modalities: ['text', 'image'],
     }),
   }
@@ -331,6 +342,24 @@ export async function imageAssetResponse(userKey: string, id: string): Promise<R
 function asPrivateImageReference(value: Awaited<ReturnType<typeof readImageAsset>>): PrivateImageReference | null {
   if (!value || !['image/png', 'image/jpeg', 'image/webp'].includes(value.mimeType)) return null
   return value as PrivateImageReference
+}
+
+const GEMINI_HISTORY_MAX = 20
+
+function normalizeGeminiHistory(history: unknown): GeminiContextMessage[] {
+  if (!Array.isArray(history)) return []
+  const normalized: GeminiContextMessage[] = []
+  for (const entry of history) {
+    if (!entry || typeof entry !== 'object') continue
+    const item = entry as Record<string, unknown>
+    const role = item.role
+    const content = typeof item.content === 'string' ? item.content.trim() : ''
+    if ((role === 'user' || role === 'assistant') && content) {
+      normalized.push({ role, content: content.slice(0, IMAGE_PROMPT_MAX) })
+    }
+    if (normalized.length >= GEMINI_HISTORY_MAX) break
+  }
+  return normalized
 }
 
 async function resolvePrivateImageReference(referenceImageId: unknown): Promise<PrivateImageReference | null> {
@@ -1207,7 +1236,8 @@ export function registerAiPlatformRoutes(app: Hono): void {
 
     let upstream: Response
     try {
-      const request = buildGeminiMultimodalRequest({ ...body, prompt: finalPrompt }, config, reference ?? undefined)
+      const history = normalizeGeminiHistory(body.history)
+      const request = buildGeminiMultimodalRequest({ ...body, prompt: finalPrompt, history }, config, reference ?? undefined)
       upstream = await fetch(request.url, {
         method: 'POST',
         headers: request.headers,

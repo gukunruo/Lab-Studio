@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { generateGeminiMultimodal, type GeminiMultimodalResponse } from '../api'
+import type { GeminiContextMessage } from '../types'
 
 export function useGeminiMultimodal() {
   const generating = ref(false)
@@ -9,6 +10,7 @@ export function useGeminiMultimodal() {
     input: {
       prompt: string
       referenceImageId?: string
+      history?: GeminiContextMessage[]
     },
     callbacks: {
       onDone: (result: GeminiMultimodalResponse) => void

@@ -41,6 +41,11 @@ export interface AiPreferences {
 export type ImageModelId = 'gpt-image-2' | 'gemini-3-pro-image'
 export type ImageAspectRatio = '1:1' | '16:9' | '9:16'
 
+export type GeminiContextMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface TextMessage {
   type?: 'text'
   role: 'user' | 'assistant'
