@@ -2,8 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildImageEnrichmentRequest,
+  DEFAULT_IMAGE_ENRICH_MODEL,
   extractEnrichedPrompt,
   enrichImagePrompt,
+  readImageEnrichModel,
 } from '../server/image-prompt-enricher'
 
 const config = {
@@ -24,10 +26,42 @@ test('buildImageEnrichmentRequest includes system, user prompt, and native web_s
   const request = buildImageEnrichmentRequest('生成字节跳动的豆包形象', config, 2)
   const body = JSON.parse(String(request.body))
 
-  assert.equal(body.model, 'claude-sonnet-4.6')
+  assert.equal(body.model, 'claude-haiku-4-5-20251001')
   assert.equal(typeof body.system, 'string')
   assert.deepEqual(body.messages, [{ role: 'user', content: '生成字节跳动的豆包形象' }])
   assert.deepEqual(body.tools, [{ type: 'web_search_20260209', name: 'web_search', max_uses: 2 }])
+})
+
+test('buildImageEnrichmentRequest uses the cheapest model instead of the chat model', () => {
+  const request = buildImageEnrichmentRequest('生成一只橘猫', config, 2)
+  const body = JSON.parse(String(request.body))
+
+  assert.equal(body.model, DEFAULT_IMAGE_ENRICH_MODEL)
+  assert.notEqual(body.model, config.model)
+})
+
+test('buildImageEnrichmentRequest accepts an explicit model override', () => {
+  const request = buildImageEnrichmentRequest('生成一只橘猫', config, 2, 'claude-sonnet-4-6')
+
+  assert.equal(JSON.parse(String(request.body)).model, 'claude-sonnet-4-6')
+})
+
+test('readImageEnrichModel defaults to Haiku and honors an env override', () => {
+  const original = process.env.ANTHROPIC_ENRICH_MODEL
+  delete process.env.ANTHROPIC_ENRICH_MODEL
+  try {
+    assert.equal(readImageEnrichModel(), DEFAULT_IMAGE_ENRICH_MODEL)
+  } finally {
+    if (original !== undefined) process.env.ANTHROPIC_ENRICH_MODEL = original
+  }
+
+  process.env.ANTHROPIC_ENRICH_MODEL = 'claude-haiku-4-5'
+  try {
+    assert.equal(readImageEnrichModel(), 'claude-haiku-4-5')
+  } finally {
+    if (original !== undefined) process.env.ANTHROPIC_ENRICH_MODEL = original
+    else delete process.env.ANTHROPIC_ENRICH_MODEL
+  }
 })
 
 test('extractEnrichedPrompt reads the <prompt> marker even after narration', () => {
