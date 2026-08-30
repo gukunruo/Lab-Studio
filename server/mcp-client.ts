@@ -19,6 +19,8 @@ import type { AgentTool, AgentToolRegistry } from './agent-engine'
 export const MCP_TOOL_PREFIX = 'mcp__'
 export const MCP_MAX_TOOLS = 25
 export const MCP_DESCRIPTION_MAX = 800
+// 单个 MCP server 的加载超时：连接或 listTools 卡死时降级为空，避免挂起 /chat 请求。
+export const MCP_LOAD_TIMEOUT_MS = 8000
 
 export interface McpServerConfig {
   id: string
@@ -169,6 +171,16 @@ function createMcpTransport(config: McpServerConfig): Transport {
   return new StreamableHTTPClientTransport(url)
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`MCP 加载超时（${ms}ms）`)), ms)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (error) => { clearTimeout(timer); reject(error) },
+    )
+  })
+}
+
 // 进程级缓存：同一 serverId 复用客户端连接（避免每个 /chat 请求都重连）。
 const mcpClients = new Map<string, Client>()
 // 已加载成功的工具列表；失败不缓存，下次调用重试。
@@ -183,21 +195,24 @@ async function loadMcpToolsForServer(config: McpServerConfig): Promise<AgentTool
   const inflight = mcpConnecting.get(config.id)
   if (inflight) return inflight
 
-  const promise = (async (): Promise<AgentTool[]> => {
-    let client = mcpClients.get(config.id)
-    if (!client) {
-      client = new Client({ name: 'lab-studio', version: '0.0.0' })
-      await client.connect(createMcpTransport(config))
-      mcpClients.set(config.id, client)
-    }
-    const { tools } = await client.listTools()
-    const callTool: McpCallTool = (params) =>
-      client.callTool({ name: params.name, ...(params.arguments !== undefined ? { arguments: params.arguments } : {}) }) as Promise<McpCallToolResult>
-    const adapted = tools.map((tool) => adaptMcpTool(config.id, tool, callTool))
-    const capped = capMcpTools(adapted)
-    mcpToolLists.set(config.id, capped)
-    return capped
-  })().catch((error) => {
+  const promise = withTimeout(
+    (async (): Promise<AgentTool[]> => {
+      let client = mcpClients.get(config.id)
+      if (!client) {
+        client = new Client({ name: 'lab-studio', version: '0.0.0' })
+        await client.connect(createMcpTransport(config))
+        mcpClients.set(config.id, client)
+      }
+      const { tools } = await client.listTools()
+      const callTool: McpCallTool = (params) =>
+        client.callTool({ name: params.name, ...(params.arguments !== undefined ? { arguments: params.arguments } : {}) }) as Promise<McpCallToolResult>
+      const adapted = tools.map((tool) => adaptMcpTool(config.id, tool, callTool))
+      const capped = capMcpTools(adapted)
+      mcpToolLists.set(config.id, capped)
+      return capped
+    })(),
+    MCP_LOAD_TIMEOUT_MS,
+  ).catch((error) => {
     console.warn(`[mcp] 加载 ${config.id} 工具失败，本轮降级为空：`, error instanceof Error ? error.message : error)
     return [] as AgentTool[]
   })

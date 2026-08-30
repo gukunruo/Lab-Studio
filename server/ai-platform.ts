@@ -29,6 +29,7 @@ import {
   type AgentChatMessage,
   type AgentToolRegistry,
 } from './agent-engine'
+import { getMcpServerConfigs, loadAllMcpTools, mergeMcpTools } from './mcp-client'
 
 const USER_KEY = 'admin'
 
@@ -1319,8 +1320,18 @@ export function registerAiPlatformRoutes(app: Hono): void {
       },
     }
 
+    // MCP 工具：服务端按 MCP_SERVERS 注入，对用户不可见；任一 server 失败降级为空，不影响主流程。
+    const mcpConfigs = getMcpServerConfigs()
+    const mcpTools = await loadAllMcpTools(mcpConfigs)
+    const hasMcpTools = mcpTools.length > 0
+    // 只要「联网搜索开启」或「配置了 MCP 工具」，就走 Agent 工具循环。
+    const useTools = useWebSearch || hasMcpTools
+
     // Agent 工具循环：统一注册表（单一事实源）+ 按 provider 生成的工具定义。
-    const agentRegistry = buildAgentRegistry(anthropicConfig)
+    // 用户联网开关只决定 web 相关工具；MCP 工具始终按配置注入（meta 无关）。
+    const agentRegistry = useWebSearch
+      ? mergeMcpTools(buildAgentRegistry(anthropicConfig), mcpTools)
+      : mergeMcpTools({}, mcpTools)
     const openAiTools = buildOpenAiTools(agentRegistry)
     const anthropicTools = buildAnthropicTools(agentRegistry)
 
@@ -1333,7 +1344,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
         upstreamReq = buildAnthropicPlatformRequest(
           engineeredBody,
           anthropicConfig,
-          useWebSearch ? anthropicTools : undefined,
+          useTools ? anthropicTools : undefined,
         )
         break
       }
@@ -1348,7 +1359,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
           appId,
           appKey,
         }
-        if (useWebSearch) {
+        if (useTools) {
           openAiMessagesWithSystem = engineeredBody.system
             ? [{ role: 'system', content: engineeredBody.system }, ...engineeredBody.messages]
             : [...engineeredBody.messages]
@@ -1376,9 +1387,9 @@ export function registerAiPlatformRoutes(app: Hono): void {
       return c.json({ error: 'upstream connection failed' }, 502)
     }
 
-    // openai-compatible + 联网搜索：首轮带工具请求被拒绝时，回退为不带工具的纯直通，防止模型不支持
+    // openai-compatible + 工具：首轮带工具请求被拒绝时，回退为不带工具的纯直通，防止模型不支持
     // 函数调用导致整个会话报错（联网默认开启）。
-    if (modelRow.provider === 'openai-compatible' && useWebSearch && (!upstream.ok || !upstream.body)) {
+    if (modelRow.provider === 'openai-compatible' && useTools && (!upstream.ok || !upstream.body)) {
       const plainBody: ChatRequestBody = { ...engineeredBody, params: { ...engineeredBody.params, webSearch: false } }
       const plainReq = upstreamConfig ? buildUpstreamRequest(plainBody, upstreamConfig) : null
       if (plainReq) {
@@ -1403,9 +1414,9 @@ export function registerAiPlatformRoutes(app: Hono): void {
       return c.json({ error: errText || 'upstream error' }, upstream.status as 400 | 401 | 403 | 404 | 429 | 500 | 502 | 503)
     }
 
-    // openai-compatible + 联网搜索：走通用 Agent 工具循环（读首轮 → 分发注册表里的工具 →
+    // openai-compatible + 工具：走通用 Agent 工具循环（读首轮 → 分发注册表里的工具 →
     // 回填结果 → 继续），流式写回 OpenAI 格式 SSE。工具对用户在界面上不可见。
-    if (modelRow.provider === 'openai-compatible' && useWebSearch && openAiMessagesWithSystem && upstreamConfig) {
+    if (modelRow.provider === 'openai-compatible' && useTools && openAiMessagesWithSystem && upstreamConfig) {
       const stream = runAgentLoop({
         provider: 'openai-compatible',
         initialMessages: openAiMessagesWithSystem,
@@ -1414,7 +1425,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
         registry: agentRegistry,
         buildRequest: (messages, modelId, params) =>
           buildUpstreamRequest(
-            { modelId, messages: messages as { role: string; content: string }[], system: '', params: { ...params, webSearch: true } },
+            { modelId, messages: messages as { role: string; content: string }[], system: '', params: { ...params, webSearch: useWebSearch } },
             upstreamConfig as UpstreamConfig,
             openAiTools,
           ),
@@ -1426,9 +1437,9 @@ export function registerAiPlatformRoutes(app: Hono): void {
       return new Response(stream, { headers: SSE_RESPONSE_HEADERS })
     }
 
-    // anthropic + 联网搜索：同样走通用 Agent 工具循环（客户端工具），统一成 OpenAI 格式 SSE。
+    // anthropic + 工具：同样走通用 Agent 工具循环（客户端工具），统一成 OpenAI 格式 SSE。
     // 网关已验证接受任意客户端工具（见 tests 的 probe 记录），故不再走原生 web_search 直通。
-    if (modelRow.provider === 'anthropic' && useWebSearch && anthropicConfig) {
+    if (modelRow.provider === 'anthropic' && useTools && anthropicConfig) {
       const stream = runAgentLoop({
         provider: 'anthropic',
         initialMessages: engineeredBody.messages as AgentChatMessage[],
@@ -1437,7 +1448,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
         registry: agentRegistry,
         buildRequest: (messages, modelId, params) =>
           buildAnthropicPlatformRequest(
-            { modelId, messages: messages as { role: string; content: string }[], system: engineeredBody.system, params: { ...params, webSearch: true } },
+            { modelId, messages: messages as { role: string; content: string }[], system: engineeredBody.system, params: { ...params, webSearch: useWebSearch } },
             anthropicConfig,
             anthropicTools,
           ),
