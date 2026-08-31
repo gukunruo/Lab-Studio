@@ -7,7 +7,9 @@
 
 平台内置了一套通用 Agent 工具循环（`server/agent-engine.ts` 的 `runAgentLoop` + 注册表 `AgentToolRegistry`），注册表当前有 3 个静态工具：`web_search`、`web_fetch`、`finance_quote`。MCP 接入就是把外接 MCP server 通过 `tools/list` 暴露的工具，适配成 `AgentTool` 合入这张注册表，复用现有工具循环——不新造一套 agent 执行器。
 
-模型侧看到的工具名按 `mcp__<serverId>__<toolName>` 命名空间化，例如本机 demo server 的 `add` 工具对外是 `mcp__demo__add`。每次工具执行，服务端会在 SSE 里发一条 `tool_call` 事件（入参 + 截断的结果预览），前端渲染成 assistant 消息里的可折叠「工具调用」块，让 agent 的工具使用对用户可见——内置工具（`web_search`/`web_fetch`/`finance_quote`）与 MCP 工具都走这套。
+模型侧看到的工具名按 `mcp__<serverId>__<toolName>` 命名空间化，例如本机 demo server 的 `add` 工具对外是 `mcp__demo__add`。每次工具执行，服务端会在 SSE 里发一条 `tool_call` 事件（入参 + 截断的结果预览 + `status`），前端渲染成 assistant 消息里的可折叠「工具调用」块，让 agent 的工具使用对用户可见——内置工具（`web_search`/`web_fetch`/`finance_quote`）与 MCP 工具都走这套。
+
+`tool_call` 事件顺序：先发一次 `status: 'running'`（开始执行，入参已带、结果为空），执行完再发一次 `status: 'done'`（带截断的结果预览）。前端据此展示「正在调用…」的转圈动画，拿到结果后更新为可展开的入参/返回详情。
 
 ## 配置（服务端）
 
@@ -39,16 +41,16 @@
 | `cwd` | `stdio` 子进程的工作目录（可选）。 |
 | `enabled` | `false` 时整条忽略，默认 `true`。 |
 
-`stdio` 条目示例（本地起 SDK 自带的 `get_weather` 示例 server）：
+`stdio` 条目示例（本地起 `scripts/mcp-weather-server.mjs`，用 Open-Meteo 返回实时天气）：
 
 ```json
 [
   {
-    "id": "sdk",
-    "name": "SDK Weather",
+    "id": "weather",
+    "name": "Open-Meteo 天气",
     "transport": "stdio",
     "command": "node",
-    "args": ["node_modules/@modelcontextprotocol/sdk/dist/esm/examples/server/mcpServerOutputSchema.js"],
+    "args": ["scripts/mcp-weather-server.mjs"],
     "enabled": true
   }
 ]
@@ -73,13 +75,33 @@ pnpm mcp:demo
 MCP_SERVERS='[{"id":"demo","name":"Demo MCP","url":"http://127.0.0.1:8765/mcp"}]' pnpm server
 ```
 
+## 本地天气 server（实时数据，无密钥）
+
+平台自带一个真实天气 stdio MCP server（`scripts/mcp-weather-server.mjs`），走 Open-Meteo（免费、无需密钥）返回**实时**天气：城市中文/英文名 → geocoding 定位 → 当前天气状况/气温/湿度/风速。仅工具调用时才发网络请求，结果按城市稳定且真实（非 mock 随机数）。
+
+```bash
+pnpm mcp:weather
+# -> Open-Meteo weather MCP server running on stdio
+```
+
+用 `MCP_SERVERS` 接入主服务：
+
+```bash
+MCP_SERVERS='[{"id":"weather","name":"Open-Meteo 天气","transport":"stdio","command":"node","args":["scripts/mcp-weather-server.mjs"]}]' pnpm server
+```
+
+前端/模型中工具名为 `mcp__weather__get_weather`。
+
 ## 验证
 
-登录拿到会话 `lab_session` cookie 后，向 `/api/ai-platform/chat` 发一段要求「调用 `mcp__demo__add` 工具」的话。若 demo server 日志出现 `[mcp-demo] tools/call add {...}` 且模型回复了工具结果，即整条链路打通：
+登录拿到会话 `lab_session` cookie 后，向 `/api/ai-platform/chat` 发一段话：
+
+- 用 demo server 验证计算链路：说「调用 `mcp__demo__add` 工具」，demo server 日志出现 `[mcp-demo] tools/call add {...}` 且模型回复了工具结果。
+- 用天气 server 验证实时数据：直接说「查一下北京的天气」，模型应**自主决定**调用 `mcp__weather__get_weather`，UI 里先出现「正在调用…」再到结果块，最终回复转述真实天气（而非编造）。
 
 ```
-agent 工具循环 → 模型发起 tool_use(mcp__demo__add) → mcp-client 调 tools/call
-→ demo server 执行并回填 → 结果序列化回填模型 → 最终回复
+agent 工具循环 → 模型发起 tool_use(mcp__<server>__<tool>) → mcp-client 调 tools/call
+→ server 执行并回填 → 结果序列化回填模型 → 最终回复
 ```
 
 对不支持函数调用的 openai-compatible 模型，首轮带工具请求被网关拒绝时，代码会回退成不带工具的纯直通（见 `server/ai-platform.ts`），保证会话不报错。
