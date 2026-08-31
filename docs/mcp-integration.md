@@ -77,7 +77,7 @@ MCP_SERVERS='[{"id":"demo","name":"Demo MCP","url":"http://127.0.0.1:8765/mcp"}]
 
 ## 本地天气 server（实时数据，无密钥）
 
-平台自带一个真实天气 stdio MCP server（`scripts/mcp-weather-server.mjs`），走 Open-Meteo（免费、无需密钥）返回**实时**天气：城市中文/英文名 → geocoding 定位 → 当前天气状况/气温/湿度/风速。仅工具调用时才发网络请求，结果按城市稳定且真实（非 mock 随机数）。
+平台自带一个真实天气 stdio MCP server（`scripts/mcp-weather-server.mjs`），走 Open-Meteo（免费、无需密钥）返回**实时**天气：城市中文/英文名 → geocoding 定位 → 当前天气状况/气温/湿度/风速。仅工具调用时才发网络请求，结果按城市稳定且真实（非 mock 随机数）。Open-Meteo 的 `current` 是模型最新一轮（约 15 分钟间隔）的观测；返回文本带**观测时刻**（城市本地时区，如「截至 2026-08-31 16:15（GMT+8）」），模型据此转述，用户能判断是「今天」的实时数据而非旧数据。
 
 ```bash
 pnpm mcp:weather

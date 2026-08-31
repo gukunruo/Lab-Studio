@@ -73,6 +73,7 @@ async function getWeather(city, country) {
   url.searchParams.set('longitude', String(place.longitude))
   url.searchParams.set('current', 'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m')
   url.searchParams.set('wind_speed_unit', 'kmh')
+  url.searchParams.set('timezone', 'auto') // 让 current.time 落在城市本地时区，用户才能看出是「今天」。
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
   if (!res.ok) throw new Error(`天气预报失败（HTTP ${res.status}）`)
   const data = await res.json()
@@ -81,11 +82,17 @@ async function getWeather(city, country) {
   const label = describeCode(cur.weather_code)
   const c = place.country ?? country ?? ''
   const cityLabel = place.name
+  // current.time 是模型最新一轮(约 15 分钟间隔)的观测时刻，本地时区。带上它，用户能判断是今天而不是旧数据。
+  const observedAt = String(cur.time)
+  const tzAbbr = data.timezone_abbreviation ?? ''
+  const observedLabel = `${observedAt.replace('T', ' ')}${tzAbbr ? `（${tzAbbr}）` : ''}`
   const structuredContent = {
     city: cityLabel,
     country: c,
     latitude: place.latitude,
     longitude: place.longitude,
+    observedAt,
+    timezone: tzAbbr,
     temperature: {
       celsius,
       fahrenheit: Math.round(((celsius * 9) / 5 + 32) * 10) / 10,
@@ -94,7 +101,7 @@ async function getWeather(city, country) {
     humidity: cur.relative_humidity_2m,
     wind: { speed_kmh: cur.wind_speed_10m },
   }
-  const text = `${cityLabel}${c ? `（${c}）` : ''}当前天气：${label}，气温 ${celsius}°C，湿度 ${cur.relative_humidity_2m}%，风速 ${cur.wind_speed_10m} km/h。`
+  const text = `${cityLabel}${c ? `（${c}）` : ''}截至 ${observedLabel}的天气：${label}，气温 ${celsius}°C，湿度 ${cur.relative_humidity_2m}%，风速 ${cur.wind_speed_10m} km/h。`
   return { content: [{ type: 'text', text }], structuredContent }
 }
 
