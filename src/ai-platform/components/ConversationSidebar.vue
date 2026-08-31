@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { PhGitBranch, PhImage, PhNotePencil, PhPushPin, PhTrash } from '@phosphor-icons/vue'
+import { PhGitBranch, PhImage, PhNotePencil, PhPencilSimple, PhPushPin, PhTrash } from '@phosphor-icons/vue'
 import { useConversationsStore } from '../composables/useConversations'
 import UserMenu from '@/layouts/UserMenu.vue'
 
@@ -18,6 +18,43 @@ const store = useConversationsStore()
 const searchQuery = ref('')
 const pendingDelete = ref<{ id: number; title: string } | null>(null)
 const deleting = ref(false)
+
+const editingId = ref<number | null>(null)
+const editTitle = ref('')
+const renameOriginal = ref('')
+const renaming = ref(false)
+const renameInput = ref<HTMLInputElement | null>(null)
+
+function startRename(conv: { id: number; title: string }, event: MouseEvent) {
+  event.stopPropagation()
+  editingId.value = conv.id
+  editTitle.value = conv.title
+  renameOriginal.value = conv.title
+  nextTick(() => {
+    renameInput.value?.focus()
+    renameInput.value?.select()
+  })
+}
+
+function cancelRename() {
+  editingId.value = null
+  editTitle.value = ''
+}
+
+async function commitRename(id: number) {
+  if (renaming.value || editingId.value !== id) return
+  const title = editTitle.value.trim()
+  const original = renameOriginal.value
+  editingId.value = null
+  editTitle.value = ''
+  if (!title || title === original) return
+  renaming.value = true
+  try {
+    await store.rename(id, title)
+  } finally {
+    renaming.value = false
+  }
+}
 
 function closeDeleteDialog() {
   if (deleting.value) return
@@ -136,16 +173,30 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
           v-for="conv in pinnedConversations"
           :key="conv.id"
           class="sidebar__item"
-          :class="{ 'sidebar__item--active': conv.id === store.activeId }"
+          :class="{ 'sidebar__item--active': conv.id === store.activeId, 'sidebar__item--editing': editingId === conv.id }"
         >
           <button class="sidebar__item-main" type="button" @click="selectConversation(conv.id)">
             <PhPushPin class="sidebar__item-pin sidebar__item-pin--visible" :size="14" weight="fill" />
             <span v-if="conv.kind === 'image'" class="sidebar__item-kind-icon" title="生图对话"><PhImage :size="13" weight="regular" /></span>
-            <span class="sidebar__item-text">{{ conv.title }}</span>
+            <input
+              v-if="editingId === conv.id"
+              ref="renameInput"
+              v-model="editTitle"
+              class="sidebar__item-rename-input"
+              :aria-label="`重命名 ${conv.title}`"
+              @click.stop
+              @keydown.enter.prevent.stop="commitRename(conv.id)"
+              @keydown.escape.prevent.stop="cancelRename"
+              @blur="commitRename(conv.id)"
+            />
+            <span v-else class="sidebar__item-text">{{ conv.title }}</span>
             <span v-if="conv.parentConversationId !== null" class="sidebar__branch" title="分支对话"><PhGitBranch :size="12" weight="bold" /> 分支</span>
             <span class="sidebar__item-meta">{{ timeLabel(conv.updatedAt) }}</span>
           </button>
-          <span class="sidebar__item-action-wrap">
+          <span v-if="editingId !== conv.id" class="sidebar__item-action-wrap">
+            <button class="sidebar__item-action" type="button" :aria-label="`重命名 ${conv.title}`" title="重命名" @click="startRename(conv, $event)">
+              <PhPencilSimple :size="14" weight="regular" />
+            </button>
             <button class="sidebar__item-action" type="button" :aria-label="`取消置顶 ${conv.title}`" title="取消置顶" @click="togglePinned(conv.id, $event)">
               <PhPushPin :size="14" weight="regular" />
             </button>
@@ -164,7 +215,7 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
           v-for="conv in group.conversations"
           :key="conv.id"
           class="sidebar__item"
-          :class="{ 'sidebar__item--active': conv.id === store.activeId }"
+          :class="{ 'sidebar__item--active': conv.id === store.activeId, 'sidebar__item--editing': editingId === conv.id }"
         >
           <button
             class="sidebar__item-main"
@@ -175,11 +226,25 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
             <PhGitBranch v-if="conv.parentConversationId !== null" class="sidebar__item-branch-icon" :size="14" weight="bold" />
             <PhImage v-else-if="conv.kind === 'image'" class="sidebar__item-branch-icon sidebar__item-kind-icon" :size="14" weight="regular" />
             <span v-else class="sidebar__item-dot" />
-            <span class="sidebar__item-text">{{ conv.title }}</span>
+            <input
+              v-if="editingId === conv.id"
+              ref="renameInput"
+              v-model="editTitle"
+              class="sidebar__item-rename-input"
+              :aria-label="`重命名 ${conv.title}`"
+              @click.stop
+              @keydown.enter.prevent.stop="commitRename(conv.id)"
+              @keydown.escape.prevent.stop="cancelRename"
+              @blur="commitRename(conv.id)"
+            />
+            <span v-else class="sidebar__item-text">{{ conv.title }}</span>
             <span v-if="conv.parentConversationId !== null" class="sidebar__branch" title="分支对话">分支</span>
             <span class="sidebar__item-meta">{{ timeLabel(conv.updatedAt) }}</span>
           </button>
-          <span class="sidebar__item-action-wrap">
+          <span v-if="editingId !== conv.id" class="sidebar__item-action-wrap">
+            <button class="sidebar__item-action" type="button" :aria-label="`重命名 ${conv.title}`" title="重命名" @click="startRename(conv, $event)">
+              <PhPencilSimple :size="14" weight="regular" />
+            </button>
             <button class="sidebar__item-action" type="button" :aria-label="`置顶 ${conv.title}`" title="置顶" @click="togglePinned(conv.id, $event)">
               <PhPushPin :size="14" weight="regular" />
             </button>
@@ -287,6 +352,8 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
 .sidebar__item:hover { background: var(--color-surface); }
 .sidebar__item-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; width: 100%; padding: 6px 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; transition: padding-right 0.18s ease; }
 .sidebar__item--active { background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.15); }
+.sidebar__item--editing:hover .sidebar__item-main { padding-right: 0; }
+.sidebar__item--editing:hover .sidebar__item-meta { display: none; }
 .sidebar__item-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-muted); flex-shrink: 0; opacity: 0.5; }
 .sidebar__item--active .sidebar__item-dot { background: var(--color-accent); opacity: 1; box-shadow: 0 0 6px var(--color-accent-glow); }
 .sidebar__item-pin,
@@ -294,6 +361,8 @@ function removeConversation(id: number, title: string, event: MouseEvent) {
 .sidebar__item-kind-icon { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--color-accent-strong); }
 .sidebar__branch { flex: 0 0 auto; color: var(--color-accent-strong); font-size: 10px; font-weight: 600; }
 .sidebar__item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--color-text-muted); }
+.sidebar__item-rename-input { flex: 1; min-width: 0; height: 24px; box-sizing: border-box; border: 1px solid var(--color-accent); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font-family: var(--font-sans); font-size: 13px; line-height: 1; padding: 0 7px; outline: none; }
+.sidebar__item-rename-input::selection { background: color-mix(in srgb, var(--color-accent) 26%, transparent); }
 .sidebar__item--active .sidebar__item-text { color: var(--color-text); }
 .sidebar__item-meta { flex-shrink: 0; font-size: 10px; color: var(--color-text-muted); opacity: 0.5; font-family: var(--font-mono); }
 .sidebar__item:hover .sidebar__item-meta, .sidebar__item:focus-within .sidebar__item-meta { display: none; }

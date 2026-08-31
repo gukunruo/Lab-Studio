@@ -231,6 +231,15 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     persistActive()
   }
 
+  async function rename(id: number, title: string) {
+    const trimmed = title.trim().slice(0, 200)
+    if (!trimmed) return
+    await apiUpdate(id, { title: trimmed })
+    const item = conversations.value.find((conversation) => conversation.id === id)
+    if (item) item.title = trimmed
+    if (activeConversation.value?.id === id) activeConversation.value.title = trimmed
+  }
+
   async function setPinned(id: number, pinned: boolean) {
     await apiUpdate(id, { pinned })
     if (activeConversation.value?.id === id) {
@@ -270,6 +279,7 @@ export const useConversationsStore = defineStore('ai-conversations', () => {
     createBranch,
     updateActiveDigest,
     clearActiveDigest,
+    rename,
     setPinned,
     togglePinned,
     remove,
