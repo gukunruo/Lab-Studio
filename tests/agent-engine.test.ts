@@ -7,6 +7,7 @@ import {
   buildOpenAiTools,
   createFinanceQuoteExecutor,
   createWebFetchExecutor,
+  formatAgentCurrentDate,
   readAnthropicTurn,
   readOpenAiTurn,
   runAgentLoop,
@@ -461,4 +462,22 @@ test('AGENT_TOOL_GUIDANCE 同时包含「自主判断是否调用」与「忠实
   assert.match(AGENT_TOOL_GUIDANCE, /忠实转述/)
   assert.match(AGENT_TOOL_GUIDANCE, /不得编造/)
   assert.match(AGENT_TOOL_GUIDANCE, /失败或未命中/)
+})
+
+// current_date 工具 / 系统提示注入的「当前时间」，必须给出今天的绝对日期，模型才能把「今天」换算成具体日期。
+test('formatAgentCurrentDate 注入绝对日期与时间，且用指定的时区', () => {
+  const out = formatAgentCurrentDate(new Date('2026-08-31T16:15:00+08:00'), 'Asia/Shanghai')
+  assert.ok(out.startsWith('今天是 2026-08-31'), `应包含绝对日期，实际：${out}`)
+  assert.match(out, /星期/)
+  assert.match(out, /16:15/)
+  assert.match(out, /Asia\/Shanghai/)
+})
+
+test('formatAgentCurrentDate 缺省时区用运行环境时区，且不带时区后缀', () => {
+  const out = formatAgentCurrentDate(new Date('2026-08-31T08:00:00Z'))
+  const envTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return '' } })()
+  if (envTz) {
+    assert.ok(out.includes(envTz), `应包含环境时区 ${envTz}，实际：${out}`)
+  }
+  assert.match(out, /^今天是 \d{4}-\d{2}-\d{2}（星期.）\d{2}:\d{2}/)
 })

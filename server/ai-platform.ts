@@ -23,6 +23,7 @@ import {
   createFinanceQuoteExecutor,
   createWebFetchExecutor,
   AGENT_TOOL_GUIDANCE,
+  formatAgentCurrentDate,
   MAX_AGENT_ROUNDS,
   readAnthropicTurn,
   readOpenAiTurn,
@@ -454,6 +455,13 @@ function buildAgentRegistry(anthropicConfig: AnthropicConfig | null): AgentToolR
         required: ['q'],
       },
       execute: createFinanceQuoteExecutor(),
+    },
+    current_date: {
+      name: 'current_date',
+      description:
+        '获取今天的日期、星期与当前时间。当用户问「今天是几号/星期几/现在几点」，或需要把「明天/后天/本周五/X月X日」等相对日期换算成具体日期（传给天气等工具）时使用。',
+      parameters: { type: 'object', properties: {}, required: [] },
+      execute: async () => formatAgentCurrentDate(new Date()),
     },
   }
 }
@@ -1336,8 +1344,11 @@ export function registerAiPlatformRoutes(app: Hono): void {
     const openAiTools = buildOpenAiTools(agentRegistry)
     const anthropicTools = buildAnthropicTools(agentRegistry)
 
-    // 工具可用时，把「自主决定是否调工具 + 忠实转述结果」的指引追加到系统提示。
-    const toolSystem = useTools ? `${engineeredBody.system}\n\n${AGENT_TOOL_GUIDANCE}` : engineeredBody.system
+    // 工具可用时，把「自主决定是否调工具 + 忠实转述结果」的指引追加到系统提示，
+    // 并注入今天的基准日期/时间，让模型能换算「明天/后天/X月X日」这类相对日期。
+    const toolSystem = useTools
+      ? `${engineeredBody.system}\n\n${AGENT_TOOL_GUIDANCE}\n\n当前时间：${formatAgentCurrentDate(new Date())}`
+      : engineeredBody.system
 
     let upstreamConfig: UpstreamConfig | null = null
     let upstreamReq: UpstreamRequest

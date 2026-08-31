@@ -5,9 +5,9 @@
 
 ## 是什么
 
-平台内置了一套通用 Agent 工具循环（`server/agent-engine.ts` 的 `runAgentLoop` + 注册表 `AgentToolRegistry`），注册表当前有 3 个静态工具：`web_search`、`web_fetch`、`finance_quote`。MCP 接入就是把外接 MCP server 通过 `tools/list` 暴露的工具，适配成 `AgentTool` 合入这张注册表，复用现有工具循环——不新造一套 agent 执行器。
+平台内置了一套通用 Agent 工具循环（`server/agent-engine.ts` 的 `runAgentLoop` + 注册表 `AgentToolRegistry`），注册表当前有 4 个静态工具：`web_search`、`web_fetch`、`finance_quote`、`current_date`。其中 `current_date` 用于让模型拿到**今天**的绝对日期（`今天是 2026-08-31（星期一）16:15（Asia/Shanghai）`），这样才能把「今天/明天/本周五/X 月 X 日」等相对日期换算成具体日期，再传给天气等工具。MCP 接入就是把外接 MCP server 通过 `tools/list` 暴露的工具，适配成 `AgentTool` 合入这张注册表，复用现有工具循环——不新造一套 agent 执行器。
 
-模型侧看到的工具名按 `mcp__<serverId>__<toolName>` 命名空间化，例如本机 demo server 的 `add` 工具对外是 `mcp__demo__add`。每次工具执行，服务端会在 SSE 里发一条 `tool_call` 事件（入参 + 截断的结果预览 + `status`），前端渲染成 assistant 消息里的可折叠「工具调用」块，让 agent 的工具使用对用户可见——内置工具（`web_search`/`web_fetch`/`finance_quote`）与 MCP 工具都走这套。
+模型侧看到的工具名按 `mcp__<serverId>__<toolName>` 命名空间化，例如本机 demo server 的 `add` 工具对外是 `mcp__demo__add`。每次工具执行，服务端会在 SSE 里发一条 `tool_call` 事件（入参 + 截断的结果预览 + `status`），前端渲染成 assistant 消息里的可折叠「工具调用」块，让 agent 的工具使用对用户可见——内置工具（`web_search`/`web_fetch`/`finance_quote`/`current_date`）与 MCP 工具都走这套。
 
 `tool_call` 事件顺序：先发一次 `status: 'running'`（开始执行，入参已带、结果为空），执行完再发一次 `status: 'done'`（带截断的结果预览）。前端据此展示「正在调用…」的转圈动画，拿到结果后更新为可展开的入参/返回详情。
 
@@ -77,7 +77,15 @@ MCP_SERVERS='[{"id":"demo","name":"Demo MCP","url":"http://127.0.0.1:8765/mcp"}]
 
 ## 本地天气 server（实时数据，无密钥）
 
-平台自带一个真实天气 stdio MCP server（`scripts/mcp-weather-server.mjs`），走 Open-Meteo（免费、无需密钥）返回**实时**天气：城市中文/英文名 → geocoding 定位 → 当前天气状况/气温/湿度/风速。仅工具调用时才发网络请求，结果按城市稳定且真实（非 mock 随机数）。Open-Meteo 的 `current` 是模型最新一轮（约 15 分钟间隔）的观测；返回文本带**观测时刻**（城市本地时区，如「截至 2026-08-31 16:15（GMT+8）」），模型据此转述，用户能判断是「今天」的实时数据而非旧数据。
+平台自带一个真实天气 stdio MCP server（`scripts/mcp-weather-server.mjs`），走 Open-Meteo（免费、无需密钥）返回天气：城市中文/英文名 → geocoding 定位。`get_weather` 支持三种模式：
+
+| 参数 | 行为 |
+| --- | --- |
+| （不带 `date`/`days`） | 当前**实时**天气：天气状况/气温/湿度/风速。Open-Meteo 的 `current` 是模型最新一轮（约 15 分钟间隔）的观测；返回文本带**观测时刻**（城市本地时区，如「截至 2026-08-31 16:15（GMT+8）」），模型据此转述，用户能判断是「今天」的实时数据而非旧数据。 |
+| `date`（`YYYY-MM-DD`） | 某**一天**的天气：最高/最低温、状况、最大风速。 |
+| `days`（`1-16`） | 从今天起**未来 N 天**的每日天气；与 `date` 互斥，同传时 `date` 优先。 |
+
+仅工具调用时才发网络请求，结果按城市稳定且真实（非 mock 随机数）。`current_date` 工具 + tool 系统提示里注入的「当前时间」给模型提供今天的基准日期，用户问「今天是几号 / 明天 / 本周五」时模型能换算成具体日期再查。
 
 ```bash
 pnpm mcp:weather

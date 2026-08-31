@@ -71,6 +71,15 @@ export const AGENT_TOOL_GUIDANCE = `你可以在回答中使用工具获取实�
 - 若工具查询失败或未命中（例如查无此地），如实说明，并给用户可操作的下一步建议，绝不能假装查到了。
 - 用简洁的中文把工具结果整理成面向用户的回答。`
 
+// 把「当前日期/时间」格式化为可读中文串，用于 current_date 工具与工具系统提示（注入今天基准日期）。
+export function formatAgentCurrentDate(now: Date, tz?: string): string {
+  const resolvedTz = tz ?? (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return '' } })()
+  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: resolvedTz || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+  const timeStr = new Intl.DateTimeFormat('zh-CN', { timeZone: resolvedTz || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now)
+  const weekday = new Intl.DateTimeFormat('zh-CN', { timeZone: resolvedTz || undefined, weekday: 'long' }).format(now)
+  return `今天是 ${dateStr}（${weekday}）${timeStr}${resolvedTz ? `（${resolvedTz}）` : ''}`
+}
+
 // ---- 工具参数解析 ----
 
 // 把上游下发的工具参数（JSON 字符串）解析成对象；非 JSON 时兜底为 { raw: 原文 }。

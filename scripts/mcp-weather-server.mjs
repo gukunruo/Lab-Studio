@@ -66,8 +66,20 @@ async function geocode(city) {
   return hit
 }
 
-async function getWeather(city, country) {
-  const place = await geocode(city)
+// 把相对/绝对日期归一化成 Open-Meteo 需要的 YYYY-MM-DD；非法返回 null。
+function normalizeDate(raw) {
+  if (!raw) return null
+  const s = String(raw).trim()
+  const m = s.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/)
+  if (!m) return null
+  const [, y, mo, d] = m
+  const dt = new Date(`${y}-${mo}-${d}T00:00:00`)
+  if (Number.isNaN(dt.getTime())) return null
+  return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+
+// 当前实时天气（无 date/days 时）：Open-Meteo 最新一轮观测，约 15 分钟间隔。
+async function getCurrentWeather(place, country) {
   const url = new URL(FORECAST_URL)
   url.searchParams.set('latitude', String(place.latitude))
   url.searchParams.set('longitude', String(place.longitude))
@@ -87,6 +99,7 @@ async function getWeather(city, country) {
   const tzAbbr = data.timezone_abbreviation ?? ''
   const observedLabel = `${observedAt.replace('T', ' ')}${tzAbbr ? `（${tzAbbr}）` : ''}`
   const structuredContent = {
+    mode: 'current',
     city: cityLabel,
     country: c,
     latitude: place.latitude,
@@ -105,6 +118,59 @@ async function getWeather(city, country) {
   return { content: [{ type: 'text', text }], structuredContent }
 }
 
+// 某一天 / 未来几天：Open-Meteo daily（最高/最低/天气状况/最大风速）。
+async function getDailyWeather(place, country, date, days) {
+  const url = new URL(FORECAST_URL)
+  url.searchParams.set('latitude', String(place.latitude))
+  url.searchParams.set('longitude', String(place.longitude))
+  url.searchParams.set('timezone', 'auto')
+  url.searchParams.set('daily', 'weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max')
+  url.searchParams.set('wind_speed_unit', 'kmh')
+  if (date) {
+    url.searchParams.set('start_date', date)
+    url.searchParams.set('end_date', date)
+  } else {
+    const n = Math.min(Math.max(1, Math.floor(Number(days) || 1)), 16)
+    url.searchParams.set('forecast_days', String(n))
+  }
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+  if (!res.ok) throw new Error(`天气预报失败（HTTP ${res.status}）`)
+  const data = await res.json()
+  const daily = data.daily
+  const rows = (daily.time ?? []).map((t, i) => ({
+    date: t,
+    conditions: describeCode(daily.weather_code?.[i]),
+    temperature: { max: daily.temperature_2m_max?.[i], min: daily.temperature_2m_min?.[i] },
+    wind: { speed_kmh_max: daily.wind_speed_10m_max?.[i] },
+  }))
+  if (rows.length === 0) throw new Error('该日期没有可查询的天气数据')
+  const c = place.country ?? country ?? ''
+  const cityLabel = place.name
+  const tzAbbr = data.timezone_abbreviation ?? ''
+  const line = (r) => `- ${r.date}：${r.conditions}，最高 ${r.temperature.max}°C，最低 ${r.temperature.min}°C，最大风 ${r.wind.speed_kmh_max} km/h`
+  const text = rows.length === 1
+    ? `${cityLabel}${c ? `（${c}）` : ''}${rows[0].date} 天气：${rows[0].conditions}，最高 ${rows[0].temperature.max}°C，最低 ${rows[0].temperature.min}°C${tzAbbr ? `（${tzAbbr}）` : ''}。`
+    : `${cityLabel}${c ? `（${c}）` : ''}未来 ${rows.length} 天天气${tzAbbr ? `（${tzAbbr}）` : ''}：\n${rows.map(line).join('\n')}`
+  const structuredContent = {
+    mode: 'daily',
+    city: cityLabel,
+    country: c,
+    timezone: tzAbbr,
+    days: rows.length,
+    daily: rows,
+  }
+  return { content: [{ type: 'text', text }], structuredContent }
+}
+
+async function getWeather(city, country, date, days) {
+  const place = await geocode(city)
+  const normalized = normalizeDate(date)
+  if (date && !normalized) throw new Error(`日期格式无效：${date}，应为 YYYY-MM-DD（如 2026-08-30）`)
+  if (normalized) return getDailyWeather(place, country, normalized, days)
+  if (days !== undefined && days !== null && Number(days) > 0) return getDailyWeather(place, country, null, days)
+  return getCurrentWeather(place, country)
+}
+
 const server = new McpServer({
   name: 'open-meteo-weather',
   version: '1.0.0',
@@ -114,15 +180,17 @@ server.registerTool(
   'get_weather',
   {
     description:
-      '实时查询指定城市的当前天气（天气状况、气温、湿度、风速）。当用户询问某地天气、气温、是否需要带伞/穿衣建议等实时信息时使用。city 传城市名（支持中文或英文，如「北京」或「Beijing」），country 可选国家代码（如 CN）。',
+      '查询指定城市的天气。三种模式：①不带 date/days 时返回「当前实时天气」（天气状况、气温、湿度、风速，附观测时刻，约 15 分钟间隔）；②传 date（YYYY-MM-DD）返回「某一天的天气」（最高/最低温、状况、最大风速）；③传 days（1-16）返回「未来 N 天的每日天气」。city 传城市名（支持中文或英文，如「北京」或「Beijing」），country 可选国家代码（如 CN）。',
     inputSchema: {
       city: z.string().describe('城市名，中文或英文均可'),
       country: z.string().optional().describe('国家代码，可选（如 CN、US）'),
+      date: z.string().optional().describe('要查询的具体日期，格式 YYYY-MM-DD（如 2026-08-30），缺省时返回当前实时天气'),
+      days: z.number().int().min(1).max(16).optional().describe('返回未来 N 天（1-16）的每日天气，与 date 互斥'),
     },
   },
-  async ({ city, country }) => {
+  async ({ city, country, date, days }) => {
     try {
-      return await getWeather(city, country)
+      return await getWeather(city, country, date, days)
     } catch (error) {
       // 失败时返回可读文本而非抛错，让模型能转述给用户。
       const message = error instanceof Error ? error.message : String(error)
