@@ -40,14 +40,15 @@
 **方案**：在 handler 里、认 modelRow 之后、进 provider switch 之前，插入一次 `engineerContext` 预编：
 
 - 过滤出 user / assistant；窗口化——最近 `HISTORY_WINDOW`（40）条保留精确，其余进摘要。
+- **主题相关性**：`detectContextShift` 判断「最新一条用户消息」是否开启了与上文无关的新主题。判定为 `fresh` 时只保留当前这条消息、抑制前情摘要注入、并在系统提示末尾追加「按独立新请求作答、忽略前文」的说明；否则按原有管线带上文。判定规则驱动、默认保守（拿不准一律 `continue`=带上文），漏判由 `BASE_SYSTEM` 里的「以最新一条为当前任务、相关才用前文」兜底。
 - system 分层：`BASE_SYSTEM` + 用户设定 + 对话前情摘要。
 - 单条内容上限 + 内容感知截断（代码 / 报错 → 头 + 标注 + 尾；正文 → 头截断）。
 - 预算 = contextWindow − 输出预留；超了就把窗口 / 单条上限减半，最多 6 轮，直到 `估算token × 1.15 ≤ 预算`。
 - `maxTokens` 在窗口内收紧，且保留下限（256）。
 
-**关键函数**：`engineerContext`（编排）、`buildSystemPrompt`（分层）、`splitWindow` / `buildPrefixSummary`（窗口 + 摘要兜底）、`truncateMessageContent` / `looksLikeCodeOrOutput`（内容感知）、`estimateTokens`（CJK 感知）。
+**关键函数**：`engineerContext`（编排）、`buildSystemPrompt`（分层）、`detectContextShift`（主题相关性）、`splitWindow` / `buildPrefixSummary`（窗口 + 摘要兜底）、`truncateMessageContent` / `looksLikeCodeOrOutput`（内容感知）、`estimateTokens`（CJK 感知）。
 
-**验证**：13 个单测覆盖全部纯函数；端到端实测新对话流式回复正常，分层 system 被网关接受，无 400。
+**验证**：单测覆盖全部纯函数（含主题相关性 6 例）；端到端实测新对话流式回复正常，分层 system 被网关接受，无 400。
 
 **有意推迟**：Anthropic prompt caching。它在 ai-service.tal.com 网关后难以验证，且收益要在长上下文才明显。等跑在可控 provider 上再引入。
 

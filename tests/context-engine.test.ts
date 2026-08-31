@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   buildPrefixSummary,
   buildSystemPrompt,
+  detectContextShift,
   engineerContext,
   estimateTokens,
   looksLikeCodeOrOutput,
@@ -152,4 +153,85 @@ test('engineerContext respects a tight context window by truncating and clamping
   }
   assert.ok(result.maxTokens <= 8_000, 'maxTokens stays within the context window')
   assert.ok(result.maxTokens >= 256, 'maxTokens keeps a usable floor')
+})
+
+// ---- 上下文相关性：主题无关时忽略上文，相关时带上文（豆包式「独立新请求」行为） ----
+
+test('detectContextShift flags an unrelated lookup query as fresh after a design thread', () => {
+  const messages = [
+    { role: 'user', content: '帮我设计一个 AI Studio 的 logo，画一个科技感的图标' },
+    { role: 'assistant', content: '好的，我先给你几个 logo 方向的草稿……' },
+    { role: 'user', content: '再画一个更简约的版本，配色用深蓝' },
+    { role: 'assistant', content: '这是新的简约 logo 草稿。' },
+    { role: 'user', content: '查一下北京的天气' },
+  ]
+  const decision = detectContextShift(messages)
+  assert.equal(decision.mode, 'fresh')
+  assert.equal(decision.retainFrom, 4)
+  assert.equal(decision.suppressSummary, true)
+  assert.ok(decision.note.includes('忽略'))
+})
+
+test('detectContextShift keeps a same-domain follow-up in continue', () => {
+  const messages = [
+    { role: 'user', content: '查一下北京的天气' },
+    { role: 'assistant', content: '北京今天晴，26°C。' },
+    { role: 'user', content: '再查一下上海的天气' },
+  ]
+  const decision = detectContextShift(messages)
+  assert.equal(decision.mode, 'continue')
+  assert.equal(decision.retainFrom, 0)
+  assert.equal(decision.suppressSummary, false)
+})
+
+test('detectContextShift defaults to continue when the query has no clear domain', () => {
+  const messages = [
+    { role: 'user', content: '帮我设计一个 logo' },
+    { role: 'assistant', content: '好的。' },
+    { role: 'user', content: '那杭州呢' },
+  ]
+  const decision = detectContextShift(messages)
+  assert.equal(decision.mode, 'continue')
+})
+
+test('detectContextShift treats an explicit reset marker as fresh', () => {
+  const messages = [
+    { role: 'user', content: '帮我设计一个 logo' },
+    { role: 'assistant', content: '好的。' },
+    { role: 'user', content: '换个话题，介绍一下量子计算' },
+  ]
+  const decision = detectContextShift(messages)
+  assert.equal(decision.mode, 'fresh')
+})
+
+test('engineerContext in fresh mode retains only the current query, drops summary, and injects the note', () => {
+  const result = engineerContext({
+    messages: [
+      { role: 'user', content: '帮我设计一个 logo，科技感' },
+      { role: 'assistant', content: '以下是草稿……' },
+      { role: 'user', content: '查一下北京的天气' },
+    ],
+    system: '',
+    summary: '用户正在设计一个 AI Studio logo',
+    contextWindow: 128_000,
+    maxTokens: 4096,
+  })
+  assert.deepEqual(result.messages, [{ role: 'user', content: '查一下北京的天气' }])
+  assert.ok(!result.system.includes('【对话前情摘要】'))
+  assert.ok(result.system.includes('忽略'))
+})
+
+test('engineerContext keeps context when the topic continues (same domain)', () => {
+  const result = engineerContext({
+    messages: [
+      { role: 'user', content: '查一下北京的天气' },
+      { role: 'assistant', content: '晴，26°C' },
+      { role: 'user', content: '再查一下上海的天气' },
+    ],
+    summary: '用户在查询城市天气',
+    contextWindow: 128_000,
+    maxTokens: 4096,
+  })
+  assert.equal(result.messages.length, 3, 'continue keeps the full recent context')
+  assert.deepEqual(result.messages[result.messages.length - 1], { role: 'user', content: '再查一下上海的天气' })
 })
