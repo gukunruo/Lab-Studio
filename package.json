@@ -8,6 +8,7 @@
     "router": "tsx cc-router/index.ts",
     "benchmark:ai": "tsx scripts/ai-platform-benchmark.ts",
     "mcp:demo": "tsx scripts/mcp-demo-server.ts",
+    "mcp:weather": "node scripts/mcp-weather-server.mjs",
     "dev:all": "run-p dev dev:server",
     "dev:server": "tsx watch server/index.ts",
     "server": "tsx server/index.ts",
