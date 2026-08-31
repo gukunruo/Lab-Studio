@@ -22,6 +22,7 @@ import {
   buildOpenAiTools,
   createFinanceQuoteExecutor,
   createWebFetchExecutor,
+  AGENT_TOOL_GUIDANCE,
   MAX_AGENT_ROUNDS,
   readAnthropicTurn,
   readOpenAiTurn,
@@ -1335,6 +1336,9 @@ export function registerAiPlatformRoutes(app: Hono): void {
     const openAiTools = buildOpenAiTools(agentRegistry)
     const anthropicTools = buildAnthropicTools(agentRegistry)
 
+    // 工具可用时，把「自主决定是否调工具 + 忠实转述结果」的指引追加到系统提示。
+    const toolSystem = useTools ? `${engineeredBody.system}\n\n${AGENT_TOOL_GUIDANCE}` : engineeredBody.system
+
     let upstreamConfig: UpstreamConfig | null = null
     let upstreamReq: UpstreamRequest
     let openAiMessagesWithSystem: AgentChatMessage[] | null = null
@@ -1342,7 +1346,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
       case 'anthropic': {
         if (!anthropicConfig) return c.json({ error: 'AI credentials not configured' }, 503)
         upstreamReq = buildAnthropicPlatformRequest(
-          engineeredBody,
+          { ...engineeredBody, system: toolSystem },
           anthropicConfig,
           useTools ? anthropicTools : undefined,
         )
@@ -1360,8 +1364,8 @@ export function registerAiPlatformRoutes(app: Hono): void {
           appKey,
         }
         if (useTools) {
-          openAiMessagesWithSystem = engineeredBody.system
-            ? [{ role: 'system', content: engineeredBody.system }, ...engineeredBody.messages]
+          openAiMessagesWithSystem = toolSystem
+            ? [{ role: 'system', content: toolSystem }, ...engineeredBody.messages]
             : [...engineeredBody.messages]
           upstreamReq = buildUpstreamRequest(
             { ...engineeredBody, messages: openAiMessagesWithSystem as { role: string; content: string }[], system: '' },
@@ -1448,7 +1452,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
         registry: agentRegistry,
         buildRequest: (messages, modelId, params) =>
           buildAnthropicPlatformRequest(
-            { modelId, messages: messages as { role: string; content: string }[], system: engineeredBody.system, params: { ...params, webSearch: useWebSearch } },
+            { modelId, messages: messages as { role: string; content: string }[], system: toolSystem, params: { ...params, webSearch: useWebSearch } },
             anthropicConfig,
             anthropicTools,
           ),

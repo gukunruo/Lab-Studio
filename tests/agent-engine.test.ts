@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  AGENT_TOOL_GUIDANCE,
   appendToolMessages,
   buildAnthropicTools,
   buildOpenAiTools,
@@ -411,4 +412,13 @@ test('formatQuotesSummary tolerates non-finite numbers', () => {
   assert.ok(summary.includes('某股（000001）'))
   assert.ok(summary.includes('现价—'))
   assert.ok(summary.includes('成交额—'))
+})
+
+// 工具可用时的系统提示补充：引导模型自主决定是否调工具，并忠实转述工具结果。
+test('AGENT_TOOL_GUIDANCE 同时包含「自主判断是否调用」与「忠实转述/失败如实说明」指引', () => {
+  assert.ok(AGENT_TOOL_GUIDANCE.length > 0)
+  assert.match(AGENT_TOOL_GUIDANCE, /由你自己判断/)
+  assert.match(AGENT_TOOL_GUIDANCE, /忠实转述/)
+  assert.match(AGENT_TOOL_GUIDANCE, /不得编造/)
+  assert.match(AGENT_TOOL_GUIDANCE, /失败或未命中/)
 })
