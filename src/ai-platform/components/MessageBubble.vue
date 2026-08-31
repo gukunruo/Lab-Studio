@@ -4,6 +4,7 @@ import type { ChatMessage } from '../types'
 import { isTextMessage } from '../api'
 import { renderMarkdown } from '../message-markdown'
 import GeminiMultimodalCard from './GeminiMultimodalCard.vue'
+import ImageDraftCard from './ImageDraftCard.vue'
 import ImageMessageCard from './ImageMessageCard.vue'
 
 const props = defineProps<{
@@ -28,11 +29,16 @@ const emit = defineEmits<{
   'edit-gemini': []
   'abort-gemini': []
   'use-image-reference': []
+  'confirm-draft': [prompt: string]
+  'refine-draft': []
+  'enrich-draft': [text: string]
+  'abort-draft': []
 }>()
 
 const textMessage = computed(() => isTextMessage(props.message) ? props.message : null)
 const toolCalls = computed(() => textMessage.value?.toolCalls ?? [])
 const imageMessage = computed(() => props.message.type === 'image-request' || props.message.type === 'image-result' ? props.message : null)
+const imageDraftMessage = computed(() => props.message.type === 'image-draft' ? props.message : null)
 const geminiUserMessage = computed(() => props.message.type === 'gemini-multimodal-user' ? props.message : null)
 const geminiAssistantMessage = computed(() => props.message.type === 'gemini-multimodal-assistant' ? props.message : null)
 const renderedContent = computed(() => textMessage.value ? renderMarkdown(textMessage.value.content) : '')
@@ -124,6 +130,15 @@ function truncateResult(result: string): string {
           @edit="emit('edit-gemini')"
           @abort="emit('abort-gemini')"
           @use-as-reference="emit('use-image-reference')"
+        />
+      </template>
+      <template v-else-if="imageDraftMessage">
+        <ImageDraftCard
+          :message="imageDraftMessage"
+          @confirm="emit('confirm-draft', $event)"
+          @refine="emit('refine-draft')"
+          @enrich="emit('enrich-draft', $event)"
+          @abort="emit('abort-draft')"
         />
       </template>
       <template v-else-if="!isText">

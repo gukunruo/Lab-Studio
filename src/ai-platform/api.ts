@@ -286,7 +286,7 @@ export async function generateGeminiMultimodal(input: {
   return imageUrl ? { content, imageUrl } : { content }
 }
 
-const EMPTY_DRAFT_FACETS: ImageDraftFacets = { subject: '', style: '', composition: '', details: '', negative: '' }
+export const EMPTY_DRAFT_FACETS: ImageDraftFacets = { subject: '', style: '', composition: '', details: '', negative: '' }
 
 // 服务端可能返回缺字段或非法形状的要素，这里做一次归一化兜底（与 server 端对齐）。
 export function normalizeImageDraftFacets(value: unknown): ImageDraftFacets {
