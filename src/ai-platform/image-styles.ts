@@ -76,9 +76,8 @@ export function toggleNegative(facets: ImageDraftFacets, preset: NegativePreset)
   const existing = negativeTermSet(facets)
   const terms = splitTerms(preset.negative)
   if (terms.every((term) => existing.has(term))) {
-    let negative = facets.negative
-    for (const term of terms) negative = negative.replace(term, '')
-    return { ...facets, negative: negative.replace(/^[，,、\s]+|[，,、\s]+$/g, '').replace(/[，,]\s*[，,]/g, '，').trim() }
+    const remaining = splitTerms(facets.negative).filter((term) => !terms.includes(term))
+    return { ...facets, negative: remaining.join('，') }
   }
   const missing = terms.filter((term) => !existing.has(term)).join('，')
   const current = facets.negative.trim()

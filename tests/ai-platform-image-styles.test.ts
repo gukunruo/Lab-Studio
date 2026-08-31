@@ -57,6 +57,14 @@ test('toggleNegative appends and removes a multi-term preset', () => {
   assert.equal(removed.negative, '文字，水印，签名')
 })
 
+test('toggleNegative removes by term without corrupting substring phrases', () => {
+  const facets: ImageDraftFacets = { ...EMPTY, negative: '杂乱背景、过多文字水印、卡通化' }
+  const withPreset = toggleNegative(facets, NEGATIVE_PRESETS[1])
+  assert.equal(withPreset.negative, '杂乱背景、过多文字水印、卡通化，文字，水印，签名')
+  const removed = toggleNegative(withPreset, NEGATIVE_PRESETS[1])
+  assert.equal(removed.negative, '杂乱背景，过多文字水印，卡通化')
+})
+
 test('negative preset is active only when all its terms are present', () => {
   const facets: ImageDraftFacets = { ...EMPTY, negative: '文字' }
   assert.equal(isNegativeActive(facets, NEGATIVE_PRESETS[1]), false)

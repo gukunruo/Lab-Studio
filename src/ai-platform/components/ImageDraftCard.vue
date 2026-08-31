@@ -2,7 +2,18 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import type { ImageDraftFacets, ImageDraftMessage } from '../types'
 import { collapseDraftToPrompt } from '../composer'
-import { PhArrowsClockwise, PhCheck, PhChatCircleDots, PhPlus, PhSparkle, PhWarning } from '@phosphor-icons/vue'
+import {
+  NEGATIVE_PRESETS,
+  STYLE_PRESETS,
+  activeStylePresetId,
+  applyStylePreset,
+  clearStylePreset,
+  enhancePrompt,
+  isNegativeActive,
+  toggleNegative,
+} from '../image-styles'
+import type { NegativePreset } from '../image-styles'
+import { PhArrowsClockwise, PhCheck, PhChatCircleDots, PhEye, PhMagicWand, PhPlus, PhSparkle, PhWarning } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   message: ImageDraftMessage
@@ -35,10 +46,27 @@ const facets = ref<ImageDraftFacets>({ ...props.message.facets })
 const enrichOpen = ref(false)
 const enrichDraft = ref('')
 const enrichBusy = ref(false)
+const qualityBoost = ref(true)
+const previewOpen = ref(false)
 
-const prompt = computed(() => collapseDraftToPrompt(facets.value))
+const prompt = computed(() => {
+  const base = collapseDraftToPrompt(facets.value)
+  return qualityBoost.value ? enhancePrompt(base) : base
+})
+const activeStyle = computed(() => activeStylePresetId(facets.value))
+const facetCount = computed(() => FACET_FIELDS.filter((field) => facets.value[field.key]?.trim()).length)
 const isDrafting = computed(() => props.message.status === 'drafting')
 const isError = computed(() => props.message.status === 'error')
+
+function toggleStyle(presetId: string) {
+  facets.value = activeStyle.value === presetId
+    ? clearStylePreset(facets.value)
+    : applyStylePreset(facets.value, presetId)
+}
+
+function toggleNegativePreset(preset: NegativePreset) {
+  facets.value = toggleNegative(facets.value, preset)
+}
 
 // 服务端更新要素（如重新润色）时，采纳新卡；本地编辑不触发重渲染。
 watch(() => props.message, (message) => {
@@ -95,7 +123,7 @@ function submitEnrich() {
           <strong>提示词卡</strong>
           <span>确认或润色后生成图片</span>
         </div>
-        <span class="draft__head-ratio">{{ prompt.split('\n').length }} 条要素</span>
+        <span class="draft__head-ratio">{{ facetCount }} 条要素</span>
       </div>
 
       <div class="draft__facets">
@@ -112,6 +140,67 @@ function submitEnrich() {
             :placeholder="`在这里编辑${field.label}…`"
           />
         </label>
+      </div>
+
+      <div class="draft__presets">
+        <div class="draft__preset-group">
+          <span class="draft__preset-label">风格预设</span>
+          <div class="draft__preset-chips">
+            <button
+              v-for="preset in STYLE_PRESETS"
+              :key="preset.id"
+              class="draft__preset-chip"
+              :class="{ 'draft__preset-chip--active': activeStyle === preset.id }"
+              type="button"
+              @click="toggleStyle(preset.id)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="draft__preset-group">
+          <span class="draft__preset-label">避免</span>
+          <div class="draft__preset-chips">
+            <button
+              v-for="preset in NEGATIVE_PRESETS"
+              :key="preset.id"
+              class="draft__preset-chip"
+              :class="{ 'draft__preset-chip--active': isNegativeActive(facets, preset) }"
+              type="button"
+              @click="toggleNegativePreset(preset)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="draft__quality">
+        <button
+          class="draft__quality-toggle"
+          :class="{ 'draft__quality-toggle--active': qualityBoost }"
+          type="button"
+          :aria-pressed="qualityBoost"
+          @click="qualityBoost = !qualityBoost"
+        >
+          <PhMagicWand :size="13" weight="bold" />
+          画质增强
+          <span class="draft__quality-hint">自动追加专业画质词</span>
+        </button>
+      </div>
+
+      <div class="draft__preview">
+        <button
+          class="draft__preview-toggle"
+          type="button"
+          :aria-expanded="previewOpen"
+          @click="previewOpen = !previewOpen"
+        >
+          <PhEye :size="13" weight="bold" />
+          {{ previewOpen ? '收起提示词' : '预览提示词' }}
+        </button>
+        <pre v-if="previewOpen" class="draft__preview-body">{{ prompt }}</pre>
       </div>
 
       <div class="draft__chips" aria-label="增减细节">
@@ -288,6 +377,124 @@ function submitEnrich() {
 
 .draft__facet-input:focus {
   border-color: var(--color-accent);
+}
+
+.draft__presets {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.draft__preset-group {
+  display: grid;
+  gap: 5px;
+}
+
+.draft__preset-label {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.draft__preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.draft__preset-chip {
+  height: 25px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.draft__preset-chip:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
+
+.draft__preset-chip--active {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent-strong);
+}
+
+.draft__quality {
+  display: flex;
+  margin-top: 12px;
+}
+
+.draft__quality-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.draft__quality-toggle:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
+
+.draft__quality-toggle--active {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent-strong);
+}
+
+.draft__quality-hint {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.draft__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.draft__preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.draft__preview-toggle:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
+
+.draft__preview-body {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .draft__chips {
