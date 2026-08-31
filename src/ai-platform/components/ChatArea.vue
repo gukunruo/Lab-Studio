@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
 import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageDraftMessage, ImageModelId, ImageRequestMessage, ImageResultMessage, TextMessage, ToolCallTrace } from '../types'
 import { buildGeminiSubThreadHistory, controlledImageAssetId, draftImagePrompt, EMPTY_DRAFT_FACETS, isTextMessage, parseConversationDigest } from '../api'
+import { imageDraftConfirmFlow } from '../composer'
 import MessageBubble from './MessageBubble.vue'
 import ConversationProgressRail from './ConversationProgressRail.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -704,6 +705,17 @@ function confirmGeminiDraft(messageIndex: number, prompt: string) {
   })
 }
 
+// 分发确认生成：用 imageDraftConfirmFlow 判定该 draft 底层的愿望消息类型，
+// 走 GPT 出图或 Gemini 创作链路（与 composer.ts 的单测对齐）。
+function confirmDraft(messageIndex: number, prompt: string) {
+  const flow = imageDraftConfirmFlow(props.messages, messageIndex)
+  if (flow === 'gemini') {
+    confirmGeminiDraft(messageIndex, prompt)
+  } else if (flow === 'gpt-image') {
+    confirmImageDraft(messageIndex, prompt)
+  }
+}
+
 function abortImageGeneration() {
   abortImage()
   abortGemini()
@@ -998,7 +1010,7 @@ onBeforeUnmount(() => invalidateRequest())
         @edit-gemini="editGemini(i)"
         @abort-gemini="abortImageGeneration"
         @use-image-reference="useImageReference(i)"
-        @confirm-draft="confirmImageDraft(i, $event)"
+        @confirm-draft="confirmDraft(i, $event)"
         @refine-draft="redraftImageDraft(i)"
         @enrich-draft="redraftImageDraft(i, $event)"
         @abort-draft="abortImageDraft"

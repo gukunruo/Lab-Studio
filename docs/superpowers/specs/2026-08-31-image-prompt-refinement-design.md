@@ -102,5 +102,6 @@ image-result（确认生成后的图）                ← 复用现有
 
 - 单测覆盖 `server/image-prompt-drafter.ts` 全部纯函数：请求构建、响应解析（含缺失/非法）、要素拼 prompt、兜底退化。
 - `collapseDraftToPrompt`（要素→最终 prompt）以 `server/image-prompt-drafter.ts` 为单一来源；前端「确认生成」在 `src/ai-platform/composer.ts` 用一个等价的纯函数镜像，两侧各有一组对齐模板的单测，避免漂移。
+- `imageDraftConfirmFlow`（前端 `composer.ts`）：按提示词卡底层的愿望消息类型分发确认生成——`gemini-multimodal-user` 前驱走 Gemini 创作链路、`image-request` 前驱走 GPT 出图链路，非 draft 返回 `null`；有单测锁定，避免 Gemini 卡「确认生成」静默失效。
 - 前端补 `image-draft` 消息类型 + `ImageDraftCard.vue` + Composer 模式切换。
 - 真机：进入「智能优化」输需求 → 出提示词卡 → 确认生成 → 出图；切回「直接」仍即时出图。
