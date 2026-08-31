@@ -278,6 +278,46 @@ test('runAgentLoop emits a tool_call event per executed tool, truncating the res
   assert.equal(previewMatch?.[1]?.length, 200)
 })
 
+test('runAgentLoop emits tool_call events in running→done order, running first with empty result', async () => {
+  const registry: AgentToolRegistry = {
+    finance_quote: { name: 'finance_quote', description: '', parameters: {}, execute: async () => 'quote' },
+  }
+  const turns: AgentTurn[] = [
+    { content: '', toolCalls: [{ id: 'c1', name: 'finance_quote', arguments: { q: '600519' } }], finishReason: 'tool_calls', done: true },
+    { content: '好', toolCalls: [], finishReason: 'stop', done: true },
+  ]
+  let idx = 0
+  const readTurn = async (_stream: ReadableStream<Uint8Array>, onContent?: (t: string) => void) => {
+    const turn = turns[idx++]
+    if (turn.content) onContent?.(turn.content)
+    return turn
+  }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response('')
+  let consumed = ''
+  try {
+    const out = runAgentLoop({
+      provider: 'openai-compatible',
+      initialMessages: [{ role: 'user', content: 'hi' }],
+      modelId: 'm',
+      params: {},
+      registry,
+      buildRequest: () => ({ url: 'http://upstream.test', headers: new Headers(), body: '' }),
+      readTurn,
+      initialResponse: new Response(''),
+      maxRounds: 3,
+    })
+    const parts: string[] = []
+    for await (const chunk of out) parts.push(new TextDecoder().decode(chunk))
+    consumed = parts.join('')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  const statuses = [...consumed.matchAll(/"status":"(running|done)"/g)].map((m) => m[1])
+  assert.deepEqual(statuses, ['running', 'done'])
+})
+
 test('runAgentLoop falls back gracefully when the tool is not registered', async () => {
   const registry: AgentToolRegistry = {
     finance_quote: { name: 'finance_quote', description: '', parameters: {}, execute: async (args) => `quote:${args.q}` },

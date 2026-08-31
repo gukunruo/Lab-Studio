@@ -47,11 +47,12 @@ export type GeminiContextMessage = {
 }
 
 // 一次工具调用的可见痕迹：模型调了哪个工具、入参、以及结果预览（后端已截断）。
-// 只出现在 assistant 文本消息上，用于在界面展示 agent 的工具使用。
+// status: 'running'（正在执行）→ 'done'（已拿到结果）；旧会话持久化的痕迹无该字段。
 export interface ToolCallTrace {
   name: string
   arguments: Record<string, unknown>
   result: string
+  status?: 'running' | 'done'
 }
 
 export interface TextMessage {

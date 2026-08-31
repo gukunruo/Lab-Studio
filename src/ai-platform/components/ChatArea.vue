@@ -240,7 +240,11 @@ async function requestReply(messages: ChatMessage[]) {
         onToolCall: (tc) => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return
           waitingForFirstToken.value = false
-          streamingToolCalls.value.push(tc)
+          // 同一工具同一入参先发 'running'（正在调用）再发 'done'（结果），按 key 更新而非重复追加。
+          const key = `${tc.name}::${JSON.stringify(tc.arguments ?? {})}`
+          const idx = streamingToolCalls.value.findIndex((t) => `${t.name}::${JSON.stringify(t.arguments ?? {})}` === key)
+          if (idx >= 0) streamingToolCalls.value[idx] = tc
+          else streamingToolCalls.value.push(tc)
         },
         onDone: (full) => {
           if (generation !== requestGeneration || activeRequestConversation !== (props.conversationKey ?? props.messages)) return

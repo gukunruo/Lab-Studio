@@ -160,18 +160,25 @@ function truncateResult(result: string): string {
           </template>
           <template v-else>
             <div v-if="toolCalls.length" class="message__toolcalls" role="list" aria-label="工具调用">
-              <details v-for="(tc, i) in toolCalls" :key="i" class="message__toolcall" :open="i === toolCalls.length - 1">
+              <details
+                v-for="(tc, i) in toolCalls"
+                :key="i"
+                class="message__toolcall"
+                :class="`message__toolcall--${tc.status ?? 'done'}`"
+                :open="i === toolCalls.length - 1 || tc.status === 'running'"
+              >
                 <summary class="message__toolcall-summary">
-                  <span class="message__toolcall-dot" />
+                  <span v-if="tc.status === 'running'" class="message__toolcall-spinner" />
+                  <span v-else class="message__toolcall-dot" />
                   <span class="message__toolcall-name">{{ prettyToolName(tc.name) }}</span>
-                  <span class="message__toolcall-hint">工具已调用</span>
+                  <span class="message__toolcall-hint">{{ tc.status === 'running' ? '正在调用…' : '工具已调用' }}</span>
                 </summary>
                 <div class="message__toolcall-body">
                   <div v-if="hasArgs(tc.arguments)" class="message__toolcall-row">
                     <span class="message__toolcall-label">入参</span>
                     <code class="message__toolcall-code">{{ formatArgs(tc.arguments) }}</code>
                   </div>
-                  <div class="message__toolcall-row">
+                  <div v-if="tc.status !== 'running'" class="message__toolcall-row">
                     <span class="message__toolcall-label">返回</span>
                     <code class="message__toolcall-code">{{ truncateResult(tc.result) }}</code>
                   </div>
@@ -287,6 +294,28 @@ function truncateResult(result: string): string {
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--color-accent);
+}
+
+.message__toolcall-spinner {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border-strong, var(--color-border));
+  border-top-color: var(--color-accent);
+  animation: message__toolcall-spin 0.7s linear infinite;
+}
+
+.message__toolcall--running {
+  border-color: var(--color-accent);
+}
+
+.message__toolcall--running .message__toolcall-name {
+  color: var(--color-accent);
+}
+
+@keyframes message__toolcall-spin {
+  to { transform: rotate(360deg); }
 }
 
 .message__toolcall-name {

@@ -301,15 +301,19 @@ export function runAgentLoop(opts: {
   }
   // 每次执行工具时吐一条 tool_call 事件，前端据此渲染「模型调了哪个工具、入参、
   // 返回预览」，让 agent 的工具使用对用户可见。内置工具与 MCP 工具通用。
+  // status: 'running'（开始执行）→ 'done'（拿到结果），前端据此做「正在调用…」→「结果」动效。
   const writeToolCall = (
     controller: ReadableStreamDefaultController<Uint8Array>,
     name: string,
     args: Record<string, unknown>,
     result: string,
+    status: 'running' | 'done',
   ) => {
-    const preview = result.length > TOOL_CALL_RESULT_PREVIEW ? `${result.slice(0, TOOL_CALL_RESULT_PREVIEW)}…` : result
+    const preview = status === 'done' && result.length > TOOL_CALL_RESULT_PREVIEW
+      ? `${result.slice(0, TOOL_CALL_RESULT_PREVIEW)}…`
+      : result
     try {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_call: { name, arguments: args ?? {}, result: preview } })}\n\n`))
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_call: { name, arguments: args ?? {}, result: preview, status } })}\n\n`))
     } catch {
       // 客户端已断开
     }
@@ -343,13 +347,14 @@ export function runAgentLoop(opts: {
           if (!tool) {
             content = `（工具 ${tc.name} 不存在）`
           } else {
+            writeToolCall(controller, tc.name, tc.arguments, '', 'running')
             try {
               content = await tool.execute(tc.arguments)
             } catch (e) {
               content = `（工具 ${tc.name} 出错：${e instanceof Error ? e.message : String(e)}）`
             }
           }
-          writeToolCall(controller, tc.name, tc.arguments, content)
+          writeToolCall(controller, tc.name, tc.arguments, content, 'done')
           results.push({ id: tc.id, name: tc.name, content })
         }
         messages = appendToolMessages(messages, turn, results, opts.provider)
