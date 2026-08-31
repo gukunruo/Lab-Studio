@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import type { ChatMessage } from '../types'
+import { PhListChecks } from '@phosphor-icons/vue'
+import type { ChatMessage, ToolCallTrace } from '../types'
 import { isTextMessage } from '../api'
 import { renderMarkdown } from '../message-markdown'
 import GeminiMultimodalCard from './GeminiMultimodalCard.vue'
@@ -96,6 +97,7 @@ const BUILTIN_TOOL_LABELS: Record<string, string> = {
   web_search: '联网搜索',
   web_fetch: '网页抓取',
   finance_quote: '行情查询',
+  agent_plan: '任务规划',
 }
 
 function prettyToolName(name: string): string {
@@ -115,6 +117,58 @@ function truncateResult(result: string): string {
   if (!result) return '（无返回内容）'
   return result.length > 200 ? `${result.slice(0, 200)}…` : result
 }
+
+// agent_plan 在工具调用清单里「原地更新」：多次调用会在同一消息里留下多条痕迹。
+// 我们只把最新一条快照渲染成任务规划卡，旧快照收起，避免刷屏；其余工具照常渲染为 details 块。
+type PlanStatus = 'pending' | 'in_progress' | 'done'
+interface PlanTaskItem {
+  text: string
+  status: PlanStatus
+}
+
+function parsePlanTasks(value: unknown): PlanTaskItem[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object')
+    .map((t) => ({
+      text: typeof t.text === 'string' ? t.text : '',
+      status: (t.status === 'done' || t.status === 'in_progress' ? t.status : 'pending') as PlanStatus,
+    }))
+    .filter((t) => t.text)
+}
+
+function parsePlanFromResult(result: string): PlanTaskItem[] {
+  const tasks: PlanTaskItem[] = []
+  for (const line of result.split('\n')) {
+    const match = line.match(/^([✓◐○])\s*\d+\.\s*(.+)$/)
+    if (match) {
+      tasks.push({
+        text: match[2] ?? '',
+        status: match[1] === '✓' ? 'done' : match[1] === '◐' ? 'in_progress' : 'pending',
+      })
+    }
+  }
+  return tasks
+}
+
+function planMark(status: PlanStatus): string {
+  return status === 'done' ? '✓' : status === 'in_progress' ? '◐' : '○'
+}
+
+const planTrace = computed<ToolCallTrace | null>(() => {
+  const traces = toolCalls.value
+  for (let i = traces.length - 1; i >= 0; i--) {
+    const trace = traces[i] as ToolCallTrace | undefined
+    if (trace && trace.name === 'agent_plan') return trace
+  }
+  return null
+})
+const otherTraces = computed(() => toolCalls.value.filter((tc) => tc.name !== 'agent_plan'))
+const planTasks = computed<PlanTaskItem[]>(() => {
+  if (!planTrace.value) return []
+  const fromArgs = parsePlanTasks(planTrace.value.arguments?.tasks)
+  return fromArgs.length ? fromArgs : parsePlanFromResult(planTrace.value.result ?? '')
+})
 </script>
 
 <template>
@@ -175,12 +229,26 @@ function truncateResult(result: string): string {
           </template>
           <template v-else>
             <div v-if="toolCalls.length" class="message__toolcalls" role="list" aria-label="工具调用">
+              <div v-if="planTasks.length" class="message__plan" role="list" aria-label="任务规划">
+                <div class="message__plan-heading"><PhListChecks :size="14" weight="bold" /> 任务规划<span class="message__plan-progress">{{ planTasks.filter((t) => t.status === 'done').length }}/{{ planTasks.length }}</span></div>
+                <ul class="message__plan-list">
+                  <li
+                    v-for="(task, i) in planTasks"
+                    :key="i"
+                    class="message__plan-task"
+                    :class="`message__plan-task--${task.status}`"
+                  >
+                    <span class="message__plan-mark" aria-hidden="true">{{ planMark(task.status) }}</span>
+                    <span class="message__plan-text">{{ task.text }}</span>
+                  </li>
+                </ul>
+              </div>
               <details
-                v-for="(tc, i) in toolCalls"
+                v-for="(tc, i) in otherTraces"
                 :key="i"
                 class="message__toolcall"
                 :class="`message__toolcall--${tc.status ?? 'done'}`"
-                :open="i === toolCalls.length - 1 || tc.status === 'running'"
+                :open="i === otherTraces.length - 1 || tc.status === 'running'"
               >
                 <summary class="message__toolcall-summary">
                   <span v-if="tc.status === 'running'" class="message__toolcall-spinner" />
@@ -282,6 +350,63 @@ function truncateResult(result: string): string {
   gap: 6px;
   margin-bottom: 8px;
 }
+
+.message__plan {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: 9px 11px;
+}
+
+.message__plan-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-accent-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.message__plan-progress {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.message__plan-list {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message__plan-task {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.message__plan-task--done .message__plan-text { text-decoration: line-through; color: var(--color-text-muted); opacity: 0.65; }
+.message__plan-task--in_progress .message__plan-text { color: var(--color-text); font-weight: 600; }
+.message__plan-task--done .message__plan-mark { color: var(--color-accent); }
+.message__plan-task--in_progress .message__plan-mark { color: var(--color-accent-strong); }
+
+.message__plan-mark {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.message__plan-text { flex: 1; min-width: 0; word-break: break-word; }
 
 .message__toolcall {
   border: 1px solid var(--color-border-subtle);

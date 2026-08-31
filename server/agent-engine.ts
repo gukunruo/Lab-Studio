@@ -57,7 +57,8 @@ export interface AgentToolResult {
 export type AgentProvider = 'openai-compatible' | 'anthropic'
 
 // 每轮最多落地这么多次工具调用，超出即在下一轮强制结束，避免模型无限精化工具查询递归。
-export const MAX_AGENT_ROUNDS = 3
+// 多步任务（如「先搜背景再查行情再汇总」）往往需要超过 3 轮，放宽到 8 轮，超出才收尾。
+export const MAX_AGENT_ROUNDS = 8
 // tool_call 事件里返回预览的最大长度，避免把工具大结果（如 web_fetch 全文）原样塞进 SSE。
 export const TOOL_CALL_RESULT_PREVIEW = 200
 
@@ -69,7 +70,91 @@ export const AGENT_TOOL_GUIDANCE = `你可以在回答中使用工具获取实�
 - 一次回合可以并行调用多个互不依赖的工具，再综合结果作答。
 - 工具返回后，你必须忠实转述真实结果：数字、状况、结论都以工具返回为准，不得编造、润色成与结果不符的内容。
 - 若工具查询失败或未命中（例如查无此地），如实说明，并给用户可操作的下一步建议，绝不能假装查到了。
+- 较复杂的多步任务，先用 agent_plan 列出步骤清单，再逐步执行；每完成一步，用 agent_plan 把该步标为已完成（done），让用户看到你的进度。不要把所有步骤堆在大段文字里。
 - 用简洁的中文把工具结果整理成面向用户的回答。`
+
+// ---- 瞬态失败重试 ----
+//
+// Claude Code 对一次失败的工具操作会重试再判定，而不是把第一次错误直接抛给模型。
+// 我们只重试「瞬态」失败（网络抖动、5xx、超时），这类重试一次往往就能成功；
+// 参数错误等非瞬态失败立即上抛，不浪费轮次。
+
+export class TransientToolError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TransientToolError'
+  }
+}
+
+// 判定一个错误是否值得重试：网络/超时/连接类、以及 5xx 属于瞬态；4xx、解析错误等不是。
+export function isTransientError(e: unknown): boolean {
+  if (e instanceof TransientToolError) return true
+  const msg = e instanceof Error ? e.message : String(e)
+  return /fetch |network|网络|timeout|timed out|ECONNRESET|ETIMEDOUT|ECONNREFUSED|abort|5\d\d|503|502|504|gateway/i.test(msg)
+}
+
+// 包装一次工具执行：遇到瞬态错误重试（默认最多 2 次尝试 = 重试 1 次），退避递增；非瞬态或已重试完仍失败则上抛最后一次错误。
+export async function runWithRetry(
+  execute: AgentTool['execute'],
+  args: Record<string, unknown>,
+  opts?: { attempts?: number; backoffMs?: number; isTransient?: (e: unknown) => boolean },
+): Promise<string> {
+  const attempts = Math.max(1, opts?.attempts ?? 2)
+  const backoffMs = opts?.backoffMs ?? 150
+  const isTransient = opts?.isTransient ?? isTransientError
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await execute(args)
+    } catch (e) {
+      lastErr = e
+      if (!isTransient(e) || i === attempts - 1) throw e
+      await new Promise((r) => setTimeout(r, backoffMs * (i + 1)))
+    }
+  }
+  throw lastErr
+}
+
+// ---- agent_plan：可见的任务规划（TodoWrite 式） ----
+//
+// Claude Code 会先把复杂任务拆成可见的待办清单，再逐步推进。这里给模型一个 agent_plan
+// 工具：任务分多步时先声明清单，每完成一步再调用一次更新状态。工具调用痕迹本身就会在
+// 前端把「AI 在按计划推进」展示给用户，让 agent 的过程从不可见变得可跟踪。
+
+export type PlanTaskStatus = 'pending' | 'in_progress' | 'done'
+export interface PlanTask {
+  text: string
+  status?: PlanTaskStatus
+}
+
+function parsePlanTasks(value: unknown): PlanTask[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object')
+    .map((t) => {
+      const status: PlanTaskStatus =
+        t.status === 'done' || t.status === 'in_progress' ? t.status : 'pending'
+      return {
+        text: typeof t.text === 'string' ? t.text.trim() : '',
+        status,
+      }
+    })
+    .filter((t) => t.text)
+}
+
+// 把任务清单渲染成一行一步、带状态标记的简洁文本，既作为工具结果回填给模型，也作为用户可见的计划卡。
+export function renderPlan(tasks: PlanTask[]): string {
+  if (!tasks.length) return '（计划为空）'
+  const lines = tasks.map((t, i) => {
+    const mark = t.status === 'done' ? '✓' : t.status === 'in_progress' ? '◐' : '○'
+    return `${mark} ${i + 1}. ${t.text}`
+  })
+  return `计划（${tasks.length} 步）：\n${lines.join('\n')}`
+}
+
+export function createPlanExecutor(): AgentTool['execute'] {
+  return async (args) => renderPlan(parsePlanTasks(args?.tasks))
+}
 
 // 把「当前日期/时间」格式化为可读中文串，用于 current_date 工具与工具系统提示（注入今天基准日期）。
 export function formatAgentCurrentDate(now: Date, tz?: string): string {
@@ -345,7 +430,7 @@ export function runAgentLoop(opts: {
           return
         }
         if (rounds >= opts.maxRounds) {
-          writeContent(controller, '\n（已连续调用工具，以下为本地生成结果）')
+          writeContent(controller, '\n（已连续调用工具，本轮先用已有信息作答）')
           close(controller)
           return
         }
@@ -358,7 +443,8 @@ export function runAgentLoop(opts: {
           } else {
             writeToolCall(controller, tc.name, tc.arguments, '', 'running')
             try {
-              content = await tool.execute(tc.arguments)
+              // 瞬态失败（网络抖动/5xx/超时）内部重试一次，再交给模型；避免把一次抖动误判成失败。
+              content = await runWithRetry(tool.execute, tc.arguments)
             } catch (e) {
               content = `（工具 ${tc.name} 出错：${e instanceof Error ? e.message : String(e)}）`
             }
@@ -434,9 +520,14 @@ export function createWebFetchExecutor(): AgentTool['execute'] {
         signal: AbortSignal.timeout(WEB_FETCH_TIMEOUT_MS),
       })
     } catch (e) {
-      return `（web_fetch 获取失败：${e instanceof Error ? e.message : String(e)}）`
+      // 网络抖动/超时属于瞬态，抛给 runWithRetry 重试一次再判定，而不是直接判失败。
+      throw new TransientToolError(`web_fetch 获取失败：${e instanceof Error ? e.message : String(e)}`)
     }
-    if (!res.ok) return `（web_fetch 返回 ${res.status}）`
+    // 5xx 是服务端临时抖动，值得重试；4xx（404/403 等）是确定性问题，直接如实返回。
+    if (!res.ok) {
+      if (res.status >= 500) throw new TransientToolError(`web_fetch 返回 ${res.status}`)
+      return `（web_fetch 返回 ${res.status}）`
+    }
     const text = await res.text().catch(() => '')
     const stripped = stripHtml(text)
     return stripped.length > WEB_FETCH_MAX_CHARS

@@ -2,15 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   AGENT_TOOL_GUIDANCE,
+  MAX_AGENT_ROUNDS,
+  TransientToolError,
   appendToolMessages,
   buildAnthropicTools,
   buildOpenAiTools,
   createFinanceQuoteExecutor,
+  createPlanExecutor,
   createWebFetchExecutor,
   formatAgentCurrentDate,
+  isTransientError,
   readAnthropicTurn,
   readOpenAiTurn,
+  renderPlan,
   runAgentLoop,
+  runWithRetry,
   type AgentChatMessage,
   type AgentToolRegistry,
   type AgentTurn,
@@ -480,4 +486,196 @@ test('formatAgentCurrentDate 缺省时区用运行环境时区，且不带时区
     assert.ok(out.includes(envTz), `应包含环境时区 ${envTz}，实际：${out}`)
   }
   assert.match(out, /^今天是 \d{4}-\d{2}-\d{2}（星期.）\d{2}:\d{2}/)
+})
+
+// ---- agent_plan 任务规划工具 ----
+
+test('renderPlan 按状态渲染清单标记（done✓ / in_progress◐ / pending○）', () => {
+  const out = renderPlan([
+    { text: '查今天天气', status: 'done' },
+    { text: '查明天天气', status: 'in_progress' },
+    { text: '汇总对比', status: 'pending' },
+  ])
+  assert.ok(out.startsWith('计划（3 步）'))
+  assert.match(out, /✓ 1\. 查今天天气/)
+  assert.match(out, /◐ 2\. 查明天天气/)
+  assert.match(out, /○ 3\. 汇总对比/)
+})
+
+test('createPlanExecutor 归一化任务形状并丢弃非法条目', async () => {
+  const exec = createPlanExecutor()
+  const out = await exec({
+    tasks: [
+      { text: '  ' },
+      { text: '步骤一' },
+      { text: '步骤二', status: 'done' },
+      { text: '步骤三', status: 'weird' },
+      'not-an-object',
+    ],
+  })
+  const lines = out.split('\n')
+  assert.equal(lines[0], '计划（3 步）：')
+  assert.match(out, /○ 1\. 步骤一/)
+  assert.match(out, /✓ 2\. 步骤二/)
+  assert.match(out, /○ 3\. 步骤三/)
+  assert.ok(!out.includes('步骤四'))
+})
+
+test('createPlanExecutor 空任务返回可读提示', async () => {
+  const exec = createPlanExecutor()
+  assert.equal(await exec({ tasks: [] }), '（计划为空）')
+  assert.equal(await exec({}), '（计划为空）')
+})
+
+// ---- 瞬态失败重试 ----
+
+test('isTransientError 识别网络/5xx 类错误，其余不重试', () => {
+  assert.equal(isTransientError(new TransientToolError('fetch failed')), true)
+  assert.equal(isTransientError(new Error('fetch failed: ECONNRESET')), true)
+  assert.equal(isTransientError(new Error('timeout after 10s')), true)
+  assert.equal(isTransientError(new Error('server returned 503')), true)
+  assert.equal(isTransientError(new Error('unauthorized 401')), false)
+  assert.equal(isTransientError(new Error('invalid JSON')), false)
+})
+
+test('runWithRetry 重试瞬态错误直到成功', async () => {
+  let calls = 0
+  const exec = async () => {
+    calls++
+    if (calls < 3) throw new TransientToolError('boom')
+    return 'ok'
+  }
+  const result = await runWithRetry(exec, {}, { attempts: 3, backoffMs: 0 })
+  assert.equal(result, 'ok')
+  assert.equal(calls, 3)
+})
+
+test('runWithRetry 非瞬态错误立即上抛，不重试', async () => {
+  let calls = 0
+  const exec = async () => {
+    calls++
+    throw new Error('invalid input')
+  }
+  await assert.rejects(() => runWithRetry(exec, {}, { attempts: 3, backoffMs: 0 }), /invalid input/)
+  assert.equal(calls, 1)
+})
+
+test('runWithRetry 耗尽次数后上抛最后一次错误', async () => {
+  let calls = 0
+  const exec = async () => {
+    calls++
+    throw new TransientToolError('persistent')
+  }
+  await assert.rejects(() => runWithRetry(exec, {}, { attempts: 3, backoffMs: 0 }), /persistent/)
+  assert.equal(calls, 3)
+})
+
+test('MAX_AGENT_ROUNDS 为多步任务留足轮次', () => {
+  assert.equal(MAX_AGENT_ROUNDS, 8)
+})
+
+test('runAgentLoop 通过重试处理瞬态工具失败并拿到成功结果', async () => {
+  let calls = 0
+  const registry: AgentToolRegistry = {
+    flaky: {
+      name: 'flaky',
+      description: '',
+      parameters: {},
+      execute: async () => {
+        calls++
+        if (calls < 2) throw new TransientToolError('temporary')
+        return 'success'
+      },
+    },
+  }
+  const turns: AgentTurn[] = [
+    { content: '先查', toolCalls: [{ id: 'c1', name: 'flaky', arguments: {} }], finishReason: 'tool_calls', done: true },
+    { content: '最终答案', toolCalls: [], finishReason: 'stop', done: true },
+  ]
+  let idx = 0
+  const readTurn = async (_s: ReadableStream<Uint8Array>, onContent?: (t: string) => void) => {
+    const turn = turns[idx++]
+    if (turn.content) onContent?.(turn.content)
+    return turn
+  }
+  const builtMessages: unknown[][] = []
+  const buildRequest = (messages: unknown[]) => {
+    builtMessages.push(messages)
+    return { url: 'http://upstream.test', headers: new Headers(), body: JSON.stringify({ messages }) }
+  }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response('')
+  let consumed = ''
+  try {
+    const out = runAgentLoop({
+      provider: 'openai-compatible',
+      initialMessages: [{ role: 'user', content: 'hi' }],
+      modelId: 'm',
+      params: {},
+      registry,
+      buildRequest,
+      readTurn,
+      initialResponse: new Response(''),
+      maxRounds: 5,
+    })
+    const parts: string[] = []
+    for await (const chunk of out) parts.push(new TextDecoder().decode(chunk))
+    consumed = parts.join('')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  assert.equal(calls, 2, '瞬态失败应重试一次后成功')
+  const toolMsgs = builtMessages[0]!.filter((m) => (m as { role: string }).role === 'tool') as { content: string }[]
+  assert.ok(toolMsgs.some((m) => m.content === 'success'))
+  assert.ok(consumed.includes('最终答案'))
+})
+
+test('runAgentLoop 持久瞬态失败重试后仍将其格式化为错误并继续下一轮', async () => {
+  const registry: AgentToolRegistry = {
+    flaky: {
+      name: 'flaky',
+      description: '',
+      parameters: {},
+      execute: async () => {
+        throw new TransientToolError('still down')
+      },
+    },
+  }
+  const turns: AgentTurn[] = [
+    { content: '', toolCalls: [{ id: 'c1', name: 'flaky', arguments: {} }], finishReason: 'tool_calls', done: true },
+    { content: '好', toolCalls: [], finishReason: 'stop', done: true },
+  ]
+  let idx = 0
+  const readTurn = async (_s: ReadableStream<Uint8Array>, onContent?: (t: string) => void) => {
+    const turn = turns[idx++]
+    if (turn.content) onContent?.(turn.content)
+    return turn
+  }
+  const builtMessages: unknown[][] = []
+  const buildRequest = (messages: unknown[]) => {
+    builtMessages.push(messages)
+    return { url: 'http://upstream.test', headers: new Headers(), body: JSON.stringify({ messages }) }
+  }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response('')
+  try {
+    const out = runAgentLoop({
+      provider: 'openai-compatible',
+      initialMessages: [{ role: 'user', content: 'hi' }],
+      modelId: 'm',
+      params: {},
+      registry,
+      buildRequest,
+      readTurn,
+      initialResponse: new Response(''),
+      maxRounds: 5,
+    })
+    for await (const _ of out) {
+      // consume
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  const toolMsgs = builtMessages[0]!.filter((m) => (m as { role: string }).role === 'tool') as { content: string }[]
+  assert.ok(toolMsgs.some((m) => m.content.includes('still down')))
 })

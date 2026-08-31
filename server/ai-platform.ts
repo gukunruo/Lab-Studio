@@ -22,6 +22,7 @@ import {
   buildAnthropicTools,
   buildOpenAiTools,
   createFinanceQuoteExecutor,
+  createPlanExecutor,
   createWebFetchExecutor,
   AGENT_TOOL_GUIDANCE,
   formatAgentCurrentDate,
@@ -478,6 +479,30 @@ function buildAgentRegistry(anthropicConfig: AnthropicConfig | null): AgentToolR
         '获取今天的日期、星期与当前时间。当用户问「今天是几号/星期几/现在几点」，或需要把「明天/后天/本周五/X月X日」等相对日期换算成具体日期（传给天气等工具）时使用。',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => formatAgentCurrentDate(new Date()),
+    },
+    agent_plan: {
+      name: 'agent_plan',
+      description:
+        '声明或更新你正在执行的任务计划。当任务需要分多步、用到多个工具时，先调用它把步骤列成一个清单；每完成一步再调用一次，把该步状态标记为 done，让用户看到你的进度。调用会返回当前清单，你可据此继续。',
+      parameters: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            description: '任务步骤清单；改变某步进度时，整体重新提交并更新对应 status',
+            items: {
+              type: 'object',
+              properties: {
+                text: { type: 'string', description: '这一步要做什么' },
+                status: { type: 'string', enum: ['pending', 'in_progress', 'done'], description: '该步状态，缺省为 pending' },
+              },
+              required: ['text'],
+            },
+          },
+        },
+        required: ['tasks'],
+      },
+      execute: createPlanExecutor(),
     },
   }
 }
