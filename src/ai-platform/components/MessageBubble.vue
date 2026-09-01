@@ -30,6 +30,7 @@ const emit = defineEmits<{
   'edit-gemini': []
   'abort-gemini': []
   'use-image-reference': []
+  'add-image-template': []
 }>()
 
 const textMessage = computed(() => isTextMessage(props.message) ? props.message : null)
@@ -193,6 +194,7 @@ const planTasks = computed<PlanTaskItem[]>(() => {
           @edit="emit('edit-image')"
           @abort="emit('abort-image')"
           @use-as-reference="emit('use-image-reference')"
+          @add-as-template="emit('add-image-template')"
         />
       </template>
       <template v-else>

@@ -4,6 +4,7 @@ import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDi
 import { buildGeminiSubThreadHistory, controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
 import { composeImagePrompt } from '../image-styles'
 import MessageBubble from './MessageBubble.vue'
+import AddTemplateFlow from './AddTemplateFlow.vue'
 import ConversationProgressRail from './ConversationProgressRail.vue'
 import ModelSelector from './ModelSelector.vue'
 import Composer from './Composer.vue'
@@ -504,6 +505,34 @@ function useImageReference(index: number) {
   composerRef.value?.restoreGeminiDraft({ prompt: '' })
 }
 
+const addTemplateFlow = ref<{
+  imageAssetId: string
+  imageUrl: string
+  prompt: string
+  aspectRatio?: ImageAspectRatio
+  style?: string
+} | null>(null)
+
+function addAsTemplate(index: number) {
+  const message = props.messages[index]
+  if (!message || message.type !== 'image-result') return
+  const imageUrl = message.imageUrl ?? ''
+  const assetId = controlledImageAssetId(imageUrl)
+  if (!assetId || !imageUrl) return
+  addTemplateFlow.value = {
+    imageAssetId: assetId,
+    imageUrl,
+    prompt: message.prompt,
+    ...(message.aspectRatio ? { aspectRatio: message.aspectRatio } : {}),
+    ...(message.style ? { style: message.style } : {}),
+  }
+}
+
+function onTemplateSaved() {
+  addTemplateFlow.value = null
+  composerRef.value?.refreshTemplates()
+}
+
 async function retryMessage(index: number) {
   if (streaming.value || imageGenerating.value) return
   const messages = props.messages.slice(0, index)
@@ -722,6 +751,7 @@ onBeforeUnmount(() => invalidateRequest())
         @edit-gemini="editGemini(i)"
         @abort-gemini="abortImageGeneration"
         @use-image-reference="useImageReference(i)"
+        @add-image-template="addAsTemplate(i)"
         @regenerate="regenerateMessage(i)"
         @edit="editMessage"
         @branch="emit('branch', $event)"
@@ -781,6 +811,17 @@ onBeforeUnmount(() => invalidateRequest())
         </div>
       </template>
     </Composer>
+
+    <AddTemplateFlow
+      v-if="addTemplateFlow"
+      :image-asset-id="addTemplateFlow.imageAssetId"
+      :image-url="addTemplateFlow.imageUrl"
+      :prompt="addTemplateFlow.prompt"
+      :aspect-ratio="addTemplateFlow.aspectRatio"
+      :style="addTemplateFlow.style"
+      @close="addTemplateFlow = null"
+      @saved="onTemplateSaved"
+    />
 
   </main>
 </template>

@@ -152,7 +152,14 @@ function changeImageModel() {
 
 function toggleDropdown(key: 'model' | 'ratio' | 'style' | 'template') {
   if (props.streaming || props.busy || props.imageGenerating) return
-  openDropdown.value = openDropdown.value === key ? null : key
+  const opening = openDropdown.value !== key
+  openDropdown.value = opening ? key : null
+  // 每次打开模板面板都拉取最新列表，保证从消息卡片「添为模板」入库后能立即看到。
+  if (key === 'template' && opening) refreshTemplates()
+}
+
+async function refreshTemplates() {
+  customTemplates.value = await fetchImageTemplates()
 }
 function onWindowKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && openDropdown.value) openDropdown.value = null
@@ -252,7 +259,7 @@ onUnmounted(() => {
   document.removeEventListener('click', onDocumentClick)
   window.removeEventListener('keydown', onWindowKeydown)
 })
-defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
+defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTemplates })
 </script>
 
 <template>

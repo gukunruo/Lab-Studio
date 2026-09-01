@@ -447,6 +447,40 @@ export async function createImageTemplate(input: {
   return payload as unknown as ImageTemplate
 }
 
+export interface ImageTemplateSummary {
+  name: string
+  prompt: string
+  degraded?: boolean
+}
+
+export async function summarizeImageTemplate(input: {
+  imageAssetId: string
+  prompt: string
+  aspectRatio?: ImageAspectRatio
+  style?: string
+}): Promise<ImageTemplateSummary> {
+  const res = await fetch('/api/ai-platform/image-templates/summarize', {
+    credentials: 'include',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      imageAssetId: input.imageAssetId,
+      prompt: input.prompt,
+      ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+      ...(input.style ? { style: input.style } : {}),
+    }),
+  })
+  const payload = await res.json().catch(() => null) as ({ error?: unknown } & Partial<ImageTemplateSummary>) | null
+  if (!res.ok) {
+    throw new Error(typeof payload?.error === 'string' ? payload.error : '模板归纳失败，请稍后重试。')
+  }
+  return {
+    name: typeof payload?.name === 'string' ? payload.name : '新模板',
+    prompt: typeof payload?.prompt === 'string' ? payload.prompt : input.prompt,
+    degraded: payload?.degraded === true,
+  }
+}
+
 export async function deleteImageTemplate(id: number): Promise<void> {
   const res = await fetch(`/api/ai-platform/image-templates/${id}`, { credentials: 'include', method: 'DELETE' })
   if (!res.ok) throw new Error('模板删除失败，请稍后重试。')
