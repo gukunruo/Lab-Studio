@@ -1337,6 +1337,25 @@ export function registerAiPlatformRoutes(app: Hono): void {
     }
   })
 
+  // 用户本地上传图片：入参为 base64，走本地 FS+SQLite 图床，返回资产 id。
+  // 生图作为参考图、对话作为多模态输入，都先经此接口保存成受控资产。
+  app.post('/ai-platform/images/upload', async (c) => {
+    await ensureSeeded()
+    const body = await c.req.json<{ image?: unknown }>().catch(() => null)
+    const decoded = decodeBase64Image(body?.image)
+    if (!decoded) {
+      return c.json({ error: '图片格式不支持，或已超过 8MB 上限。' }, 400)
+    }
+    try {
+      const asset = await storeImageAsset(USER_KEY, decoded)
+      const url = imageAssetUrl(asset.id)
+      if (!url) return c.json({ error: '图片保存失败，请稍后重试。' }, 502)
+      return c.json({ id: asset.id, url })
+    } catch {
+      return c.json({ error: '图片保存失败，请稍后重试。' }, 502)
+    }
+  })
+
   app.get('/ai-platform/images/:id', async (c) => imageAssetResponse(USER_KEY, c.req.param('id')))
 
   // 自定义生图模板：按 USER_KEY 归属，aspect_ratio / style 可空，与应用「比例默认不选」一致。

@@ -289,6 +289,31 @@ export async function generateGeminiMultimodal(input: {
   return imageUrl ? { content, imageUrl } : { content }
 }
 
+export interface ImageUploadResponse {
+  id: string
+  url: string
+}
+
+// 用户本地上传图片，存入受控图床（本地 FS+SQLite，无需对象存储桶），返回资产 id。
+// 生图作为参考图、对话作为多模态输入，都复用此资产。
+export async function uploadImage(input: { base64: string; signal?: AbortSignal }): Promise<ImageUploadResponse> {
+  const res = await fetch('/api/ai-platform/images/upload', {
+    credentials: 'include',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: input.base64 }),
+    signal: input.signal,
+  })
+  const payload = await res.json().catch(() => null) as { error?: unknown; id?: unknown; url?: unknown } | null
+  if (!res.ok) {
+    throw new Error(typeof payload?.error === 'string' ? payload.error : '图片上传失败，请稍后重试。')
+  }
+  if (!payload || typeof payload.id !== 'string' || typeof payload.url !== 'string') {
+    throw new Error('图片上传服务返回了无效结果，请稍后重试。')
+  }
+  return { id: payload.id, url: payload.url }
+}
+
 export async function streamChat(opts: StreamChatOptions): Promise<void> {
   let res: Response
   try {

@@ -8,8 +8,8 @@ import {
 } from '../composer'
 import { IMAGE_STYLES, imageStyleName } from '../image-styles'
 import { IMAGE_TEMPLATES, type ImageTemplate } from '../image-templates'
-import { createImageTemplate, deleteImageTemplate, fetchImageTemplates } from '../api'
-import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhSparkle, PhSquaresFour, PhStop } from '@phosphor-icons/vue'
+import { createImageTemplate, deleteImageTemplate, fetchImageTemplates, uploadImage } from '../api'
+import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhSparkle, PhSquaresFour, PhStop, PhUploadSimple } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -30,7 +30,8 @@ const emit = defineEmits<{
     style?: string
     referenceImageId?: string
   }]
-  'generate-gemini': [input: { prompt: string; aspectRatio?: ImageAspectRatio; style?: string }]
+  'generate-gemini': [input: { prompt: string; aspectRatio?: ImageAspectRatio; style?: string; referenceImageId?: string }]
+  'set-reference': [input: { id: string; label: string }]
   'clear-reference': []
   abort: []
   'abort-image': []
@@ -87,6 +88,54 @@ function cycleReasoning() {
 const imageMode = computed(() => mode.value !== 'chat')
 const gptEditing = computed(() => mode.value === 'gpt-image' && hasReference.value)
 
+const referenceFileInput = ref<HTMLInputElement | null>(null)
+const referenceUploading = ref(false)
+const referenceUploadError = ref('')
+const referenceImageUrl = computed(() =>
+  props.referenceImageId ? `/api/ai-platform/images/${props.referenceImageId}` : null,
+)
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+      const comma = dataUrl.indexOf(',')
+      const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+      if (base64) resolve(base64)
+      else reject(new Error('无法读取图片。'))
+    }
+    reader.onerror = () => reject(new Error('无法读取图片。'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function pickReferenceFile() {
+  referenceFileInput.value?.click()
+}
+
+async function onReferenceFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (file.size > 8 * 1024 * 1024) {
+    referenceUploadError.value = '图片不能超过 8MB。'
+    return
+  }
+  referenceUploadError.value = ''
+  referenceUploading.value = true
+  try {
+    const base64 = await readFileAsBase64(file)
+    const { id } = await uploadImage({ base64 })
+    emit('set-reference', { id, label: '本地上传' })
+  } catch (error) {
+    referenceUploadError.value = error instanceof Error ? error.message : '图片上传失败，请稍后重试。'
+  } finally {
+    referenceUploading.value = false
+  }
+}
+
 async function autoResize() {
   const el = textareaRef.value
   if (!el) return
@@ -123,7 +172,7 @@ async function generateImage() {
 async function generateGemini() {
   const prompt = geminiDraft.value.trim()
   if (!prompt || props.streaming || props.busy || props.imageGenerating) return
-  emit('generate-gemini', { prompt, aspectRatio: imageAspectRatio.value || undefined, style: imageStyleId.value || undefined })
+  emit('generate-gemini', { prompt, aspectRatio: imageAspectRatio.value || undefined, style: imageStyleId.value || undefined, ...(props.referenceImageId ? { referenceImageId: props.referenceImageId } : {}) })
   geminiDraft.value = ''
   await nextTick()
   await autoResize()
@@ -402,10 +451,20 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
               </button>
             </div>
 
+            <div class="img-opt">
+              <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': hasReference }" :disabled="streaming || busy || imageGenerating || referenceUploading" :aria-expanded="hasReference" @click="pickReferenceFile">
+                <PhUploadSimple :size="13" weight="regular" />
+                <span class="img-opt__label">{{ referenceUploading ? '上传中' : '参考图' }}</span>
+              </button>
+              <input ref="referenceFileInput" type="file" accept="image/*" class="composer__file-input" hidden @change="onReferenceFileChange" />
+            </div>
+
             <span v-if="hasReference" class="composer__reference">
+              <img v-if="referenceImageUrl" class="composer__reference-thumb" :src="referenceImageUrl" alt="参考图" />
               {{ referenceImageLabel ?? '基于上一张图片' }}
               <button type="button" @click="emit('clear-reference')">移除参考图</button>
             </span>
+            <span v-if="referenceUploadError" class="composer__reference composer__reference--error">{{ referenceUploadError }}</span>
           </template>
         </div>
         <button
@@ -509,6 +568,9 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
 .composer__reference { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
 .composer__reference button { border: 0; background: transparent; color: var(--color-accent-strong); cursor: pointer; font: inherit; font-size: 11px; padding: 0; }
 .composer__reference button:hover { text-decoration: underline; }
+.composer__reference-thumb { width: 26px; height: 26px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--color-border-subtle); flex-shrink: 0; }
+.composer__reference--error { color: var(--color-danger); font-weight: 600; }
+.composer__file-input { display: none; }
 .img-opt { position: relative; display: inline-flex; }
 .img-opt__trigger { height: 28px; padding: 0 10px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .img-opt__trigger:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent-strong); }

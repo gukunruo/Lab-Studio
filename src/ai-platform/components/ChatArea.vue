@@ -82,6 +82,13 @@ let geminiRequestGeneration = 0
 let activeRequestConversation: object | number | null = null
 let selectedReferenceConversation: object | number | null = null
 const selectedReferenceImageId = ref<string | null | undefined>(undefined)
+const referenceImageLabel = ref<string | null>(null)
+
+function setReferenceImage(input: { id: string; label: string }) {
+  selectedReferenceConversation = currentConversation()
+  selectedReferenceImageId.value = input.id
+  referenceImageLabel.value = input.label
+}
 let composerObserver: ResizeObserver | null = null
 let childImageLoadHandler: ((event: Event) => void) | null = null
 
@@ -99,6 +106,7 @@ const referenceImageId = computed(() => {
 function selectReferenceImage(assetId: string | null) {
   selectedReferenceConversation = currentConversation()
   selectedReferenceImageId.value = assetId
+  referenceImageLabel.value = assetId ? '基于上一张图片' : null
 }
 
 function isCurrentConversation(key: object | number | null): boolean {
@@ -634,6 +642,7 @@ watch(() => props.conversationKey, (key, previousKey) => {
     userScrolledAway.value = false
     selectedReferenceConversation = null
     selectedReferenceImageId.value = undefined
+    referenceImageLabel.value = null
     void nextTick(() => scrollToBottom(true))
   }
 }, { flush: 'sync' })
@@ -789,10 +798,11 @@ onBeforeUnmount(() => invalidateRequest())
       :params="params"
       :image-models="imageModels"
       :reference-image-id="referenceImageId"
-      :reference-image-label="referenceImageId ? '基于上一张图片' : null"
+      :reference-image-label="referenceImageLabel"
       @send="handleSend"
       @generate-image="handleGenerateImage"
       @generate-gemini="handleGenerateGemini"
+      @set-reference="setReferenceImage"
       @clear-reference="selectReferenceImage(null)"
       @abort="abort"
       @abort-image="abortImageGeneration"
