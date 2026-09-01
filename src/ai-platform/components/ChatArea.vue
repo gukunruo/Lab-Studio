@@ -509,6 +509,7 @@ const addTemplateFlow = ref<{
   imageAssetId: string
   imageUrl: string
   prompt: string
+  modelId: ImageModelId
   aspectRatio?: ImageAspectRatio
   style?: string
 } | null>(null)
@@ -523,6 +524,7 @@ function addAsTemplate(index: number) {
     imageAssetId: assetId,
     imageUrl,
     prompt: message.prompt,
+    modelId: message.modelId,
     ...(message.aspectRatio ? { aspectRatio: message.aspectRatio } : {}),
     ...(message.style ? { style: message.style } : {}),
   }
@@ -817,6 +819,7 @@ onBeforeUnmount(() => invalidateRequest())
       :image-asset-id="addTemplateFlow.imageAssetId"
       :image-url="addTemplateFlow.imageUrl"
       :prompt="addTemplateFlow.prompt"
+      :model-id="addTemplateFlow.modelId"
       :aspect-ratio="addTemplateFlow.aspectRatio"
       :style="addTemplateFlow.style"
       @close="addTemplateFlow = null"

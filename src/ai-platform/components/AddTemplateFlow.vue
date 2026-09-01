@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { PhCheck, PhImage, PhSpinnerGap, PhSquaresFour, PhX } from '@phosphor-icons/vue'
-import type { ImageAspectRatio } from '../types'
-import { createImageTemplate, summarizeImageTemplate } from '../api'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { PhArrowClockwise, PhCheck, PhImage, PhSpinnerGap, PhSquaresFour, PhX } from '@phosphor-icons/vue'
+import type { ImageAspectRatio, ImageModelId } from '../types'
+import { createImageTemplate, generateGeminiMultimodal, generateImage, summarizeImageTemplate } from '../api'
 
 const props = defineProps<{
   imageAssetId: string
   imageUrl: string
   prompt: string
+  modelId: ImageModelId
   aspectRatio?: ImageAspectRatio
   style?: string
 }>()
@@ -25,6 +26,14 @@ const name = ref('')
 const prompt = ref(props.prompt)
 
 const sourceImage = computed(() => props.imageUrl)
+
+const testLoading = ref(false)
+const testImageUrl = ref('')
+const testError = ref('')
+const lastTestedPrompt = ref('')
+let testAbort: AbortController | null = null
+
+const isStale = computed(() => Boolean(testImageUrl.value) && prompt.value.trim() !== lastTestedPrompt.value)
 
 function fallbackName(value: string): string {
   const first = value.split(/[\n。，,]/)[0]?.trim() ?? ''
@@ -56,6 +65,52 @@ async function loadSummary() {
     loading.value = false
   }
 }
+
+async function startTest() {
+  const testPrompt = prompt.value.trim()
+  if (!testPrompt) return
+  testLoading.value = true
+  testError.value = ''
+  testImageUrl.value = ''
+  testAbort?.abort()
+  testAbort = new AbortController()
+  const signal = testAbort.signal
+  try {
+    if (props.modelId === 'gpt-image-2') {
+      const result = await generateImage({
+        modelId: 'gpt-image-2',
+        prompt: testPrompt,
+        ...(props.aspectRatio ? { aspectRatio: props.aspectRatio } : {}),
+        signal,
+      })
+      testImageUrl.value = result.imageUrl
+    } else {
+      const result = await generateGeminiMultimodal({
+        prompt: testPrompt,
+        ...(props.aspectRatio ? { aspectRatio: props.aspectRatio } : {}),
+        signal,
+      })
+      if (result.imageUrl) {
+        testImageUrl.value = result.imageUrl
+      } else {
+        testError.value = result.content || '测试图生成失败，请稍后重试。'
+      }
+    }
+    lastTestedPrompt.value = testPrompt
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    testError.value = error instanceof Error ? error.message : '测试图生成失败，请稍后重试。'
+  } finally {
+    testLoading.value = false
+  }
+}
+
+onBeforeUnmount(() => testAbort?.abort())
+
+onMounted(async () => {
+  await loadSummary()
+  startTest()
+})
 
 async function save() {
   const trimmedName = name.value.trim()
@@ -95,7 +150,18 @@ onMounted(loadSummary)
 
       <div class="add-template__body">
         <figure class="add-template__preview">
-          <img v-if="sourceImage" :src="sourceImage" :alt="props.prompt" />
+          <template v-if="testImageUrl">
+            <img :src="testImageUrl" :alt="lastTestedPrompt" />
+            <figcaption class="add-template__preview-badge">测试图</figcaption>
+          </template>
+          <div v-else-if="testLoading" class="add-template__preview-loading" aria-live="polite">
+            <PhSpinnerGap :size="22" weight="bold" />
+            <span>正在生成测试图…</span>
+          </div>
+          <template v-else-if="sourceImage">
+            <img :src="sourceImage" :alt="props.prompt" />
+            <figcaption class="add-template__preview-badge">原图</figcaption>
+          </template>
           <div v-else class="add-template__preview-empty"><PhImage :size="26" /></div>
         </figure>
 
@@ -116,6 +182,15 @@ onMounted(loadSummary)
               <span>模板描述</span>
               <textarea v-model="prompt" rows="4" maxlength="2000" placeholder="这张图的可复用生成描述"></textarea>
             </label>
+            <div class="add-template__test">
+              <button class="add-template__test-button" type="button" :disabled="testLoading || !prompt.trim()" @click="startTest">
+                <template v-if="testLoading"><PhSpinnerGap :size="13" weight="bold" /> 生成中</template>
+                <template v-else><PhArrowClockwise :size="13" weight="bold" /> 重新测试</template>
+              </button>
+              <span class="add-template__test-hint">按当前描述自动出图，确认效果后再入库。</span>
+            </div>
+            <p v-if="isStale" class="add-template__hint">描述已修改，请点击「重新测试」验证最新效果。</p>
+            <p v-if="testError" class="add-template__error" role="alert">{{ testError }}</p>
             <p v-if="errorMessage" class="add-template__error" role="alert">{{ errorMessage }}</p>
           </template>
         </div>
@@ -204,6 +279,7 @@ onMounted(loadSummary)
 }
 
 .add-template__preview {
+  position: relative;
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -217,6 +293,34 @@ onMounted(loadSummary)
   height: 100%;
   max-height: 260px;
   object-fit: contain;
+}
+
+.add-template__preview-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.add-template__preview-loading {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.add-template__preview-loading > svg {
+  color: var(--color-accent);
+  animation: add-template-spin 1s linear infinite;
 }
 
 .add-template__preview-empty {
@@ -284,6 +388,50 @@ onMounted(loadSummary)
   outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.add-template__test {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-template__test-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  cursor: pointer;
+  font: 600 12px var(--font-sans);
+  padding: 6px 10px;
+}
+
+.add-template__test-button:hover:enabled {
+  border-color: var(--color-accent);
+  color: var(--color-accent-strong);
+}
+
+.add-template__test-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.add-template__test-button > svg {
+  color: var(--color-accent);
+}
+
+.add-template__test-button:disabled > svg {
+  animation: add-template-spin 1s linear infinite;
+}
+
+.add-template__test-hint {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .add-template__error {
