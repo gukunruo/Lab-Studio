@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { and, eq, desc } from 'drizzle-orm'
+import { and, asc, eq, desc } from 'drizzle-orm'
 import { db } from './db/client'
-import { aiModels, aiConversations, aiPreferences, aiRecommendationBatches } from './db/schema'
+import { aiModels, aiConversations, aiImageTemplates, aiPreferences, aiRecommendationBatches } from './db/schema'
 import {
   decodeBase64Image,
   imageAssetUrl,
@@ -109,7 +109,7 @@ export interface UpstreamRequest {
 export type ImageGenerationRequestBody = {
   modelId: string
   prompt: string
-  aspectRatio: '1:1' | '16:9' | '9:16'
+  aspectRatio?: '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
   referenceImageId?: string
 }
 
@@ -122,6 +122,7 @@ export type GeminiMultimodalRequestBody = {
   prompt: string
   referenceImageId?: string
   history?: GeminiContextMessage[]
+  aspectRatio?: '1:1' | '4:3' | '3:4' | '16:9' | '9:16'
 }
 
 export type GeminiMultimodalResponse = {
@@ -140,8 +141,20 @@ type ImageGenerationConfig = {
   appKey: string
 }
 
-const IMAGE_ASPECT_RATIOS = new Set(['1:1', '16:9', '9:16'])
+const IMAGE_ASPECT_RATIOS = new Set(['1:1', '4:3', '3:4', '16:9', '9:16'])
 const IMAGE_PROMPT_MAX = 2_000
+
+const GPT_IMAGE_SIZE_FROM_RATIO: Record<string, string> = {
+  '1:1': '1024x1024',
+  '16:9': '1792x1024',
+  '9:16': '1024x1792',
+  '4:3': '1536x1024',
+  '3:4': '1024x1536',
+}
+
+export function gptImageSizeFromRatio(ratio?: string): string | undefined {
+  return ratio ? GPT_IMAGE_SIZE_FROM_RATIO[ratio] : undefined
+}
 
 function readImageGenerationConfig(): ImageGenerationConfig | null {
   const appId = process.env.TAL_MLOPS_APP_ID ?? ''
@@ -178,17 +191,19 @@ export function buildGptImageRequest(
   reference?: PrivateImageReference,
 ): UpstreamRequest {
   const baseUrl = config.baseUrl.replace(/\/$/, '')
+  const size = gptImageSizeFromRatio(body.aspectRatio)
   if (!reference) {
     return {
       url: `${baseUrl}/openai-compatible/v1/images/generations`,
       headers: imageUpstreamHeaders(config, 'application/json'),
-      body: JSON.stringify({ model: 'gpt-image-2', prompt: body.prompt }),
+      body: JSON.stringify({ model: 'gpt-image-2', prompt: body.prompt, ...(size ? { size } : {}) }),
     }
   }
 
   const form = new FormData()
   form.set('model', 'gpt-image-2')
   form.set('prompt', body.prompt)
+  if (size) form.set('size', size)
   form.set('image', new Blob([reference.bytes], { type: reference.mimeType }), `reference.${imageExtension(reference.mimeType)}`)
   return {
     url: `${baseUrl}/openai-compatible/v1/images/edits`,
@@ -214,6 +229,7 @@ export function buildGeminiMultimodalRequest(
     : body.prompt
 
   const history = body.history ?? []
+  const size = process.env.FORWARD_GEMINI_ASPECT_RATIO === '1' ? gptImageSizeFromRatio(body.aspectRatio) : undefined
 
   return {
     url: `${config.baseUrl.replace(/\/$/, '')}/openai-compatible/v1/chat/completions`,
@@ -225,6 +241,7 @@ export function buildGeminiMultimodalRequest(
         { role: 'user', content },
       ],
       modalities: ['text', 'image'],
+      ...(size ? { size } : {}),
     }),
   }
 }
@@ -1181,7 +1198,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
     if (!prompt || prompt.length > IMAGE_PROMPT_MAX) {
       return c.json({ error: '图片描述不能为空且不能超过 2000 个字符。' }, 400)
     }
-    if (!IMAGE_ASPECT_RATIOS.has(body.aspectRatio)) {
+    if (body.aspectRatio && !IMAGE_ASPECT_RATIOS.has(body.aspectRatio)) {
       return c.json({ error: '不支持的图片比例。' }, 400)
     }
     if (hasInvalidReferenceImageId(body.referenceImageId)) {
@@ -1206,13 +1223,20 @@ export function registerAiPlatformRoutes(app: Hono): void {
 
     let upstream: Response
     try {
-      const request = buildGptImageRequest({ ...body, prompt: finalPrompt }, config, reference ?? undefined)
-      upstream = await fetch(request.url, {
-        method: 'POST',
-        headers: request.headers,
-        body: request.body,
-        signal: c.req.raw.signal,
-      })
+      const requestGptImage = (ratio: typeof body.aspectRatio) => {
+        const request = buildGptImageRequest({ ...body, prompt: finalPrompt, aspectRatio: ratio }, config, reference ?? undefined)
+        return fetch(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: request.body,
+          signal: c.req.raw.signal,
+        })
+      }
+      upstream = await requestGptImage(body.aspectRatio)
+      // 兜底：网关若拒绝特定 size，去掉 size 用默认尺寸重试一次，不阻塞出图。
+      if (!upstream.ok && (upstream.status === 400 || upstream.status === 422) && body.aspectRatio) {
+        upstream = await requestGptImage(undefined)
+      }
     } catch (error) {
       console.error('[ai-platform] gpt-image upstream fetch failed', error)
       return c.json({ error: '图片生成服务暂时不可用，请稍后重试。' }, 502)
@@ -1249,6 +1273,9 @@ export function registerAiPlatformRoutes(app: Hono): void {
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
     if (!prompt || prompt.length > IMAGE_PROMPT_MAX) {
       return c.json({ error: '图片创作描述不能为空且不能超过 2000 个字符。' }, 400)
+    }
+    if (body.aspectRatio && !IMAGE_ASPECT_RATIOS.has(body.aspectRatio)) {
+      return c.json({ error: '不支持的图片比例。' }, 400)
     }
     if (hasInvalidReferenceImageId(body.referenceImageId)) {
       return c.json({ error: '参考图片不存在或不可用。' }, 404)
@@ -1310,6 +1337,63 @@ export function registerAiPlatformRoutes(app: Hono): void {
   })
 
   app.get('/ai-platform/images/:id', async (c) => imageAssetResponse(USER_KEY, c.req.param('id')))
+
+  // 自定义生图模板：按 USER_KEY 归属，aspect_ratio / style 可空，与应用「比例默认不选」一致。
+  app.get('/ai-platform/image-templates', async (c) => {
+    await ensureSeeded()
+    const rows = await db.select().from(aiImageTemplates)
+      .where(eq(aiImageTemplates.userKey, USER_KEY))
+      .orderBy(asc(aiImageTemplates.createdAt))
+    return c.json(rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      prompt: r.prompt,
+      aspectRatio: r.aspectRatio ?? undefined,
+      style: r.style ?? undefined,
+      createdAt: r.createdAt,
+    })))
+  })
+
+  app.post('/ai-platform/image-templates', async (c) => {
+    await ensureSeeded()
+    const body = await c.req.json<{ name?: unknown; prompt?: unknown; aspectRatio?: unknown; style?: unknown }>().catch(() => null)
+    const name = typeof body?.name === 'string' ? body.name.trim() : ''
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : ''
+    if (!name || !prompt || prompt.length > IMAGE_PROMPT_MAX) {
+      return c.json({ error: '模板名称和描述不能为空，描述不超过 2000 字。' }, 400)
+    }
+    const aspectRatio = typeof body?.aspectRatio === 'string' ? body.aspectRatio : undefined
+    if (aspectRatio && !IMAGE_ASPECT_RATIOS.has(aspectRatio)) {
+      return c.json({ error: '不支持的图片比例。' }, 400)
+    }
+    const style = typeof body?.style === 'string' && body.style ? body.style : undefined
+    const inserted = await db.insert(aiImageTemplates).values({
+      userKey: USER_KEY,
+      name,
+      prompt,
+      aspectRatio: aspectRatio ?? null,
+      style: style ?? null,
+      createdAt: new Date(),
+    }).returning()
+    const row = inserted[0]
+    return c.json({
+      id: row.id,
+      name: row.name,
+      prompt: row.prompt,
+      aspectRatio: row.aspectRatio ?? undefined,
+      style: row.style ?? undefined,
+      createdAt: row.createdAt,
+    })
+  })
+
+  app.delete('/ai-platform/image-templates/:id', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400)
+    const existing = await db.select({ userKey: aiImageTemplates.userKey }).from(aiImageTemplates).where(eq(aiImageTemplates.id, id)).get()
+    if (!existing || existing.userKey !== USER_KEY) return c.json({ error: 'not found' }, 404)
+    await db.delete(aiImageTemplates).where(eq(aiImageTemplates.id, id))
+    return c.json({ ok: true })
+  })
 
   // 对话代理 — 统一流式输出
   app.post('/ai-platform/chat', async (c) => {

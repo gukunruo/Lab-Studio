@@ -269,6 +269,7 @@ test('buildImageGenerationRequest uses the confirmed GPT image endpoint and body
   assert.deepEqual(JSON.parse(request.body), {
     model: 'gpt-image-2',
     prompt: '孙悟空',
+    size: '1792x1024',
   })
 })
 
