@@ -475,7 +475,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .img-opt__label { color: var(--color-text); }
 .img-opt__value { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); }
 .img-opt__caret { color: var(--color-text-muted); flex-shrink: 0; }
-.img-opt__panel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-height: 320px; overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); box-shadow: 0 12px 32px rgba(0,0,0,.28); padding: 6px; }
+.img-opt__panel { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-height: min(320px, 40vh); overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); box-shadow: 0 -12px 32px rgba(0,0,0,.28); padding: 6px; }
 .img-opt__panel--grid { min-width: 208px; }
 .img-opt__panel--template { min-width: 320px; padding: 10px; }
 .img-opt__option { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: var(--color-text); font: inherit; font-size: 12px; text-align: left; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; }
