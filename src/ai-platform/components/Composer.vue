@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ChatParams, ImageAspectRatio, ImageModelId } from '../types'
 import {
   COMPOSER_INPUT_MAX_HEIGHT,
@@ -9,7 +9,7 @@ import {
 import { IMAGE_STYLES, imageStyleName } from '../image-styles'
 import { IMAGE_TEMPLATES, type ImageTemplate } from '../image-templates'
 import { createImageTemplate, deleteImageTemplate, fetchImageTemplates } from '../api'
-import { PhChats, PhGlobe, PhImage, PhLightning, PhPaperPlaneRight, PhSparkle, PhStop } from '@phosphor-icons/vue'
+import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhRows, PhSparkle, PhStop } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -47,7 +47,7 @@ const imageModelId = ref<ImageModelId>('gpt-image-2')
 const composerWrapRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const IMAGE_ASPECT_RATIO_OPTIONS: ImageAspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16']
-const templatesOpen = ref(false)
+const openDropdown = ref<'model' | 'ratio' | 'style' | 'template' | null>(null)
 const customTemplates = ref<ImageTemplate[]>([])
 const templateFormOpen = ref(false)
 const templateForm = ref<{ name: string; prompt: string; aspectRatio: ImageAspectRatio | ''; style: string }>({
@@ -150,12 +150,36 @@ function changeImageModel() {
   mode.value = imageModelId.value === 'gemini-3-pro-image' ? 'gemini' : 'gpt-image'
 }
 
+function toggleDropdown(key: 'model' | 'ratio' | 'style' | 'template') {
+  if (props.streaming || props.busy || props.imageGenerating) return
+  openDropdown.value = openDropdown.value === key ? null : key
+}
+function selectModel(modelId: ImageModelId) {
+  imageModelId.value = modelId
+  changeImageModel()
+  openDropdown.value = null
+}
+function selectAspectRatio(ratio: ImageAspectRatio | '') {
+  imageAspectRatio.value = ratio
+  openDropdown.value = null
+}
+function selectStyle(id: string) {
+  imageStyleId.value = id
+  openDropdown.value = null
+}
+function onDocumentClick(event: MouseEvent) {
+  if (!openDropdown.value) return
+  const target = event.target as HTMLElement | null
+  const opt = target?.closest?.('.img-opt') as HTMLElement | null
+  if (!opt || opt.dataset.drop !== openDropdown.value) openDropdown.value = null
+}
+
 function applyTemplate(t: ImageTemplate) {
   if (mode.value === 'gemini') geminiDraft.value = t.prompt
   else gptImageDraft.value = t.prompt
   imageAspectRatio.value = t.aspectRatio ?? ''
   imageStyleId.value = t.style ?? ''
-  templatesOpen.value = false
+  openDropdown.value = null
 }
 async function saveTemplate() {
   const name = templateForm.value.name.trim()
@@ -177,10 +201,16 @@ async function removeTemplate(id: number) {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && imageMode.value) {
-    event.preventDefault()
-    exitImageMode()
-    return
+  if (event.key === 'Escape') {
+    if (openDropdown.value) {
+      openDropdown.value = null
+      return
+    }
+    if (imageMode.value) {
+      event.preventDefault()
+      exitImageMode()
+      return
+    }
   }
   if (!composerSubmitMatches(event)) return
   event.preventDefault()
@@ -207,9 +237,11 @@ function restoreGeminiDraft(input: { prompt: string; aspectRatio?: ImageAspectRa
 
 watch([mode, currentDraft], () => void nextTick(autoResize))
 onMounted(async () => {
+  document.addEventListener('click', onDocumentClick)
   void autoResize()
   customTemplates.value = await fetchImageTemplates()
 })
+onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 </script>
 
@@ -247,74 +279,6 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
         >
           <PhSparkle :size="13" weight="regular" /> Gemini 创作
         </button>
-      </div>
-      <div v-if="imageMode" class="composer__image-mode">
-        <span class="composer__image-label">
-          <PhSparkle v-if="mode === 'gemini'" :size="15" weight="fill" />
-          <PhImage v-else :size="15" weight="fill" />
-          {{ mode === 'gemini' ? 'Gemini 创作对话' : (gptEditing ? '编辑图片' : '生图') }}
-        </span>
-        <label class="composer__select composer__select--model">
-          <span class="sr-only">图片模型</span>
-          <select v-model="imageModelId" aria-label="图片模型" @change="changeImageModel">
-            <option v-for="model in imageModels" :key="model.modelId" :value="model.modelId">
-              {{ model.displayName }}
-            </option>
-          </select>
-        </label>
-        <label class="composer__select">
-          <span class="sr-only">图片比例</span>
-          <select v-model="imageAspectRatio" aria-label="图片比例">
-            <option value="">自动</option>
-            <option v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" :value="ratio">{{ ratio }}</option>
-          </select>
-        </label>
-        <label class="composer__select">
-          <span class="sr-only">图片风格</span>
-          <select v-model="imageStyleId" aria-label="图片风格">
-            <option value="">默认</option>
-            <option v-for="style in IMAGE_STYLES" :key="style.id" :value="style.id">{{ style.name }}</option>
-          </select>
-        </label>
-        <button type="button" class="composer__tool composer__tool--button" :class="{ 'composer__tool--active': templatesOpen }" @click="templatesOpen = !templatesOpen">模板</button>
-        <span v-if="hasReference" class="composer__reference">
-          {{ referenceImageLabel ?? '基于上一张图片' }}
-          <button type="button" @click="emit('clear-reference')">移除参考图</button>
-        </span>
-        <span class="composer__image-hint">Enter {{ mode === 'gemini' ? '发送' : (gptEditing ? '编辑' : '生成') }}</span>
-      </div>
-
-      <div v-if="imageMode && templatesOpen" class="composer__template-panel">
-        <div v-if="IMAGE_TEMPLATES.length || customTemplates.length" class="composer__template-grid">
-          <template v-for="t in [...IMAGE_TEMPLATES, ...customTemplates]" :key="t.id">
-            <div class="composer__template-card">
-              <div class="composer__template-info">
-                <strong>{{ t.name }}</strong>
-                <span class="composer__template-tags">{{ [t.aspectRatio, imageStyleName(t.style)].filter(Boolean).join(' · ') }}</span>
-                <p>{{ t.prompt }}</p>
-              </div>
-              <div class="composer__template-actions">
-                <button type="button" class="composer__template-action" @click="applyTemplate(t)">同款</button>
-                <button v-if="customTemplates.includes(t)" type="button" class="composer__template-action composer__template-action--danger" @click="removeTemplate(Number(t.id))">删除</button>
-              </div>
-            </div>
-          </template>
-        </div>
-        <div v-if="templateFormOpen" class="composer__template-form">
-          <input v-model="templateForm.name" placeholder="模板名称" class="composer__template-input" />
-          <input v-model="templateForm.prompt" placeholder="示例 prompt（这里的一句话会被原样填进输入框）" class="composer__template-input" />
-          <div class="composer__chip-row">
-            <button v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.aspectRatio === ratio }" @click="templateForm.aspectRatio = templateForm.aspectRatio === ratio ? '' : ratio">{{ ratio }}</button>
-          </div>
-          <div class="composer__chip-row">
-            <button v-for="style in IMAGE_STYLES" :key="style.id" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.style === style.id }" @click="templateForm.style = templateForm.style === style.id ? '' : style.id">{{ style.name }}</button>
-          </div>
-          <div class="composer__template-form-actions">
-            <button type="button" class="composer__template-action" @click="templateFormOpen = false">取消</button>
-            <button type="button" class="composer__template-action composer__template-action--primary" :disabled="!templateForm.name.trim() || !templateForm.prompt.trim()" @click="saveTemplate">保存模板</button>
-          </div>
-        </div>
-        <button v-else type="button" class="composer__template-action composer__template-action--primary" @click="templateFormOpen = true">＋ 添加模板</button>
       </div>
       <textarea
         ref="textareaRef"
@@ -356,7 +320,104 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
             </button>
             <span v-if="params.maxTokens" class="composer__badge">max {{ params.maxTokens }}</span>
           </template>
-          <span v-else class="composer__badge">{{ selectedImageModelName }}</span>
+          <template v-else>
+            <div class="img-opt" :data-drop="'model'">
+              <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': openDropdown === 'model' }" :disabled="streaming || busy || imageGenerating" :aria-expanded="openDropdown === 'model'" @click="toggleDropdown('model')">
+                <PhSparkle :size="13" weight="regular" />
+                <span class="img-opt__label">模型</span>
+                <span class="img-opt__value">{{ selectedImageModelName }}</span>
+                <PhCaretDown :size="11" weight="bold" class="img-opt__caret" />
+              </button>
+              <div v-if="openDropdown === 'model'" class="img-opt__panel img-opt__panel--list">
+                <button v-for="m in imageModels" :key="m.modelId" type="button" class="img-opt__option" :class="{ 'img-opt__option--active': imageModelId === m.modelId }" @click="selectModel(m.modelId)">
+                  <span class="img-opt__option-label">{{ m.displayName }}</span>
+                  <PhCheck v-if="imageModelId === m.modelId" :size="13" weight="bold" />
+                </button>
+              </div>
+            </div>
+
+            <div class="img-opt" :data-drop="'ratio'">
+              <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': openDropdown === 'ratio' }" :disabled="streaming || busy || imageGenerating" :aria-expanded="openDropdown === 'ratio'" @click="toggleDropdown('ratio')">
+                <PhCrop :size="13" weight="regular" />
+                <span class="img-opt__label">比例</span>
+                <span class="img-opt__value">{{ imageAspectRatio || '自动' }}</span>
+                <PhCaretDown :size="11" weight="bold" class="img-opt__caret" />
+              </button>
+              <div v-if="openDropdown === 'ratio'" class="img-opt__panel img-opt__panel--grid">
+                <div class="img-opt__grid">
+                  <button type="button" class="ratio-tile" :class="{ 'ratio-tile--active': imageAspectRatio === '' }" @click="selectAspectRatio('')">
+                    <span class="ratio-tile__box ratio-tile__box--auto"><PhFrameCorners :size="15" weight="bold" /></span>
+                    <span class="ratio-tile__label">自动</span>
+                  </button>
+                  <button v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" type="button" class="ratio-tile" :class="{ 'ratio-tile--active': imageAspectRatio === ratio }" @click="selectAspectRatio(ratio)">
+                    <span class="ratio-tile__box"></span>
+                    <span class="ratio-tile__label">{{ ratio }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="img-opt" :data-drop="'style'">
+              <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': openDropdown === 'style' }" :disabled="streaming || busy || imageGenerating" :aria-expanded="openDropdown === 'style'" @click="toggleDropdown('style')">
+                <PhPalette :size="13" weight="regular" />
+                <span class="img-opt__label">风格</span>
+                <span v-if="imageStyleName(imageStyleId)" class="img-opt__value">{{ imageStyleName(imageStyleId) }}</span>
+                <PhCaretDown :size="11" weight="bold" class="img-opt__caret" />
+              </button>
+              <div v-if="openDropdown === 'style'" class="img-opt__panel img-opt__panel--list">
+                <button v-for="s in IMAGE_STYLES" :key="s.id" type="button" class="img-opt__option" :class="{ 'img-opt__option--active': imageStyleId === s.id }" @click="selectStyle(s.id)">
+                  <span class="img-opt__thumb" :style="{ background: s.color }"></span>
+                  <span class="img-opt__option-label">{{ s.name }}</span>
+                  <PhCheck v-if="imageStyleId === s.id" :size="13" weight="bold" />
+                </button>
+              </div>
+            </div>
+
+            <div class="img-opt" :data-drop="'template'">
+              <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': openDropdown === 'template' }" :disabled="streaming || busy || imageGenerating" :aria-expanded="openDropdown === 'template'" @click="toggleDropdown('template')">
+                <PhRows :size="13" weight="regular" />
+                <span class="img-opt__label">模板</span>
+                <PhCaretDown :size="11" weight="bold" class="img-opt__caret" />
+              </button>
+              <div v-if="openDropdown === 'template'" class="img-opt__panel img-opt__panel--template">
+                <div v-if="IMAGE_TEMPLATES.length || customTemplates.length" class="composer__template-grid">
+                  <template v-for="t in [...IMAGE_TEMPLATES, ...customTemplates]" :key="t.id">
+                    <div class="composer__template-card">
+                      <div class="composer__template-info">
+                        <strong>{{ t.name }}</strong>
+                        <span class="composer__template-tags">{{ [t.aspectRatio, imageStyleName(t.style)].filter(Boolean).join(' · ') }}</span>
+                        <p>{{ t.prompt }}</p>
+                      </div>
+                      <div class="composer__template-actions">
+                        <button type="button" class="composer__template-action" @click="applyTemplate(t)">同款</button>
+                        <button v-if="customTemplates.includes(t)" type="button" class="composer__template-action composer__template-action--danger" @click="removeTemplate(Number(t.id))">删除</button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <div v-if="templateFormOpen" class="composer__template-form">
+                  <input v-model="templateForm.name" placeholder="模板名称" class="composer__template-input" />
+                  <input v-model="templateForm.prompt" placeholder="示例 prompt（这里的一句话会被原样填进输入框）" class="composer__template-input" />
+                  <div class="composer__chip-row">
+                    <button v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.aspectRatio === ratio }" @click="templateForm.aspectRatio = templateForm.aspectRatio === ratio ? '' : ratio">{{ ratio }}</button>
+                  </div>
+                  <div class="composer__chip-row">
+                    <button v-for="style in IMAGE_STYLES" :key="style.id" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.style === style.id }" @click="templateForm.style = templateForm.style === style.id ? '' : style.id">{{ style.name }}</button>
+                  </div>
+                  <div class="composer__template-form-actions">
+                    <button type="button" class="composer__template-action" @click="templateFormOpen = false">取消</button>
+                    <button type="button" class="composer__template-action composer__template-action--primary" :disabled="!templateForm.name.trim() || !templateForm.prompt.trim()" @click="saveTemplate">保存模板</button>
+                  </div>
+                </div>
+                <button v-else type="button" class="composer__template-action composer__template-action--primary" @click="templateFormOpen = true">＋ 添加模板</button>
+              </div>
+            </div>
+
+            <span v-if="hasReference" class="composer__reference">
+              {{ referenceImageLabel ?? '基于上一张图片' }}
+              <button type="button" @click="emit('clear-reference')">移除参考图</button>
+            </span>
+          </template>
         </div>
         <button
           v-if="streaming"
@@ -403,16 +464,32 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .composer:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft), 0 8px 32px rgba(0,0,0,.3); }
 .composer--image { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); }
 .composer--gemini { border-color: color-mix(in srgb, #8b5cf6 48%, var(--color-border)); }
-.composer__image-mode { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 38px; padding: 8px 12px 0 18px; color: var(--color-text-muted); font-size: 12px; }
-.composer__image-label, .composer__reference { display: inline-flex; align-items: center; gap: 5px; }
-.composer__image-label { color: var(--color-accent-strong); font-weight: 600; white-space: nowrap; }
-.composer__select select { appearance: none; border: 1px solid var(--color-border); border-radius: var(--radius-full); outline: none; background: var(--color-surface); color: var(--color-text); cursor: pointer; font: inherit; font-size: 11px; padding: 5px 24px 5px 9px; }
-.composer__select select:focus { border-color: var(--color-accent); }
-.composer__select--model select { max-width: 172px; }
-.composer__reference { min-width: 0; color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
+.composer__reference { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
 .composer__reference button { border: 0; background: transparent; color: var(--color-accent-strong); cursor: pointer; font: inherit; font-size: 11px; padding: 0; }
 .composer__reference button:hover { text-decoration: underline; }
-.composer__image-hint { margin-left: auto; color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
+.img-opt { position: relative; display: inline-flex; }
+.img-opt__trigger { height: 28px; padding: 0 10px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.img-opt__trigger:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent-strong); }
+.img-opt__trigger:disabled { cursor: not-allowed; opacity: .45; }
+.img-opt__trigger--open { border-color: var(--color-accent); color: var(--color-accent-strong); background: var(--color-accent-soft); }
+.img-opt__label { color: var(--color-text); }
+.img-opt__value { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); }
+.img-opt__caret { color: var(--color-text-muted); flex-shrink: 0; }
+.img-opt__panel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-height: 320px; overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); box-shadow: 0 12px 32px rgba(0,0,0,.28); padding: 6px; }
+.img-opt__panel--grid { min-width: 208px; }
+.img-opt__panel--template { min-width: 320px; padding: 10px; }
+.img-opt__option { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: var(--color-text); font: inherit; font-size: 12px; text-align: left; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; }
+.img-opt__option:hover { background: var(--color-accent-soft); }
+.img-opt__option--active { color: var(--color-accent); }
+.img-opt__option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.img-opt__thumb { width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0; }
+.img-opt__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ratio-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.ratio-tile:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
+.ratio-tile--active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); }
+.ratio-tile__box { width: 26px; height: 26px; border: 1.5px solid currentColor; border-radius: 4px; }
+.ratio-tile__box--auto { border-style: dashed; display: flex; align-items: center; justify-content: center; }
+.ratio-tile__label { white-space: nowrap; }
 .composer__modes { display: flex; align-items: center; gap: 2px; padding: 10px 12px 0 18px; }
 .composer__mode { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; transition: color .15s, background .15s; }
 .composer__mode:hover:not(:disabled) { color: var(--color-text); background: var(--color-surface); }
@@ -440,15 +517,13 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .composer__send:active:not(:disabled) { transform: scale(.95); }
 .composer__send:disabled { opacity: .3; cursor: not-allowed; }
 .composer__send--stop { background: var(--color-danger); }
-@media (max-width: 640px) { .composer-wrap { padding-inline: 12px; } .composer__image-mode { flex-wrap: wrap; } .composer__image-hint { display: none; } }
-.composer__image-options { display: grid; gap: 6px; padding: 10px 18px 0; }
+@media (max-width: 640px) { .composer-wrap { padding-inline: 12px; } }
 .composer__chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .composer__chip-label { color: var(--color-text-muted); font-size: 11px; flex-shrink: 0; }
 .composer__chip { height: 22px; padding: 0 9px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; }
 .composer__chip:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
 .composer__chip--active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
-.composer__template-panel { border-top: 1px solid var(--color-border); margin-top: 8px; padding: 10px 18px; }
-.composer__template-grid { display: grid; gap: 8px; max-height: 260px; overflow: auto; }
+.composer__template-grid { display: grid; gap: 8px; }
 .composer__template-card { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); padding: 8px 10px; }
 .composer__template-info { min-width: 0; }
 .composer__template-info strong { font-size: 12px; color: var(--color-text); display: block; }
