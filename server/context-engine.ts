@@ -25,15 +25,20 @@ const BASE_SYSTEM = '你是 Lab-Studio 的 AI 助手。请用与用户相同的�
 export interface EngineeredContextMessage {
   role: 'user' | 'assistant'
   content: string
+  /** 该条消息附带的受控图床 URL（对话多模态）。仅原样透传，不参与压缩/截断。 */
+  images?: string[]
 }
 
 export interface EngineerContextInput {
-  messages: { role: string; content: string }[]
+  messages: ContextEngineMessage[]
   system?: string
   summary?: string
   contextWindow?: number | null
   maxTokens?: number
 }
+
+// 消息的统一结构：`images` 是可选的附件，压缩/截断只看 `content`，附件原样透传。
+export type ContextEngineMessage = { role: string; content: string; images?: string[] }
 
 export interface EngineerContextResult {
   system: string
@@ -81,9 +86,9 @@ export function truncateMessageContent(content: string, max: number): string {
 }
 
 export function splitWindow(
-  messages: { role: string; content: string }[],
+  messages: ContextEngineMessage[],
   windowSize: number,
-): { prefix: { role: string; content: string }[]; recent: { role: string; content: string }[] } {
+): { prefix: ContextEngineMessage[]; recent: ContextEngineMessage[] } {
   const total = messages.length
   if (total <= windowSize) return { prefix: [], recent: messages }
   const cut = total - windowSize
@@ -230,7 +235,7 @@ interface TryResult {
 }
 
 function tryEngineer(
-  messages: { role: string; content: string }[],
+  messages: ContextEngineMessage[],
   summary: string | undefined,
   system: string | undefined,
   windowSize: number,
@@ -247,6 +252,7 @@ function tryEngineer(
     return {
       role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
       content: truncateMessageContent(message.content, max),
+      ...(message.images?.length ? { images: message.images } : {}),
     }
   })
   const estimatedTokens = estimateTokens(compactedSystem)

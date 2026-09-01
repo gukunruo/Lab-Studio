@@ -87,10 +87,71 @@ function ensureSeeded(): Promise<void> {
 
 export interface ChatRequestBody {
   modelId: string
-  messages: { role: string; content: string }[]
+  messages: { role: string; content: string; images?: string[] }[]
   system?: string
   summary?: string
   params?: { reasoningEffort?: string; maxTokens?: number; webSearch?: boolean }
+}
+
+// 对话多模态：一条 user 消息可附带若干受控图床 URL，上游按 provider 转成图片内容块。
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  // openai-compatible
+  | { type: 'image_url'; image_url: { url: string } }
+  // anthropic
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+
+export type ChatContent = string | ChatContentPart[]
+
+// 经过语境工程并解析图片后、可直接发往上游的消息（content 可能是字符串或内容块数组）。
+export type ResolvedChatMessage = { role: string; content: ChatContent }
+
+// 上游请求构建器收到的 body：messages 已解析为可序列化内容（含图片块）。
+type ChatUpstreamBody = {
+  modelId: string
+  messages: ResolvedChatMessage[]
+  system?: string
+  params?: { reasoningEffort?: string; maxTokens?: number; webSearch?: boolean }
+}
+
+const CONTROLLED_IMAGE_URL_RE = /^\/api\/ai-platform\/images\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
+
+function imageAssetIdFromUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = value.match(CONTROLLED_IMAGE_URL_RE)
+  return match?.[1]?.toLowerCase() ?? null
+}
+
+// 把带 `images` 的消息解析为上游可直接序列化的内容块：文本 + 每张图对应的图片块。
+// `provider === 'anthropic'` 走 base64 source，否则走 openai-compatible 的 image_url（data URL）。
+// 无法解析的图片（非受控 URL / 资产不存在）会被静默丢弃，避免整条请求失败。
+async function resolveChatImages(
+  messages: { role: string; content: string; images?: string[] }[],
+  provider: SupportedModelProvider,
+): Promise<ResolvedChatMessage[]> {
+  const resolved: ResolvedChatMessage[] = []
+  for (const message of messages) {
+    const role = message.role === 'assistant' ? 'assistant' as const : 'user' as const
+    if (!message.images?.length) {
+      resolved.push({ role, content: message.content })
+      continue
+    }
+    const parts: ChatContentPart[] = []
+    if (message.content.trim()) parts.push({ type: 'text', text: message.content })
+    for (const imageUrl of message.images) {
+      const assetId = imageAssetIdFromUrl(imageUrl)
+      const reference = assetId ? await resolvePrivateImageReference(assetId) : null
+      if (!reference) continue
+      if (provider === 'anthropic') {
+        parts.push({ type: 'image', source: { type: 'base64', media_type: reference.mimeType, data: reference.bytes.toString('base64') } })
+      } else {
+        const dataUrl = privateImageDataUrl(reference)
+        if (dataUrl) parts.push({ type: 'image_url', image_url: { url: dataUrl } })
+      }
+    }
+    resolved.push({ role, content: parts.length ? parts : message.content })
+  }
+  return resolved
 }
 
 interface UpstreamConfig {
@@ -395,7 +456,7 @@ function hasInvalidReferenceImageId(value: unknown): boolean {
 }
 
 export function buildAnthropicPlatformRequest(
-  body: ChatRequestBody,
+  body: ChatUpstreamBody,
   config: AnthropicConfig,
   tools?: unknown[],
 ): UpstreamRequest {
@@ -509,7 +570,7 @@ function buildAgentRegistry(anthropicConfig: AnthropicConfig | null): AgentToolR
   }
 }
 
-export function buildUpstreamRequest(body: ChatRequestBody, config: UpstreamConfig, tools?: unknown[]): UpstreamRequest {
+export function buildUpstreamRequest(body: ChatUpstreamBody, config: UpstreamConfig, tools?: unknown[]): UpstreamRequest {
   const { provider, modelId, baseUrl, appId, appKey } = config
   const authHeader = `Bearer ${appId}:${appKey}`
 
@@ -1463,8 +1524,11 @@ export function registerAiPlatformRoutes(app: Hono): void {
     if (!body.messages.every((message) => (
       (message.role === 'user' || message.role === 'assistant')
       && typeof message.content === 'string'
+      && (message.images === undefined
+        || (Array.isArray(message.images)
+          && message.images.every((url) => typeof url === 'string' && !!url)))
     ))) {
-      return c.json({ error: 'messages must contain only user or assistant text' }, 400)
+      return c.json({ error: 'messages must contain only user or assistant text, with optional image urls' }, 400)
     }
 
     const modelRow = await db.select().from(aiModels).where(eq(aiModels.modelId, body.modelId)).get()
@@ -1486,9 +1550,11 @@ export function registerAiPlatformRoutes(app: Hono): void {
     // openai-compatible 的检索执行依赖 Claude web_search（零新增 Key）；未配置则退化为纯直通。
     const useWebSearch = webSearch && (modelRow.provider === 'anthropic' || !!anthropicConfig)
 
-    const engineeredBody: ChatRequestBody = {
+    // 对话多模态：把带 `images` 的消息按 provider 解析成上游图片内容块。
+    const resolvedMessages = await resolveChatImages(engineered.messages, modelRow.provider)
+    const engineeredBody: ChatUpstreamBody = {
       modelId: body.modelId,
-      messages: engineered.messages,
+      messages: resolvedMessages,
       system: engineered.system,
       params: {
         ...body.params,
@@ -1547,7 +1613,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
             ? [{ role: 'system', content: toolSystem }, ...engineeredBody.messages]
             : [...engineeredBody.messages]
           upstreamReq = buildUpstreamRequest(
-            { ...engineeredBody, messages: openAiMessagesWithSystem as { role: string; content: string }[], system: '' },
+            { ...engineeredBody, messages: openAiMessagesWithSystem as ResolvedChatMessage[], system: '' },
             upstreamConfig,
             openAiTools,
           )
@@ -1573,7 +1639,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
     // openai-compatible + 工具：首轮带工具请求被拒绝时，回退为不带工具的纯直通，防止模型不支持
     // 函数调用导致整个会话报错（联网默认开启）。
     if (modelRow.provider === 'openai-compatible' && useTools && (!upstream.ok || !upstream.body)) {
-      const plainBody: ChatRequestBody = { ...engineeredBody, params: { ...engineeredBody.params, webSearch: false } }
+      const plainBody: ChatUpstreamBody = { ...engineeredBody, params: { ...engineeredBody.params, webSearch: false } }
       const plainReq = upstreamConfig ? buildUpstreamRequest(plainBody, upstreamConfig) : null
       if (plainReq) {
         upstream = await fetch(plainReq.url, {
@@ -1608,7 +1674,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
         registry: agentRegistry,
         buildRequest: (messages, modelId, params) =>
           buildUpstreamRequest(
-            { modelId, messages: messages as { role: string; content: string }[], system: '', params: { ...params, webSearch: useWebSearch } },
+            { modelId, messages: messages as ResolvedChatMessage[], system: '', params: { ...params, webSearch: useWebSearch } },
             upstreamConfig as UpstreamConfig,
             openAiTools,
           ),
@@ -1631,7 +1697,7 @@ export function registerAiPlatformRoutes(app: Hono): void {
         registry: agentRegistry,
         buildRequest: (messages, modelId, params) =>
           buildAnthropicPlatformRequest(
-            { modelId, messages: messages as { role: string; content: string }[], system: toolSystem, params: { ...params, webSearch: useWebSearch } },
+            { modelId, messages: messages as ResolvedChatMessage[], system: toolSystem, params: { ...params, webSearch: useWebSearch } },
             anthropicConfig,
             anthropicTools,
           ),

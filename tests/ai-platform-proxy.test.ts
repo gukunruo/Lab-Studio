@@ -384,3 +384,49 @@ test('buildOpenAiWebSearchTool declares a query-only schema', () => {
   assert.equal(tools[0].function.name, 'web_search')
   assert.equal(tools[0].function.parameters.type, 'object')
 })
+
+test('buildUpstreamRequest serializes openai-compatible multimodal content blocks', () => {
+  const result = buildUpstreamRequest({
+    modelId: 'gpt-5.4',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: '分析这张图' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+      ],
+    }],
+  }, {
+    provider: 'openai-compatible',
+    modelId: 'gpt-5.4',
+    baseUrl: 'http://ai-service.tal.com',
+    appId: '300000636',
+    appKey: 'test-key',
+  })
+  const parsed = JSON.parse(result.body)
+  assert.deepEqual(parsed.messages[0].content, [
+    { type: 'text', text: '分析这张图' },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+  ])
+})
+
+test('buildAnthropicPlatformRequest serializes anthropic image source blocks', () => {
+  const result = buildAnthropicPlatformRequest({
+    modelId: 'claude-opus-4.6',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: '分析这张图' },
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+      ],
+    }],
+  }, {
+    apiKey: 'sk-test',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-opus-4.6',
+  })
+  const parsed = JSON.parse(result.body)
+  assert.deepEqual(parsed.messages[0].content, [
+    { type: 'text', text: '分析这张图' },
+    { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+  ])
+})

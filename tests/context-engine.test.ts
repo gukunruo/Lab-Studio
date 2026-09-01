@@ -235,3 +235,16 @@ test('engineerContext keeps context when the topic continues (same domain)', () 
   assert.equal(result.messages.length, 3, 'continue keeps the full recent context')
   assert.deepEqual(result.messages[result.messages.length - 1], { role: 'user', content: '再查一下上海的天气' })
 })
+
+test('engineerContext threads images through untouched for multimodal', () => {
+  const result = engineerContext({
+    messages: [
+      { role: 'user', content: '你好', images: ['/api/ai-platform/images/123e4567-e89b-42d3-a456-426614174000'] },
+      { role: 'assistant', content: '你好，有什么可以帮你？' },
+    ],
+  })
+  assert.equal(result.messages.length, 2)
+  assert.deepEqual(result.messages[0].images, ['/api/ai-platform/images/123e4567-e89b-42d3-a456-426614174000'])
+  assert.equal(result.messages[0].content, '你好')
+  assert.equal(result.messages[1].images, undefined)
+})
