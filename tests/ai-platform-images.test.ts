@@ -5,6 +5,9 @@ import { dirname, join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import {
   controlledImageAssetId,
+  createImageTemplate,
+  deleteImageTemplate,
+  fetchImageTemplates,
   generateGeminiMultimodal,
   generateImage,
   isSafeImageUrl,
@@ -471,5 +474,108 @@ test('imageAssetResponse returns 404 when the asset file is missing', async () =
   } finally {
     await db.delete(aiImageAssets).where(eq(aiImageAssets.id, asset.id))
     await rm(assetPath, { force: true })
+  }
+})
+
+test('generateImage omits aspectRatio when none is chosen', async () => {
+  const originalFetch = globalThis.fetch
+  let body: Record<string, unknown> | undefined
+  globalThis.fetch = async (_request, init) => {
+    body = JSON.parse(String(init?.body))
+    return Response.json({ modelId: 'gpt-image-2', imageUrl: 'https://cdn.example.test/cat.png' })
+  }
+  try {
+    await generateImage({ modelId: 'gpt-image-2', prompt: '猫', signal: new AbortController().signal })
+    assert.deepEqual(body, { modelId: 'gpt-image-2', prompt: '猫' })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('generateGeminiMultimodal forwards aspectRatio when present', async () => {
+  const originalFetch = globalThis.fetch
+  let body: Record<string, unknown> | undefined
+  globalThis.fetch = async (_request, init) => {
+    body = JSON.parse(String(init?.body))
+    return Response.json({ content: '完成。' })
+  }
+  try {
+    await generateGeminiMultimodal({ prompt: '生成一只猫', aspectRatio: '16:9', signal: new AbortController().signal })
+    assert.deepEqual(body, { prompt: '生成一只猫', aspectRatio: '16:9' })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('fetchImageTemplates returns an array of templates', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json([
+    { id: 1, name: '测试', prompt: '一只橘猫', aspectRatio: '16:9', style: 'cinematic', createdAt: '2026-09-01T00:00:00.000Z' },
+  ])
+  try {
+    const templates = await fetchImageTemplates()
+    assert.equal(templates.length, 1)
+    assert.equal(templates[0].name, '测试')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('fetchImageTemplates returns an empty array on non-ok', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({ error: 'boom' }, { status: 500 })
+  try {
+    assert.deepEqual(await fetchImageTemplates(), [])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('createImageTemplate posts the template and returns it', async () => {
+  const originalFetch = globalThis.fetch
+  let body: Record<string, unknown> | undefined
+  globalThis.fetch = async (_request, init) => {
+    body = JSON.parse(String(init?.body))
+    return Response.json({ id: 2, name: '夜景', prompt: '城市夜景', aspectRatio: '16:9', style: 'cyberpunk', createdAt: '2026-09-01T00:00:00.000Z' })
+  }
+  try {
+    const template = await createImageTemplate({ name: '夜景', prompt: '城市夜景', aspectRatio: '16:9', style: 'cyberpunk' })
+    assert.deepEqual(body, { name: '夜景', prompt: '城市夜景', aspectRatio: '16:9', style: 'cyberpunk' })
+    assert.equal(template.id, 2)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('createImageTemplate throws a friendly error and omits absent ratio/style', async () => {
+  const originalFetch = globalThis.fetch
+  let body: Record<string, unknown> | undefined
+  globalThis.fetch = async (_request, init) => {
+    body = JSON.parse(String(init?.body))
+    return Response.json({ error: '不支持的图片比例。' }, { status: 400 })
+  }
+  try {
+    await assert.rejects(() => createImageTemplate({ name: '无比例', prompt: '纯文本' }), { message: '不支持的图片比例。' })
+    assert.deepEqual(body, { name: '无比例', prompt: '纯文本' })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('deleteImageTemplate issues a DELETE request', async () => {
+  const originalFetch = globalThis.fetch
+  let url = ''
+  let method = ''
+  globalThis.fetch = async (request, init) => {
+    url = String(request)
+    method = String(init?.method)
+    return Response.json({ ok: true })
+  }
+  try {
+    await deleteImageTemplate(7)
+    assert.equal(url, '/api/ai-platform/image-templates/7')
+    assert.equal(method, 'DELETE')
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })

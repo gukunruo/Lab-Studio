@@ -1,4 +1,5 @@
 import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from './types'
+import type { ImageTemplate } from './image-templates'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
   const res = await fetch('/api/ai-platform/models', { credentials: 'include' })
@@ -234,7 +235,7 @@ export async function generateImage(input: ImageGenerationInput): Promise<ImageG
     body: JSON.stringify({
       modelId: input.modelId,
       prompt: input.prompt,
-      aspectRatio: input.aspectRatio,
+      ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
       ...(referenceImageId && CONTROLLED_IMAGE_ASSET_PATH.test(`/api/ai-platform/images/${referenceImageId}`)
         ? { referenceImageId }
         : {}),
@@ -256,6 +257,7 @@ export async function generateGeminiMultimodal(input: {
   prompt: string
   referenceImageId?: string
   history?: GeminiContextMessage[]
+  aspectRatio?: ImageAspectRatio
   signal: AbortSignal
 }): Promise<GeminiMultimodalResponse> {
   const referenceImageId = input.referenceImageId?.toLowerCase()
@@ -266,6 +268,7 @@ export async function generateGeminiMultimodal(input: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       prompt: input.prompt,
+      ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
       ...(referenceImageId && CONTROLLED_IMAGE_ASSET_PATH.test(`/api/ai-platform/images/${referenceImageId}`)
         ? { referenceImageId }
         : {}),
@@ -411,4 +414,40 @@ export async function streamChat(opts: StreamChatOptions): Promise<void> {
     }
     throw e
   }
+}
+
+export async function fetchImageTemplates(signal?: AbortSignal): Promise<ImageTemplate[]> {
+  const res = await fetch('/api/ai-platform/image-templates', { credentials: 'include', signal })
+  if (!res.ok) return []
+  const payload = await res.json().catch(() => null)
+  return Array.isArray(payload) ? payload : []
+}
+
+export async function createImageTemplate(input: {
+  name: string
+  prompt: string
+  aspectRatio?: ImageAspectRatio
+  style?: string
+}): Promise<ImageTemplate> {
+  const res = await fetch('/api/ai-platform/image-templates', {
+    credentials: 'include',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: input.name,
+      prompt: input.prompt,
+      ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+      ...(input.style ? { style: input.style } : {}),
+    }),
+  })
+  const payload = await res.json().catch(() => null) as { error?: unknown } | null
+  if (!res.ok) {
+    throw new Error(typeof payload?.error === 'string' ? payload.error : '模板保存失败，请稍后重试。')
+  }
+  return payload as unknown as ImageTemplate
+}
+
+export async function deleteImageTemplate(id: number): Promise<void> {
+  const res = await fetch(`/api/ai-platform/image-templates/${id}`, { credentials: 'include', method: 'DELETE' })
+  if (!res.ok) throw new Error('模板删除失败，请稍后重试。')
 }
