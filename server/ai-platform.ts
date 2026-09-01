@@ -17,6 +17,7 @@ import { seedAiModels } from './ai-platform-seed'
 import { engineerContext } from './context-engine'
 import { buildAnthropicWebSearchTools, runWebSearch } from './web-search'
 import { enrichImagePrompt } from './image-prompt-enricher'
+import { deriveTemplateName, summarizeTemplatePrompt } from './image-template-prompter'
 import {
   buildAnthropicTools,
   buildOpenAiTools,
@@ -1384,6 +1385,45 @@ export function registerAiPlatformRoutes(app: Hono): void {
       style: row.style ?? undefined,
       createdAt: row.createdAt,
     })
+  })
+
+  // 生成图添为模板：从一张已生成的图 + 当时的描述，归纳一条规范可复用的模板 prompt。
+  // 归纳优先走 Claude 视觉；任何失败（未配置/网络/上游非 2xx/解析不出）都降级为原描述，
+  // 前端拿到 name+prompt 即可在确认弹窗里继续编辑——绝不阻塞「添为模板」主流程。
+  app.post('/ai-platform/image-templates/summarize', async (c) => {
+    await ensureSeeded()
+    const body = await c.req.json<{ imageAssetId?: unknown; prompt?: unknown; aspectRatio?: unknown; style?: unknown }>().catch(() => null)
+    const imageAssetId = typeof body?.imageAssetId === 'string' ? body.imageAssetId : ''
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : ''
+    if (!imageAssetId || !prompt) {
+      return c.json({ error: '图片与原始描述不能为空。' }, 400)
+    }
+    if (prompt.length > IMAGE_PROMPT_MAX) {
+      return c.json({ error: '图片描述不能超过 2000 个字符。' }, 400)
+    }
+    const aspectRatio = typeof body?.aspectRatio === 'string' ? body.aspectRatio : undefined
+    if (aspectRatio && !IMAGE_ASPECT_RATIOS.has(aspectRatio)) {
+      return c.json({ error: '不支持的图片比例。' }, 400)
+    }
+    const style = typeof body?.style === 'string' && body.style ? body.style : undefined
+
+    const asset = await readImageAsset(USER_KEY, imageAssetId)
+    if (!asset) return c.json({ error: '图片不存在或不可用。' }, 404)
+
+    const config = readAnthropicConfig()
+    if (!config) {
+      return c.json({ name: deriveTemplateName(prompt), prompt, degraded: true })
+    }
+    // 入库图片的 mimeType 恒为 png/jpeg/webp（见 imageFileType），收窄到归纳接口接受的联合类型。
+    const mediaType = asset.mimeType as 'image/png' | 'image/jpeg' | 'image/webp'
+    const result = await summarizeTemplatePrompt(
+      { imageBase64: asset.bytes.toString('base64'), mediaType, prompt, aspectRatio, style },
+      config,
+    )
+    if (!result) {
+      return c.json({ name: deriveTemplateName(prompt), prompt, degraded: true })
+    }
+    return c.json({ name: result.name, prompt: result.prompt })
   })
 
   app.delete('/ai-platform/image-templates/:id', async (c) => {
