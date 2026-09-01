@@ -143,11 +143,15 @@ export function isTextMessage(message: ChatMessage): message is TextMessage {
   return message.type === undefined || message.type === 'text'
 }
 
-export function toUpstreamMessages(messages: ChatMessage[]): Array<Pick<TextMessage, 'role' | 'content'>> {
+export function toUpstreamMessages(messages: ChatMessage[]): Array<Pick<TextMessage, 'role' | 'content'> & { images?: string[] }> {
   return messages
     .filter(isTextMessage)
     .filter((message) => message.status !== 'error')
-    .map(({ role, content }) => ({ role, content }))
+    .map(({ role, content, images }) => ({
+      role,
+      content,
+      ...(images?.length ? { images: images.filter((url): url is string => typeof url === 'string' && !!controlledImageAssetId(url)) } : {}),
+    }))
 }
 
 const CONTROLLED_IMAGE_ASSET_PATH = /^\/api\/ai-platform\/images\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i

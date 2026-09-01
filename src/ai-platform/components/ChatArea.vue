@@ -291,9 +291,14 @@ async function requestReply(messages: ChatMessage[]) {
   }
 }
 
-async function handleSend(content: string) {
+async function handleSend(content: string, images?: string[]) {
   if (streaming.value) return
-  const userMsg: ChatMessage = { role: 'user', content, createdAt: new Date().toISOString() }
+  const userMsg: ChatMessage = {
+    role: 'user',
+    content,
+    ...(images?.length ? { images } : {}),
+    createdAt: new Date().toISOString(),
+  }
   const newMessages = [...props.messages, userMsg]
   emit('update:messages', newMessages)
   await requestReply(newMessages)

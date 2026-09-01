@@ -9,7 +9,7 @@ import {
 import { IMAGE_STYLES, imageStyleName } from '../image-styles'
 import { IMAGE_TEMPLATES, type ImageTemplate } from '../image-templates'
 import { createImageTemplate, deleteImageTemplate, fetchImageTemplates, uploadImage } from '../api'
-import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhSparkle, PhSquaresFour, PhStop, PhUploadSimple } from '@phosphor-icons/vue'
+import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhSparkle, PhSquaresFour, PhStop, PhUploadSimple, PhX } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -22,7 +22,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  send: [content: string]
+  send: [content: string, images?: string[]]
   'generate-image': [input: {
     prompt: string
     aspectRatio?: ImageAspectRatio
@@ -136,6 +136,44 @@ async function onReferenceFileChange(event: Event) {
   }
 }
 
+// —— 对话多模态：随消息附图的本地上传（复用参考图资产，无需桶）——
+const chatFileInput = ref<HTMLInputElement | null>(null)
+const chatImages = ref<string[]>([])
+const chatUploading = ref(false)
+const chatUploadError = ref('')
+
+function pickChatAttachment() {
+  chatFileInput.value?.click()
+}
+
+async function onChatAttachmentChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  if (!files.length) return
+  chatUploadError.value = ''
+  chatUploading.value = true
+  try {
+    for (const file of files) {
+      if (file.size > 8 * 1024 * 1024) {
+        chatUploadError.value = '图片不能超过 8MB。'
+        continue
+      }
+      const base64 = await readFileAsBase64(file)
+      const { url } = await uploadImage({ base64 })
+      if (!chatImages.value.includes(url)) chatImages.value.push(url)
+    }
+  } catch (error) {
+    chatUploadError.value = error instanceof Error ? error.message : '图片上传失败，请稍后重试。'
+  } finally {
+    chatUploading.value = false
+  }
+}
+
+function removeChatAttachment(index: number) {
+  chatImages.value.splice(index, 1)
+}
+
 async function autoResize() {
   const el = textareaRef.value
   if (!el) return
@@ -146,9 +184,12 @@ async function autoResize() {
 
 async function submit() {
   const content = chatDraft.value.trim()
-  if (!content || props.streaming || props.busy || props.imageGenerating) return
-  emit('send', content)
+  const images = chatImages.value.length ? [...chatImages.value] : undefined
+  if ((!content && !images) || props.streaming || props.busy || props.imageGenerating) return
+  emit('send', content, images)
   chatDraft.value = ''
+  chatImages.value = []
+  chatUploadError.value = ''
   await nextTick()
   await autoResize()
   textareaRef.value?.focus()
@@ -360,6 +401,28 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
         @input="autoResize"
         @keydown="onKeydown"
       />
+      <div v-if="mode === 'chat' && (chatImages.length || chatUploadError)" class="composer__attachments">
+        <div v-for="(image, index) in chatImages" :key="image" class="composer__attachment">
+          <img :src="image" alt="待发送图片" />
+          <button
+            class="composer__attachment-remove"
+            type="button"
+            :aria-label="`移除第 ${index + 1} 张图片`"
+            @click="removeChatAttachment(index)"
+          >
+            <PhX :size="12" weight="bold" />
+          </button>
+        </div>
+        <p v-if="chatUploadError" class="composer__attachment-error">{{ chatUploadError }}</p>
+      </div>
+      <input
+        ref="chatFileInput"
+        class="composer__file-input"
+        type="file"
+        accept="image/*"
+        multiple
+        @change="onChatAttachmentChange"
+      />
       <div class="composer__bar">
         <div class="composer__tools">
           <template v-if="mode === 'chat'">
@@ -385,6 +448,15 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
               <PhLightning :size="11" weight="regular" /> {{ params.reasoningEffort }}
             </button>
             <span v-if="params.maxTokens" class="composer__badge">max {{ params.maxTokens }}</span>
+            <button
+              class="composer__tool composer__tool--button"
+              type="button"
+              :disabled="streaming || busy || imageGenerating || chatUploading"
+              :title="chatUploading ? '上传中' : '添加图片，随本条消息发给 AI 识图'"
+              @click="pickChatAttachment"
+            >
+              <PhUploadSimple :size="13" weight="regular" /> {{ chatUploading ? '上传中' : '图片' }}
+            </button>
           </template>
           <template v-else>
             <div class="img-opt" :data-drop="'model'">
@@ -571,6 +643,12 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
 .composer__reference-thumb { width: 26px; height: 26px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--color-border-subtle); flex-shrink: 0; }
 .composer__reference--error { color: var(--color-danger); font-weight: 600; }
 .composer__file-input { display: none; }
+.composer__attachments { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 14px 8px; }
+.composer__attachment { position: relative; width: 52px; height: 52px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--color-border-subtle); flex-shrink: 0; }
+.composer__attachment img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.composer__attachment-remove { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: var(--radius-full); border: 0; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.composer__attachment-remove:hover { background: rgba(0,0,0,.8); }
+.composer__attachment-error { margin: 0; color: var(--color-danger); font-size: 12px; font-weight: 600; }
 .img-opt { position: relative; display: inline-flex; }
 .img-opt__trigger { height: 28px; padding: 0 10px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .img-opt__trigger:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent-strong); }

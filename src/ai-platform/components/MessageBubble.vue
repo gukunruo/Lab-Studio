@@ -260,6 +260,9 @@ const planTasks = computed<PlanTaskItem[]>(() => {
                 </div>
               </details>
             </div>
+            <div v-if="!isAssistant && textMessage?.images?.length" class="message__user-images">
+              <img v-for="(url, index) in textMessage.images" :key="index" :src="url" alt="用户上传的图片" />
+            </div>
             <div v-if="isAssistant" class="message__markdown" v-html="renderedContent" />
             <div v-else class="message__plain">{{ textMessage?.content }}</div>
             <span v-if="isStreaming" class="message__cursor" />
@@ -310,6 +313,21 @@ const planTasks = computed<PlanTaskItem[]>(() => {
 
 .message--user .message__actions {
   justify-content: flex-end;
+}
+
+.message__user-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.message__user-images img {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--color-border-subtle);
 }
 
 .message--assistant .message__body {

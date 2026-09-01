@@ -59,6 +59,8 @@ export interface TextMessage {
   type?: 'text'
   role: 'user' | 'assistant'
   content: string
+  /** 对话多模态：该条 user 消息附带的受控图床 URL（用户上传资产）。 */
+  images?: string[]
   createdAt?: string
   status?: 'error' | 'interrupted'
   modelId?: string
