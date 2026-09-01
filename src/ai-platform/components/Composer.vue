@@ -9,7 +9,7 @@ import {
 import { IMAGE_STYLES, imageStyleName } from '../image-styles'
 import { IMAGE_TEMPLATES, type ImageTemplate } from '../image-templates'
 import { createImageTemplate, deleteImageTemplate, fetchImageTemplates } from '../api'
-import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhRows, PhSparkle, PhStop } from '@phosphor-icons/vue'
+import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhSparkle, PhSquaresFour, PhStop } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -360,7 +360,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
                     <span class="ratio-tile__label">自动</span>
                   </button>
                   <button v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" type="button" class="ratio-tile" :class="{ 'ratio-tile--active': imageAspectRatio === ratio }" @click="selectAspectRatio(ratio)">
-                    <span class="ratio-tile__box"></span>
+                    <span class="ratio-tile__box" :class="`ratio-tile__box--${ratio.replace(':', '-')}`"></span>
                     <span class="ratio-tile__label">{{ ratio }}</span>
                   </button>
                 </div>
@@ -374,18 +374,22 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
                 <span v-if="imageStyleName(imageStyleId)" class="img-opt__value">{{ imageStyleName(imageStyleId) }}</span>
                 <PhCaretDown :size="11" weight="bold" class="img-opt__caret" />
               </button>
-              <div v-if="openDropdown === 'style'" class="img-opt__panel img-opt__panel--list">
-                <button v-for="s in IMAGE_STYLES" :key="s.id" type="button" class="img-opt__option" :class="{ 'img-opt__option--active': imageStyleId === s.id }" @click="selectStyle(s.id)">
-                  <span class="img-opt__thumb" :style="{ background: s.color }"></span>
-                  <span class="img-opt__option-label">{{ s.name }}</span>
-                  <PhCheck v-if="imageStyleId === s.id" :size="13" weight="bold" />
-                </button>
+              <div v-if="openDropdown === 'style'" class="img-opt__panel img-opt__panel--styles">
+                <div class="img-opt__style-grid">
+                  <button v-for="s in IMAGE_STYLES" :key="s.id" type="button" class="style-tile" :class="{ 'style-tile--active': imageStyleId === s.id }" @click="selectStyle(s.id)">
+                    <span class="style-tile__box">
+                      <img v-if="s.image" :src="s.image" :alt="s.name" loading="lazy" />
+                      <PhCheck v-if="imageStyleId === s.id" :size="12" weight="bold" class="style-tile__check" />
+                    </span>
+                    <span class="style-tile__label">{{ s.name }}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
             <div class="img-opt" :data-drop="'template'">
               <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': openDropdown === 'template' }" :disabled="streaming || busy || imageGenerating" :aria-expanded="openDropdown === 'template'" @click="toggleDropdown('template')">
-                <PhRows :size="13" weight="regular" />
+                <PhSquaresFour :size="13" weight="regular" />
                 <span class="img-opt__label">模板</span>
                 <PhCaretDown :size="11" weight="bold" class="img-opt__caret" />
               </button>
@@ -433,7 +437,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
       </div>
       <div v-if="openDropdown === 'template'" class="template-panel">
         <div class="template-panel__header">
-          <span class="template-panel__title"><PhRows :size="14" weight="regular" /> 模板中心</span>
+          <span class="template-panel__title"><PhSquaresFour :size="14" weight="regular" /> 模板中心</span>
           <div class="template-panel__header-actions">
             <button type="button" class="composer__template-action composer__template-action--primary" @click="templateFormOpen = !templateFormOpen">＋ 添加模板</button>
           </div>
@@ -512,13 +516,24 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .img-opt__option:hover { background: var(--color-accent-soft); }
 .img-opt__option--active { color: var(--color-accent); }
 .img-opt__option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.img-opt__thumb { width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0; }
 .img-opt__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.img-opt__panel--styles { min-width: 240px; max-height: min(360px, 48vh); }
+.img-opt__style-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.style-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 4px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); font: inherit; font-size: 10.5px; cursor: pointer; }
+.style-tile:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
+.style-tile--active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); }
+.style-tile__box { position: relative; width: 52px; height: 52px; border-radius: 6px; overflow: hidden; }
+.style-tile__box img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.style-tile__check { position: absolute; right: 4px; top: 4px; color: var(--color-accent); background: var(--color-surface); border-radius: 50%; padding: 2px; }
 .ratio-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); font: inherit; font-size: 11px; cursor: pointer; }
 .ratio-tile:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
 .ratio-tile--active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); }
-.ratio-tile__box { width: 26px; height: 26px; border: 1.5px solid currentColor; border-radius: 4px; }
-.ratio-tile__box--auto { border-style: dashed; display: flex; align-items: center; justify-content: center; }
+.ratio-tile__box { height: 22px; aspect-ratio: 1 / 1; width: auto; border: 1.5px solid currentColor; border-radius: 4px; }
+.ratio-tile__box--4-3 { aspect-ratio: 4 / 3; }
+.ratio-tile__box--3-4 { aspect-ratio: 3 / 4; }
+.ratio-tile__box--16-9 { aspect-ratio: 16 / 9; }
+.ratio-tile__box--9-16 { aspect-ratio: 9 / 16; }
+.ratio-tile__box--auto { border-style: dashed; display: flex; align-items: center; justify-content: center; aspect-ratio: 1 / 1; }
 .ratio-tile__label { white-space: nowrap; }
 .composer__modes { display: flex; align-items: center; gap: 2px; padding: 10px 12px 0 18px; }
 .composer__mode { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; transition: color .15s, background .15s; }
