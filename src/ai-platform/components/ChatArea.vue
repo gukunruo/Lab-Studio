@@ -299,7 +299,7 @@ function updateImageResult(requestId: string, update: (message: ImageResultMessa
 
 async function handleGenerateImage(input: {
   prompt: string
-  aspectRatio: ImageAspectRatio
+  aspectRatio?: ImageAspectRatio
   modelId: 'gpt-image-2'
   referenceImageId?: string
 }) {

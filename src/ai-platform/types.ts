@@ -71,7 +71,8 @@ export interface ImageRequestMessage {
   requestId: string
   prompt: string
   modelId: ImageModelId
-  aspectRatio: ImageAspectRatio
+  aspectRatio?: ImageAspectRatio
+  style?: string
   referenceImageId?: string
   createdAt: string
 }
@@ -82,7 +83,8 @@ export interface ImageResultMessage {
   requestId: string
   modelId: ImageModelId
   prompt: string
-  aspectRatio: ImageAspectRatio
+  aspectRatio?: ImageAspectRatio
+  style?: string
   status: 'generating' | 'completed' | 'error' | 'cancelled'
   imageUrl?: string
   createdAt: string
@@ -95,6 +97,8 @@ export interface GeminiMultimodalUserMessage {
   role: 'user'
   requestId: string
   content: string
+  aspectRatio?: ImageAspectRatio
+  style?: string
   referenceImageId?: string
   createdAt: string
 }

@@ -154,7 +154,7 @@ const CONTROLLED_IMAGE_ASSET_PATH = /^\/api\/ai-platform\/images\/([0-9a-f]{8}-[
 export interface ImageGenerationInput {
   modelId: 'gpt-image-2'
   prompt: string
-  aspectRatio: ImageAspectRatio
+  aspectRatio?: ImageAspectRatio
   referenceImageId?: string
   signal: AbortSignal
 }

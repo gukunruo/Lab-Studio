@@ -22,11 +22,11 @@ const emit = defineEmits<{
   send: [content: string]
   'generate-image': [input: {
     prompt: string
-    aspectRatio: ImageAspectRatio
+    aspectRatio?: ImageAspectRatio
     modelId: 'gpt-image-2'
     referenceImageId?: string
   }]
-  'generate-gemini': [input: { prompt: string }]
+  'generate-gemini': [input: { prompt: string; aspectRatio?: ImageAspectRatio }]
   'clear-reference': []
   abort: []
   'abort-image': []
@@ -37,7 +37,7 @@ const mode = ref<'chat' | 'gpt-image' | 'gemini'>('chat')
 const chatDraft = ref('')
 const gptImageDraft = ref('')
 const geminiDraft = ref('')
-const imageAspectRatio = ref<ImageAspectRatio>('1:1')
+const imageAspectRatio = ref<ImageAspectRatio | ''>('')
 const imageModelId = ref<ImageModelId>('gpt-image-2')
 const composerWrapRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -98,7 +98,7 @@ async function generateImage() {
   if (!prompt || props.streaming || props.busy || props.imageGenerating) return
   emit('generate-image', {
     prompt,
-    aspectRatio: imageAspectRatio.value,
+    aspectRatio: imageAspectRatio.value || undefined,
     modelId: 'gpt-image-2',
     ...(props.referenceImageId ? { referenceImageId: props.referenceImageId } : {}),
   })
@@ -110,7 +110,7 @@ async function generateImage() {
 async function generateGemini() {
   const prompt = geminiDraft.value.trim()
   if (!prompt || props.streaming || props.busy || props.imageGenerating) return
-  emit('generate-gemini', { prompt })
+  emit('generate-gemini', { prompt, aspectRatio: imageAspectRatio.value || undefined })
   geminiDraft.value = ''
   await nextTick()
   await autoResize()
@@ -150,9 +150,9 @@ function onKeydown(event: KeyboardEvent) {
   else void generateGemini()
 }
 
-function restoreImageDraft(input: { prompt: string; aspectRatio: ImageAspectRatio; referenceImageId?: string }) {
+function restoreImageDraft(input: { prompt: string; aspectRatio?: ImageAspectRatio; referenceImageId?: string }) {
   gptImageDraft.value = input.prompt
-  imageAspectRatio.value = input.aspectRatio
+  imageAspectRatio.value = input.aspectRatio ?? ''
   imageModelId.value = 'gpt-image-2'
   mode.value = 'gpt-image'
 }
