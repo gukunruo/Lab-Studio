@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { generateGeminiMultimodal, type GeminiMultimodalResponse } from '../api'
-import type { GeminiContextMessage } from '../types'
+import type { GeminiContextMessage, ImageAspectRatio } from '../types'
 
 export function useGeminiMultimodal() {
   const generating = ref(false)
@@ -11,6 +11,7 @@ export function useGeminiMultimodal() {
       prompt: string
       referenceImageId?: string
       history?: GeminiContextMessage[]
+      aspectRatio?: ImageAspectRatio
     },
     callbacks: {
       onDone: (result: GeminiMultimodalResponse) => void

@@ -74,7 +74,6 @@ test('buildImageGenerationRequest maps each image model to its confirmed endpoin
   const gpt = buildImageGenerationRequest({
     modelId: 'gpt-image-2',
     prompt: '孙悟空',
-    aspectRatio: '1:1',
   }, config)
   assert.equal(gpt.url, 'https://ai.example.test/openai-compatible/v1/images/generations')
   assert.deepEqual(JSON.parse(gpt.body), { model: 'gpt-image-2', prompt: '孙悟空' })

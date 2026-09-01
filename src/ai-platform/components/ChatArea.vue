@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
 import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from '../types'
 import { buildGeminiSubThreadHistory, controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
+import { composeImagePrompt } from '../image-styles'
 import MessageBubble from './MessageBubble.vue'
 import ConversationProgressRail from './ConversationProgressRail.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -301,6 +302,7 @@ async function handleGenerateImage(input: {
   prompt: string
   aspectRatio?: ImageAspectRatio
   modelId: 'gpt-image-2'
+  style?: string
   referenceImageId?: string
 }) {
   if (streaming.value || generatingDigest.value || imageGenerating.value) return
@@ -312,7 +314,8 @@ async function handleGenerateImage(input: {
     requestId,
     prompt: input.prompt,
     modelId: input.modelId,
-    aspectRatio: input.aspectRatio,
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    ...(input.style ? { style: input.style } : {}),
     ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
     createdAt,
   }
@@ -322,7 +325,8 @@ async function handleGenerateImage(input: {
     requestId,
     prompt: input.prompt,
     modelId: input.modelId,
-    aspectRatio: input.aspectRatio,
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    ...(input.style ? { style: input.style } : {}),
     status: 'generating',
     createdAt,
   }
@@ -330,7 +334,12 @@ async function handleGenerateImage(input: {
   const generation = ++imageRequestGeneration
   emit('clear-digest')
   emit('update:messages', [...props.messages, requestMessage, resultMessage])
-  await generateImage(input, {
+  await generateImage({
+    modelId: input.modelId,
+    prompt: composeImagePrompt(input.prompt, input.style),
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
+  }, {
     onDone: (result) => {
       if (generation !== imageRequestGeneration || !isCurrentConversation(conversation)) return
       updateImageResult(requestId, (message) => ({
@@ -360,7 +369,7 @@ function updateGeminiResult(requestId: string, update: (message: GeminiMultimoda
   )))
 }
 
-async function handleGenerateGemini(input: { prompt: string; referenceImageId?: string | null }) {
+async function handleGenerateGemini(input: { prompt: string; aspectRatio?: ImageAspectRatio; style?: string; referenceImageId?: string | null }) {
   if (streaming.value || generatingDigest.value || imageGenerating.value) return
   // 携带本会话连续 Gemini 子线程作为上下文，让语言追问（"背景改暖一点"）能延续；
   // 视觉延续仍靠参考图。在 push 新消息前读取，正好取到「先前的」子线程。
@@ -373,6 +382,8 @@ async function handleGenerateGemini(input: { prompt: string; referenceImageId?: 
     role: 'user',
     requestId,
     content: input.prompt,
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    ...(input.style ? { style: input.style } : {}),
     ...(reference ? { referenceImageId: reference } : {}),
     createdAt,
   }
@@ -389,7 +400,8 @@ async function handleGenerateGemini(input: { prompt: string; referenceImageId?: 
   emit('clear-digest')
   emit('update:messages', [...props.messages, userMessage, assistantMessage])
   await generateGemini({
-    prompt: input.prompt,
+    prompt: composeImagePrompt(input.prompt, input.style),
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
     ...(reference ? { referenceImageId: reference } : {}),
     ...(history.length ? { history } : {}),
   }, {
@@ -433,7 +445,8 @@ function retryImage(index: number) {
   if (!request || request.modelId !== 'gpt-image-2') return
   void handleGenerateImage({
     prompt: request.prompt,
-    aspectRatio: request.aspectRatio,
+    ...(request.aspectRatio ? { aspectRatio: request.aspectRatio } : {}),
+    ...(request.style ? { style: request.style } : {}),
     modelId: 'gpt-image-2',
     ...(request.referenceImageId ? { referenceImageId: request.referenceImageId } : {}),
   })
@@ -449,7 +462,8 @@ function editImage(index: number) {
   selectReferenceImage(controlledImageAssetId(result.imageUrl))
   composerRef.value?.restoreImageDraft({
     prompt: request.prompt,
-    aspectRatio: request.aspectRatio,
+    ...(request.aspectRatio ? { aspectRatio: request.aspectRatio } : {}),
+    ...(request.style ? { style: request.style } : {}),
   })
 }
 
