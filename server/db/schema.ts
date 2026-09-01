@@ -144,3 +144,14 @@ export const aiConversations = sqliteTable('ai_conversations', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
+
+// AI 生图自定义模板：按管理员身份（userKey）归属；aspect_ratio 可空，与应用「比例默认不选」一致。
+export const aiImageTemplates = sqliteTable('ai_image_templates', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userKey: text('user_key').notNull(),
+  name: text('name').notNull(),
+  prompt: text('prompt').notNull(),
+  aspectRatio: text('aspect_ratio'),
+  style: text('style'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+})
