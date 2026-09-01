@@ -9,7 +9,7 @@ import {
 import { IMAGE_STYLES, imageStyleName } from '../image-styles'
 import { IMAGE_TEMPLATES, type ImageTemplate } from '../image-templates'
 import { createImageTemplate, deleteImageTemplate, fetchImageTemplates } from '../api'
-import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhRows, PhSparkle, PhStop } from '@phosphor-icons/vue'
+import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhRows, PhSparkle, PhStop, PhX } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -47,7 +47,8 @@ const imageModelId = ref<ImageModelId>('gpt-image-2')
 const composerWrapRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const IMAGE_ASPECT_RATIO_OPTIONS: ImageAspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16']
-const openDropdown = ref<'model' | 'ratio' | 'style' | 'template' | null>(null)
+const openDropdown = ref<'model' | 'ratio' | 'style' | null>(null)
+const templateModalOpen = ref(false)
 const customTemplates = ref<ImageTemplate[]>([])
 const templateFormOpen = ref(false)
 const templateForm = ref<{ name: string; prompt: string; aspectRatio: ImageAspectRatio | ''; style: string }>({
@@ -150,10 +151,25 @@ function changeImageModel() {
   mode.value = imageModelId.value === 'gemini-3-pro-image' ? 'gemini' : 'gpt-image'
 }
 
-function toggleDropdown(key: 'model' | 'ratio' | 'style' | 'template') {
+function toggleDropdown(key: 'model' | 'ratio' | 'style') {
   if (props.streaming || props.busy || props.imageGenerating) return
   openDropdown.value = openDropdown.value === key ? null : key
 }
+function openTemplateModal() {
+  if (props.streaming || props.busy || props.imageGenerating) return
+  templateModalOpen.value = true
+}
+function closeTemplateModal() {
+  templateModalOpen.value = false
+  templateFormOpen.value = false
+}
+function onGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && templateModalOpen.value) closeTemplateModal()
+}
+watch(templateModalOpen, (open) => {
+  if (open) window.addEventListener('keydown', onGlobalKeydown)
+  else window.removeEventListener('keydown', onGlobalKeydown)
+})
 function selectModel(modelId: ImageModelId) {
   imageModelId.value = modelId
   changeImageModel()
@@ -180,6 +196,8 @@ function applyTemplate(t: ImageTemplate) {
   imageAspectRatio.value = t.aspectRatio ?? ''
   imageStyleId.value = t.style ?? ''
   openDropdown.value = null
+  templateModalOpen.value = false
+  templateFormOpen.value = false
 }
 async function saveTemplate() {
   const name = templateForm.value.name.trim()
@@ -202,6 +220,10 @@ async function removeTemplate(id: number) {
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
+    if (templateModalOpen.value) {
+      closeTemplateModal()
+      return
+    }
     if (openDropdown.value) {
       openDropdown.value = null
       return
@@ -241,7 +263,10 @@ onMounted(async () => {
   void autoResize()
   customTemplates.value = await fetchImageTemplates()
 })
-onUnmounted(() => document.removeEventListener('click', onDocumentClick))
+onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick)
+  window.removeEventListener('keydown', onGlobalKeydown)
+})
 defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 </script>
 
@@ -373,44 +398,12 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
               </div>
             </div>
 
-            <div class="img-opt" :data-drop="'template'">
-              <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': openDropdown === 'template' }" :disabled="streaming || busy || imageGenerating" :aria-expanded="openDropdown === 'template'" @click="toggleDropdown('template')">
+            <div class="img-opt">
+              <button type="button" class="img-opt__trigger" :disabled="streaming || busy || imageGenerating" @click="openTemplateModal">
                 <PhRows :size="13" weight="regular" />
                 <span class="img-opt__label">模板</span>
                 <PhCaretDown :size="11" weight="bold" class="img-opt__caret" />
               </button>
-              <div v-if="openDropdown === 'template'" class="img-opt__panel img-opt__panel--template">
-                <div v-if="IMAGE_TEMPLATES.length || customTemplates.length" class="composer__template-grid">
-                  <template v-for="t in [...IMAGE_TEMPLATES, ...customTemplates]" :key="t.id">
-                    <div class="composer__template-card">
-                      <div class="composer__template-info">
-                        <strong>{{ t.name }}</strong>
-                        <span class="composer__template-tags">{{ [t.aspectRatio, imageStyleName(t.style)].filter(Boolean).join(' · ') }}</span>
-                        <p>{{ t.prompt }}</p>
-                      </div>
-                      <div class="composer__template-actions">
-                        <button type="button" class="composer__template-action" @click="applyTemplate(t)">同款</button>
-                        <button v-if="customTemplates.includes(t)" type="button" class="composer__template-action composer__template-action--danger" @click="removeTemplate(Number(t.id))">删除</button>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-                <div v-if="templateFormOpen" class="composer__template-form">
-                  <input v-model="templateForm.name" placeholder="模板名称" class="composer__template-input" />
-                  <input v-model="templateForm.prompt" placeholder="示例 prompt（这里的一句话会被原样填进输入框）" class="composer__template-input" />
-                  <div class="composer__chip-row">
-                    <button v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.aspectRatio === ratio }" @click="templateForm.aspectRatio = templateForm.aspectRatio === ratio ? '' : ratio">{{ ratio }}</button>
-                  </div>
-                  <div class="composer__chip-row">
-                    <button v-for="style in IMAGE_STYLES" :key="style.id" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.style === style.id }" @click="templateForm.style = templateForm.style === style.id ? '' : style.id">{{ style.name }}</button>
-                  </div>
-                  <div class="composer__template-form-actions">
-                    <button type="button" class="composer__template-action" @click="templateFormOpen = false">取消</button>
-                    <button type="button" class="composer__template-action composer__template-action--primary" :disabled="!templateForm.name.trim() || !templateForm.prompt.trim()" @click="saveTemplate">保存模板</button>
-                  </div>
-                </div>
-                <button v-else type="button" class="composer__template-action composer__template-action--primary" @click="templateFormOpen = true">＋ 添加模板</button>
-              </div>
             </div>
 
             <span v-if="hasReference" class="composer__reference">
@@ -455,6 +448,64 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
       </div>
     </div>
   </div>
+  <Teleport to="body">
+    <div v-if="templateModalOpen" class="template-modal" @click.self="closeTemplateModal">
+      <div class="template-modal__panel" role="dialog" aria-modal="true" aria-label="模板中心">
+        <div class="template-modal__header">
+          <span class="template-modal__title"><PhRows :size="14" weight="regular" /> 模板中心</span>
+          <div class="template-modal__header-actions">
+            <button type="button" class="composer__template-action composer__template-action--primary" @click="templateFormOpen = !templateFormOpen">＋ 添加模板</button>
+            <button type="button" class="template-modal__close" aria-label="关闭" @click="closeTemplateModal"><PhX :size="15" weight="bold" /></button>
+          </div>
+        </div>
+        <div class="template-modal__scroll">
+          <div class="template-modal__grid">
+            <div v-for="t in IMAGE_TEMPLATES" :key="t.id" class="template-card" role="button" tabindex="0" @click="applyTemplate(t)" @keydown.enter="applyTemplate(t)">
+              <div class="template-card__media">
+                <img class="template-card__img" :src="t.image" :alt="t.name" loading="lazy" />
+                <span v-if="t.aspectRatio" class="template-card__ratio">{{ t.aspectRatio }}</span>
+                <span class="template-card__cta">做同款</span>
+              </div>
+              <div class="template-card__body">
+                <strong class="template-card__name">{{ t.name }}</strong>
+                <p class="template-card__prompt">{{ t.prompt }}</p>
+              </div>
+            </div>
+          </div>
+          <div v-if="templateFormOpen" class="composer__template-form">
+            <input v-model="templateForm.name" placeholder="模板名称" class="composer__template-input" />
+            <input v-model="templateForm.prompt" placeholder="示例 prompt（这里的一句话会被原样填进输入框）" class="composer__template-input" />
+            <div class="composer__chip-row">
+              <button v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.aspectRatio === ratio }" @click="templateForm.aspectRatio = templateForm.aspectRatio === ratio ? '' : ratio">{{ ratio }}</button>
+            </div>
+            <div class="composer__chip-row">
+              <button v-for="style in IMAGE_STYLES" :key="style.id" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.style === style.id }" @click="templateForm.style = templateForm.style === style.id ? '' : style.id">{{ style.name }}</button>
+            </div>
+            <div class="composer__template-form-actions">
+              <button type="button" class="composer__template-action" @click="templateFormOpen = false">取消</button>
+              <button type="button" class="composer__template-action composer__template-action--primary" :disabled="!templateForm.name.trim() || !templateForm.prompt.trim()" @click="saveTemplate">保存模板</button>
+            </div>
+          </div>
+          <template v-if="customTemplates.length">
+            <div class="template-modal__section">我的模板</div>
+            <div class="template-modal__custom">
+              <div v-for="t in customTemplates" :key="t.id" class="custom-template-card">
+                <div class="custom-template-card__info">
+                  <strong>{{ t.name }}</strong>
+                  <span class="custom-template-card__tags">{{ [t.aspectRatio, imageStyleName(t.style)].filter(Boolean).join(' · ') }}</span>
+                  <p>{{ t.prompt }}</p>
+                </div>
+                <div class="custom-template-card__actions">
+                  <button type="button" class="composer__template-action" @click="applyTemplate(t)">同款</button>
+                  <button type="button" class="composer__template-action composer__template-action--danger" @click="removeTemplate(Number(t.id))">删除</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped lang="scss">
@@ -477,7 +528,6 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .img-opt__caret { color: var(--color-text-muted); flex-shrink: 0; }
 .img-opt__panel { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px; max-height: min(320px, 40vh); overflow: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-2); box-shadow: 0 -12px 32px rgba(0,0,0,.28); padding: 6px; }
 .img-opt__panel--grid { min-width: 208px; }
-.img-opt__panel--template { min-width: 320px; padding: 10px; }
 .img-opt__option { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: var(--color-text); font: inherit; font-size: 12px; text-align: left; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; }
 .img-opt__option:hover { background: var(--color-accent-soft); }
 .img-opt__option--active { color: var(--color-accent); }
@@ -523,13 +573,35 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .composer__chip { height: 22px; padding: 0 9px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; }
 .composer__chip:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
 .composer__chip--active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
-.composer__template-grid { display: grid; gap: 8px; }
-.composer__template-card { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); padding: 8px 10px; }
-.composer__template-info { min-width: 0; }
-.composer__template-info strong { font-size: 12px; color: var(--color-text); display: block; }
-.composer__template-tags { font-size: 10.5px; color: var(--color-text-muted); }
-.composer__template-info p { margin: 3px 0 0; font-size: 11px; color: var(--color-text-muted); line-clamp: 2; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
-.composer__template-actions { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.template-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.5); }
+.template-modal__panel { width: min(680px, 100%); max-height: min(82vh, 720px); display: flex; flex-direction: column; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: 0 24px 64px rgba(0,0,0,.4); overflow: hidden; }
+.template-modal__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--color-border-subtle); }
+.template-modal__title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-text); }
+.template-modal__header-actions { display: flex; align-items: center; gap: 8px; }
+.template-modal__close { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.template-modal__close:hover { background: var(--color-surface); color: var(--color-text); }
+.template-modal__scroll { overflow-y: auto; padding: 14px 16px 18px; }
+.template-modal__grid { columns: 2; column-gap: 12px; }
+.template-modal__grid > * { break-inside: avoid; }
+@media (max-width: 520px) { .template-modal__grid { columns: 1; } }
+.template-card { margin-bottom: 12px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface); overflow: hidden; cursor: pointer; transition: border-color .15s; }
+.template-card:hover { border-color: var(--color-accent); }
+.template-card__media { position: relative; overflow: hidden; }
+.template-card__img { display: block; width: 100%; height: auto; }
+.template-card__ratio { position: absolute; top: 8px; left: 8px; padding: 2px 7px; border-radius: var(--radius-full); background: rgba(0,0,0,.55); color: #fff; font-size: 10.5px; font-family: var(--font-mono); }
+.template-card__cta { position: absolute; left: 8px; bottom: 8px; padding: 4px 10px; border-radius: var(--radius-full); background: var(--color-accent); color: #fff; font-size: 11px; font-weight: 600; opacity: 0; transform: translateY(4px); transition: opacity .15s, transform .15s; }
+.template-card:hover .template-card__cta { opacity: 1; transform: translateY(0); }
+.template-card__body { padding: 8px 10px 10px; }
+.template-card__name { display: block; font-size: 12.5px; color: var(--color-text); }
+.template-card__prompt { margin: 4px 0 0; font-size: 11px; color: var(--color-text-muted); line-height: 1.4; line-clamp: 2; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.template-modal__section { margin: 4px 0 8px; font-size: 12px; font-weight: 600; color: var(--color-text-muted); }
+.template-modal__custom { display: grid; gap: 6px; }
+.custom-template-card { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); padding: 8px 10px; }
+.custom-template-card__info { min-width: 0; }
+.custom-template-card__info strong { font-size: 12px; color: var(--color-text); display: block; }
+.custom-template-card__tags { font-size: 10.5px; color: var(--color-text-muted); }
+.custom-template-card__info p { margin: 3px 0 0; font-size: 11px; color: var(--color-text-muted); line-clamp: 2; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.custom-template-card__actions { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .composer__template-action { border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); cursor: pointer; font: 600 11px var(--font-sans); padding: 4px 8px; }
 .composer__template-action--primary { border-color: var(--color-accent); background: var(--color-accent); color: #fff; }
 .composer__template-action--danger { color: var(--color-danger); }
