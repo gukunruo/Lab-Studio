@@ -111,31 +111,7 @@ export interface GeminiMultimodalAssistantMessage {
   errorMessage?: string
 }
 
-// 提示词卡的可编辑要素（与 server/image-prompt-drafter 的 ImageDraftFacets 对齐）。
-export interface ImageDraftFacets {
-  subject: string
-  style: string
-  composition: string
-  details: string
-  negative: string
-}
-
-// 「智能优化」模式下，AI 在 image-request 与 image-result 之间起草的提示词卡。
-// status: 'drafting'（AI 起草中）→ 'ready'（可编辑/确认）→ 'error'（起草失败）。
-export interface ImageDraftMessage {
-  type: 'image-draft'
-  role: 'assistant'
-  requestId: string
-  modelId: ImageModelId
-  facets: ImageDraftFacets
-  prompt: string
-  status: 'drafting' | 'ready' | 'error'
-  errorMessage?: string
-  createdAt: string
-  completedAt?: string
-}
-
-export type ChatMessage = TextMessage | ImageRequestMessage | ImageResultMessage | GeminiMultimodalUserMessage | GeminiMultimodalAssistantMessage | ImageDraftMessage
+export type ChatMessage = TextMessage | ImageRequestMessage | ImageResultMessage | GeminiMultimodalUserMessage | GeminiMultimodalAssistantMessage
 
 export interface ChatParams {
   reasoningEffort?: 'low' | 'medium' | 'high'

@@ -27,12 +27,6 @@ const emit = defineEmits<{
     referenceImageId?: string
   }]
   'generate-gemini': [input: { prompt: string }]
-  'generate-image-draft': [input: {
-    desire: string
-    aspectRatio: ImageAspectRatio
-    modelId: 'gpt-image-2'
-  }]
-  'generate-gemini-draft': [input: { desire: string }]
   'clear-reference': []
   abort: []
   'abort-image': []
@@ -40,8 +34,6 @@ const emit = defineEmits<{
 }>()
 
 const mode = ref<'chat' | 'gpt-image' | 'gemini'>('chat')
-// 生图输入区的「智能优化 / 直接」模式。默认智能优化；进入生图 tab 时重置为智能优化。
-const refine = ref(true)
 const chatDraft = ref('')
 const gptImageDraft = ref('')
 const geminiDraft = ref('')
@@ -83,20 +75,6 @@ function cycleReasoning() {
 const imageMode = computed(() => mode.value !== 'chat')
 const gptEditing = computed(() => mode.value === 'gpt-image' && hasReference.value)
 
-const imagePlaceholder = computed(() => {
-  if (mode.value === 'gemini') {
-    return refine.value ? '描述你想创作或优化的需求，AI 起草提示词卡' : '描述你想创作或优化的内容，Enter 发送'
-  }
-  if (gptEditing.value) return '描述如何编辑这张图片，Enter 编辑'
-  if (refine.value) return '描述你的需求（如：AI 平台的 logo），AI 起草提示词卡'
-  return `描述你想生成的图片 · ${selectedImageModelName.value}`
-})
-const imageHint = computed(() => {
-  if (mode.value === 'gemini') return refine.value ? 'Enter 起草' : 'Enter 发送'
-  if (gptEditing.value) return 'Enter 编辑'
-  return refine.value ? 'Enter 起草' : 'Enter 生成'
-})
-
 async function autoResize() {
   const el = textareaRef.value
   if (!el) return
@@ -118,20 +96,12 @@ async function submit() {
 async function generateImage() {
   const prompt = gptImageDraft.value.trim()
   if (!prompt || props.streaming || props.busy || props.imageGenerating) return
-  if (refine.value) {
-    emit('generate-image-draft', {
-      desire: prompt,
-      aspectRatio: imageAspectRatio.value,
-      modelId: 'gpt-image-2',
-    })
-  } else {
-    emit('generate-image', {
-      prompt,
-      aspectRatio: imageAspectRatio.value,
-      modelId: 'gpt-image-2',
-      ...(props.referenceImageId ? { referenceImageId: props.referenceImageId } : {}),
-    })
-  }
+  emit('generate-image', {
+    prompt,
+    aspectRatio: imageAspectRatio.value,
+    modelId: 'gpt-image-2',
+    ...(props.referenceImageId ? { referenceImageId: props.referenceImageId } : {}),
+  })
   gptImageDraft.value = ''
   await nextTick()
   await autoResize()
@@ -140,11 +110,7 @@ async function generateImage() {
 async function generateGemini() {
   const prompt = geminiDraft.value.trim()
   if (!prompt || props.streaming || props.busy || props.imageGenerating) return
-  if (refine.value) {
-    emit('generate-gemini-draft', { desire: prompt })
-  } else {
-    emit('generate-gemini', { prompt })
-  }
+  emit('generate-gemini', { prompt })
   geminiDraft.value = ''
   await nextTick()
   await autoResize()
@@ -156,11 +122,9 @@ function setMode(tab: 'chat' | 'gpt-image' | 'gemini') {
     mode.value = 'chat'
   } else if (tab === 'gpt-image') {
     imageModelId.value = 'gpt-image-2'
-    refine.value = true
     mode.value = 'gpt-image'
   } else {
     imageModelId.value = 'gemini-3-pro-image'
-    refine.value = true
     mode.value = 'gemini'
   }
 }
@@ -190,25 +154,18 @@ function restoreImageDraft(input: { prompt: string; aspectRatio: ImageAspectRati
   gptImageDraft.value = input.prompt
   imageAspectRatio.value = input.aspectRatio
   imageModelId.value = 'gpt-image-2'
-  refine.value = false
   mode.value = 'gpt-image'
 }
 
 function restoreGeminiDraft(input: { prompt: string }) {
   geminiDraft.value = input.prompt
   imageModelId.value = 'gemini-3-pro-image'
-  refine.value = false
   mode.value = 'gemini'
-}
-
-function setRefine(value: boolean) {
-  if (props.streaming || props.busy || props.imageGenerating) return
-  refine.value = value
 }
 
 watch([mode, currentDraft], () => void nextTick(autoResize))
 onMounted(() => void autoResize())
-defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, setRefine })
+defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 </script>
 
 <template>
@@ -252,20 +209,6 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, setRefine
           <PhImage v-else :size="15" weight="fill" />
           {{ mode === 'gemini' ? 'Gemini 创作对话' : (gptEditing ? '编辑图片' : '生图') }}
         </span>
-        <span v-if="!gptEditing" class="composer__draft-toggle" role="group" aria-label="生图模式">
-          <button
-            class="composer__draft-toggle-btn"
-            :class="{ 'composer__draft-toggle-btn--active': !refine }"
-            type="button"
-            @click="refine = false"
-          >直接</button>
-          <button
-            class="composer__draft-toggle-btn"
-            :class="{ 'composer__draft-toggle-btn--active': refine }"
-            type="button"
-            @click="refine = true"
-          >智能优化</button>
-        </span>
         <label class="composer__model-select">
           <span class="sr-only">图片模型</span>
           <select v-model="imageModelId" aria-label="图片模型" @change="changeImageModel">
@@ -278,7 +221,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, setRefine
           {{ referenceImageLabel ?? '基于上一张图片' }}
           <button type="button" @click="emit('clear-reference')">移除参考图</button>
         </span>
-        <span class="composer__image-hint">{{ imageHint }}</span>
+        <span class="composer__image-hint">Enter {{ mode === 'gemini' ? '发送' : (gptEditing ? '编辑' : '生成') }}</span>
       </div>
       <textarea
         ref="textareaRef"
@@ -287,7 +230,9 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, setRefine
         :aria-label="imageMode ? '图片创作输入框，按 Enter 发送，Shift 加 Enter 换行' : '消息输入框，按 Enter 发送，Shift 加 Enter 换行'"
         :placeholder="mode === 'chat'
           ? '输入消息，Enter 发送，Shift+Enter 换行'
-          : imagePlaceholder"
+          : mode === 'gemini'
+            ? '描述你想创作或优化的内容，Enter 发送'
+            : (gptEditing ? '描述如何编辑这张图片，Enter 编辑' : `描述你想生成的图片 · ${selectedImageModelName}`)"
         rows="1"
         @input="autoResize"
         @keydown="onKeydown"
@@ -370,10 +315,6 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, setRefine
 .composer__image-label { color: var(--color-accent-strong); font-weight: 600; white-space: nowrap; }
 .composer__model-select select { max-width: 190px; appearance: none; border: 1px solid var(--color-border); border-radius: var(--radius-full); outline: none; background: var(--color-surface); color: var(--color-text); cursor: pointer; font: inherit; font-size: 11px; padding: 5px 24px 5px 9px; }
 .composer__model-select select:focus { border-color: var(--color-accent); }
-.composer__draft-toggle { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); }
-.composer__draft-toggle-btn { height: 21px; padding: 0 9px; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-text-muted); font: inherit; font-size: 11px; cursor: pointer; transition: color .15s, background .15s; }
-.composer__draft-toggle-btn:hover:not(.composer__draft-toggle-btn--active) { color: var(--color-text); }
-.composer__draft-toggle-btn--active { color: var(--color-accent-strong); background: var(--color-accent-soft); }
 .composer__reference { min-width: 0; color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
 .composer__reference button { border: 0; background: transparent; color: var(--color-accent-strong); cursor: pointer; font: inherit; font-size: 11px; padding: 0; }
 .composer__reference button:hover { text-decoration: underline; }

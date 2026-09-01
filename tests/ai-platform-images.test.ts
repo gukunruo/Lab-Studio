@@ -9,7 +9,6 @@ import {
   generateImage,
   isSafeImageUrl,
   latestControlledImageAssetId,
-  normalizeImageDraftFacets,
   type ImageGenerationInput,
 } from '../src/ai-platform/api'
 import {
@@ -472,12 +471,4 @@ test('imageAssetResponse returns 404 when the asset file is missing', async () =
     await db.delete(aiImageAssets).where(eq(aiImageAssets.id, asset.id))
     await rm(assetPath, { force: true })
   }
-})
-
-test('normalizeImageDraftFacets normalizes a partial or malformed facets payload', () => {
-  assert.deepEqual(normalizeImageDraftFacets({ subject: 'AI logo', style: '' }), {
-    subject: 'AI logo', style: '', composition: '', details: '', negative: '',
-  })
-  assert.deepEqual(normalizeImageDraftFacets(null), { subject: '', style: '', composition: '', details: '', negative: '' })
-  assert.deepEqual(normalizeImageDraftFacets({ subject: 123 }), { subject: '', style: '', composition: '', details: '', negative: '' })
 })

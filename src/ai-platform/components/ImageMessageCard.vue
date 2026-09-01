@@ -64,8 +64,6 @@ const hasReferenceImage = computed(() => Boolean(controlledImageAssetId(imageUrl
           <div><strong>图片已生成</strong><span>{{ message.modelId === 'gpt-image-2' ? 'GPT-Image-2' : 'Gemini 3 Pro Image' }}</span></div>
           <div class="image-card__actions">
             <button v-if="hasReferenceImage" class="image-card__secondary-action" type="button" @click="emit('use-as-reference')"><PhImage :size="14" weight="bold" /> 基于此图继续</button>
-            <button class="image-card__secondary-action" type="button" @click="emit('retry')"><PhArrowClockwise :size="14" weight="bold" /> 换一版</button>
-            <button class="image-card__secondary-action" type="button" @click="emit('edit')">返回编辑</button>
             <a class="image-card__download" :href="imageUrl" target="_blank" rel="noreferrer" download><PhDownloadSimple :size="15" weight="bold" /> 下载</a>
           </div>
         </div>
@@ -197,8 +195,6 @@ const hasReferenceImage = computed(() => Boolean(controlledImageAssetId(imageUrl
 
 .image-card__actions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 6px;
   margin-left: auto;
 }

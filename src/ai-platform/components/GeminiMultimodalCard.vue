@@ -87,8 +87,6 @@ const currentGeneratingCopy = computed(() => generatingCopy[generatingCopyIndex.
         <div><strong>Gemini 创作完成</strong><span>Gemini 3 Pro Image</span></div>
         <div class="gemini-card__actions">
           <button v-if="hasReferenceImage" class="gemini-card__secondary-action" type="button" @click="emit('use-as-reference')"><PhImage :size="14" weight="bold" /> 基于此图继续</button>
-          <button class="gemini-card__secondary-action" type="button" @click="emit('retry')"><PhArrowClockwise :size="14" weight="bold" /> 换一版</button>
-          <button class="gemini-card__secondary-action" type="button" @click="emit('edit')">返回编辑</button>
           <a class="gemini-card__download" :href="imageUrl" target="_blank" rel="noreferrer" download><PhDownloadSimple :size="15" weight="bold" /> 下载</a>
         </div>
       </div>
@@ -117,6 +115,6 @@ const currentGeneratingCopy = computed(() => generatingCopy[generatingCopyIndex.
 .gemini-card__status--generating > svg { color: var(--color-accent); animation: gemini-card-spin 1s linear infinite; }
 .gemini-card__status--error { border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border)); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); }
 .gemini-card__status--error > svg { color: var(--color-danger); }
-.gemini-card__actions { display: flex !important; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.gemini-card__actions { display: flex !important; gap: 6px; margin-left: auto; }
 @keyframes gemini-card-spin { to { transform: rotate(360deg); } }
 </style>

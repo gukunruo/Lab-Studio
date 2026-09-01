@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
-import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageDraftMessage, ImageModelId, ImageRequestMessage, ImageResultMessage, TextMessage, ToolCallTrace } from '../types'
-import { buildGeminiSubThreadHistory, controlledImageAssetId, draftImagePrompt, EMPTY_DRAFT_FACETS, isTextMessage, parseConversationDigest } from '../api'
-import { imageDraftConfirmFlow } from '../composer'
+import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from '../types'
+import { buildGeminiSubThreadHistory, controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
 import MessageBubble from './MessageBubble.vue'
 import ConversationProgressRail from './ConversationProgressRail.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -53,7 +52,6 @@ const generatingDigest = ref(false)
 const digestError = ref('')
 const digestMenuOpen = ref(false)
 const userScrolledAway = ref(false)
-const draftBusy = ref(false)
 
 const { streaming, send, abort } = useChat()
 const { send: sendDigest } = useChat()
@@ -79,8 +77,6 @@ const imageModels = computed(() => modelsStore.imageModels.flatMap((model) => (
 let requestGeneration = 0
 let imageRequestGeneration = 0
 let geminiRequestGeneration = 0
-let imageDraftRequestGeneration = 0
-let draftAbortController: AbortController | null = null
 let activeRequestConversation: object | number | null = null
 let selectedReferenceConversation: object | number | null = null
 const selectedReferenceImageId = ref<string | null | undefined>(undefined)
@@ -111,11 +107,9 @@ function invalidateRequest() {
   requestGeneration += 1
   imageRequestGeneration += 1
   geminiRequestGeneration += 1
-  imageDraftRequestGeneration += 1
   abort()
   abortImage()
   abortGemini()
-  draftAbortController?.abort()
   streamingContent.value = ''
   streamingModelId.value = undefined
   streamingToolCalls.value = []
@@ -420,302 +414,6 @@ async function handleGenerateGemini(input: { prompt: string; referenceImageId?: 
   })
 }
 
-function updateImageDraft(requestId: string, update: (message: ImageDraftMessage) => ImageDraftMessage) {
-  emit('update:messages', props.messages.map((message) => (
-    message.type === 'image-draft' && message.requestId === requestId
-      ? update(message)
-      : message
-  )))
-}
-
-function userRequestForDraft(draft: ImageDraftMessage) {
-  return props.messages.find((message) => (
-    (message.type === 'image-request' || message.type === 'gemini-multimodal-user')
-    && message.requestId === draft.requestId
-  ))
-}
-
-function draftDesire(draft: ImageDraftMessage): string {
-  const user = userRequestForDraft(draft)
-  if (!user) return ''
-  if (user.type === 'image-request') return user.prompt
-  if (user.type === 'gemini-multimodal-user') return user.content
-  return ''
-}
-
-async function handleGenerateImageDraft(input: {
-  desire: string
-  aspectRatio: ImageAspectRatio
-  modelId: 'gpt-image-2'
-}) {
-  if (streaming.value || generatingDigest.value || imageGenerating.value || draftBusy.value) return
-  const desire = input.desire.trim()
-  if (!desire) return
-  const requestId = crypto.randomUUID()
-  const createdAt = new Date().toISOString()
-  const requestMessage: ImageRequestMessage = {
-    type: 'image-request',
-    role: 'user',
-    requestId,
-    prompt: desire,
-    modelId: input.modelId,
-    aspectRatio: input.aspectRatio,
-    createdAt,
-  }
-  const draftMessage: ImageDraftMessage = {
-    type: 'image-draft',
-    role: 'assistant',
-    requestId,
-    modelId: input.modelId,
-    facets: { ...EMPTY_DRAFT_FACETS },
-    prompt: '',
-    status: 'drafting',
-    createdAt,
-  }
-  const conversation = currentConversation()
-  const generation = ++imageDraftRequestGeneration
-  draftAbortController = new AbortController()
-  emit('clear-digest')
-  emit('update:messages', [...props.messages, requestMessage, draftMessage])
-  draftBusy.value = true
-  try {
-    const result = await draftImagePrompt({
-      modelId: input.modelId,
-      desire,
-      signal: draftAbortController.signal,
-    })
-    if (generation !== imageDraftRequestGeneration || !isCurrentConversation(conversation)) return
-    updateImageDraft(requestId, (message) => ({
-      ...message,
-      facets: result.facets,
-      prompt: result.prompt,
-      status: 'ready',
-      completedAt: new Date().toISOString(),
-    }))
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') return
-    if (generation !== imageDraftRequestGeneration || !isCurrentConversation(conversation)) return
-    updateImageDraft(requestId, (message) => ({
-      ...message,
-      status: 'error',
-      errorMessage: error instanceof Error ? error.message : '提示词起草失败，请重试。',
-    }))
-  } finally {
-    draftBusy.value = false
-    if (generation === imageDraftRequestGeneration) draftAbortController = null
-  }
-}
-
-async function handleGenerateGeminiDraft(input: { desire: string }) {
-  if (streaming.value || generatingDigest.value || imageGenerating.value || draftBusy.value) return
-  const desire = input.desire.trim()
-  if (!desire) return
-  const requestId = crypto.randomUUID()
-  const createdAt = new Date().toISOString()
-  const userMessage: GeminiMultimodalUserMessage = {
-    type: 'gemini-multimodal-user',
-    role: 'user',
-    requestId,
-    content: desire,
-    createdAt,
-  }
-  const draftMessage: ImageDraftMessage = {
-    type: 'image-draft',
-    role: 'assistant',
-    requestId,
-    modelId: 'gemini-3-pro-image',
-    facets: { ...EMPTY_DRAFT_FACETS },
-    prompt: '',
-    status: 'drafting',
-    createdAt,
-  }
-  const conversation = currentConversation()
-  const generation = ++imageDraftRequestGeneration
-  draftAbortController = new AbortController()
-  emit('clear-digest')
-  emit('update:messages', [...props.messages, userMessage, draftMessage])
-  draftBusy.value = true
-  try {
-    const result = await draftImagePrompt({
-      modelId: 'gemini-3-pro-image',
-      desire,
-      signal: draftAbortController.signal,
-    })
-    if (generation !== imageDraftRequestGeneration || !isCurrentConversation(conversation)) return
-    updateImageDraft(requestId, (message) => ({
-      ...message,
-      facets: result.facets,
-      prompt: result.prompt,
-      status: 'ready',
-      completedAt: new Date().toISOString(),
-    }))
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') return
-    if (generation !== imageDraftRequestGeneration || !isCurrentConversation(conversation)) return
-    updateImageDraft(requestId, (message) => ({
-      ...message,
-      status: 'error',
-      errorMessage: error instanceof Error ? error.message : '提示词起草失败，请重试。',
-    }))
-  } finally {
-    draftBusy.value = false
-    if (generation === imageDraftRequestGeneration) draftAbortController = null
-  }
-}
-
-// 重新润色：用当前需求（可追加追问补语）重新起草整张卡。
-async function redraftImageDraft(messageIndex: number, extra?: string) {
-  const draft = props.messages[messageIndex]
-  if (!draft || draft.type !== 'image-draft' || imageGenerating.value || draftBusy.value) return
-  const desire = draftDesire(draft)
-  if (!desire) return
-  const requestId = draft.requestId
-  const combined = extra?.trim() ? `${desire}\n补充：${extra.trim()}` : desire
-  const conversation = currentConversation()
-  const generation = ++imageDraftRequestGeneration
-  draftAbortController = new AbortController()
-  emit('clear-digest')
-  updateImageDraft(requestId, (message) => ({ ...message, status: 'drafting', errorMessage: undefined }))
-  draftBusy.value = true
-  try {
-    const result = await draftImagePrompt({
-      modelId: draft.modelId,
-      desire: combined,
-      signal: draftAbortController.signal,
-    })
-    if (generation !== imageDraftRequestGeneration || !isCurrentConversation(conversation)) return
-    updateImageDraft(requestId, (message) => ({
-      ...message,
-      facets: result.facets,
-      prompt: result.prompt,
-      status: 'ready',
-      completedAt: new Date().toISOString(),
-    }))
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') return
-    if (generation !== imageDraftRequestGeneration || !isCurrentConversation(conversation)) return
-    updateImageDraft(requestId, (message) => ({
-      ...message,
-      status: 'error',
-      errorMessage: error instanceof Error ? error.message : '提示词起草失败，请重试。',
-    }))
-  } finally {
-    draftBusy.value = false
-    if (generation === imageDraftRequestGeneration) draftAbortController = null
-  }
-}
-
-function abortImageDraft() {
-  draftAbortController?.abort()
-}
-
-// 确认生成：复用 image-request 的 requestId / 比例 / 参考图，走现有出图链路。
-function confirmImageDraft(messageIndex: number, prompt: string) {
-  const draft = props.messages[messageIndex]
-  if (!draft || draft.type !== 'image-draft' || draft.status !== 'ready' || imageGenerating.value) return
-  const userMsg = userRequestForDraft(draft)
-  if (!userMsg || userMsg.type !== 'image-request') return
-  const requestId = draft.requestId
-  const createdAt = new Date().toISOString()
-  const resultMessage: ImageResultMessage = {
-    type: 'image-result',
-    role: 'assistant',
-    requestId,
-    modelId: draft.modelId,
-    prompt,
-    aspectRatio: userMsg.aspectRatio,
-    status: 'generating',
-    createdAt,
-  }
-  const conversation = currentConversation()
-  const generation = ++imageRequestGeneration
-  emit('clear-digest')
-  emit('update:messages', [...props.messages, resultMessage])
-  void generateImage({
-    prompt,
-    aspectRatio: userMsg.aspectRatio,
-    modelId: 'gpt-image-2',
-    ...(userMsg.referenceImageId ? { referenceImageId: userMsg.referenceImageId } : {}),
-  }, {
-    onDone: (result) => {
-      if (generation !== imageRequestGeneration || !isCurrentConversation(conversation)) return
-      updateImageResult(requestId, (message) => ({
-        ...message,
-        modelId: result.modelId,
-        status: 'completed',
-        imageUrl: result.imageUrl,
-        completedAt: new Date().toISOString(),
-      }))
-    },
-    onError: (errorMessage) => {
-      if (generation !== imageRequestGeneration || !isCurrentConversation(conversation)) return
-      updateImageResult(requestId, (message) => ({ ...message, status: 'error', errorMessage }))
-    },
-    onAbort: () => {
-      if (generation !== imageRequestGeneration || !isCurrentConversation(conversation)) return
-      updateImageResult(requestId, (message) => ({ ...message, status: 'cancelled' }))
-    },
-  })
-}
-
-// 确认生成：复用 image-draft 的 requestId，走现有 Gemini 创作链路。
-function confirmGeminiDraft(messageIndex: number, prompt: string) {
-  const draft = props.messages[messageIndex]
-  if (!draft || draft.type !== 'image-draft' || draft.status !== 'ready' || imageGenerating.value) return
-  const requestId = draft.requestId
-  const createdAt = new Date().toISOString()
-  const assistantMessage: GeminiMultimodalAssistantMessage = {
-    type: 'gemini-multimodal-assistant',
-    role: 'assistant',
-    requestId,
-    content: '',
-    status: 'generating',
-    createdAt,
-  }
-  const conversation = currentConversation()
-  const generation = ++geminiRequestGeneration
-  // 子线程在此处被 image-draft 卡打断，历史里只剩本轮的愿望；润色后的 prompt 已取代它，去掉避免重复。
-  const history = buildGeminiSubThreadHistory(props.messages)
-  const reference = referenceImageId.value
-  emit('clear-digest')
-  emit('update:messages', [...props.messages, assistantMessage])
-  void generateGemini({
-    prompt,
-    ...(reference ? { referenceImageId: reference } : {}),
-    ...(history.length ? { history } : {}),
-  }, {
-    onDone: (result) => {
-      if (generation !== geminiRequestGeneration || !isCurrentConversation(conversation)) return
-      updateGeminiResult(requestId, (message) => ({
-        ...message,
-        content: result.content,
-        ...(result.imageUrl ? { imageUrl: result.imageUrl } : {}),
-        status: 'completed',
-        completedAt: new Date().toISOString(),
-      }))
-    },
-    onError: (errorMessage) => {
-      if (generation !== geminiRequestGeneration || !isCurrentConversation(conversation)) return
-      updateGeminiResult(requestId, (message) => ({ ...message, status: 'error', errorMessage }))
-    },
-    onAbort: () => {
-      if (generation !== geminiRequestGeneration || !isCurrentConversation(conversation)) return
-      updateGeminiResult(requestId, (message) => ({ ...message, status: 'cancelled' }))
-    },
-  })
-}
-
-// 分发确认生成：用 imageDraftConfirmFlow 判定该 draft 底层的愿望消息类型，
-// 走 GPT 出图或 Gemini 创作链路（与 composer.ts 的单测对齐）。
-function confirmDraft(messageIndex: number, prompt: string) {
-  const flow = imageDraftConfirmFlow(props.messages, messageIndex)
-  if (flow === 'gemini') {
-    confirmGeminiDraft(messageIndex, prompt)
-  } else if (flow === 'gpt-image') {
-    confirmImageDraft(messageIndex, prompt)
-  }
-}
-
 function abortImageGeneration() {
   abortImage()
   abortGemini()
@@ -1010,10 +708,6 @@ onBeforeUnmount(() => invalidateRequest())
         @edit-gemini="editGemini(i)"
         @abort-gemini="abortImageGeneration"
         @use-image-reference="useImageReference(i)"
-        @confirm-draft="confirmDraft(i, $event)"
-        @refine-draft="redraftImageDraft(i)"
-        @enrich-draft="redraftImageDraft(i, $event)"
-        @abort-draft="abortImageDraft"
         @regenerate="regenerateMessage(i)"
         @edit="editMessage"
         @branch="emit('branch', $event)"
@@ -1045,7 +739,7 @@ onBeforeUnmount(() => invalidateRequest())
       ref="composerRef"
       :streaming="streaming"
       :image-generating="imageGenerating"
-      :busy="generatingDigest || draftBusy"
+      :busy="generatingDigest"
       :params="params"
       :image-models="imageModels"
       :reference-image-id="referenceImageId"
@@ -1053,8 +747,6 @@ onBeforeUnmount(() => invalidateRequest())
       @send="handleSend"
       @generate-image="handleGenerateImage"
       @generate-gemini="handleGenerateGemini"
-      @generate-image-draft="handleGenerateImageDraft"
-      @generate-gemini-draft="handleGenerateGeminiDraft"
       @clear-reference="selectReferenceImage(null)"
       @abort="abort"
       @abort-image="abortImageGeneration"

@@ -1,4 +1,4 @@
-import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageDraftFacets, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from './types'
+import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from './types'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
   const res = await fetch('/api/ai-platform/models', { credentials: 'include' })
@@ -221,8 +221,8 @@ export function buildGeminiSubThreadHistory(messages: ChatMessage[]): GeminiCont
   return history
 }
 
-async function responsePayload(res: Response): Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown; prompt?: unknown; facets?: unknown } | null> {
-  return res.json().catch(() => null) as Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown; prompt?: unknown; facets?: unknown } | null>
+async function responsePayload(res: Response): Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown } | null> {
+  return res.json().catch(() => null) as Promise<{ error?: unknown; content?: unknown; imageUrl?: unknown; modelId?: unknown } | null>
 }
 
 export async function generateImage(input: ImageGenerationInput): Promise<ImageGenerationResponse> {
@@ -284,61 +284,6 @@ export async function generateGeminiMultimodal(input: {
     throw new Error('图片创作服务返回了无效结果，请稍后重试。')
   }
   return imageUrl ? { content, imageUrl } : { content }
-}
-
-export const EMPTY_DRAFT_FACETS: ImageDraftFacets = { subject: '', style: '', composition: '', details: '', negative: '' }
-
-// 服务端可能返回缺字段或非法形状的要素，这里做一次归一化兜底（与 server 端对齐）。
-export function normalizeImageDraftFacets(value: unknown): ImageDraftFacets {
-  if (!value || typeof value !== 'object') return { ...EMPTY_DRAFT_FACETS }
-  const record = value as Record<string, unknown>
-  const facets = { ...EMPTY_DRAFT_FACETS }
-  for (const key of Object.keys(EMPTY_DRAFT_FACETS) as Array<keyof ImageDraftFacets>) {
-    const field = record[key]
-    if (typeof field === 'string' && field.trim()) facets[key] = field.trim()
-  }
-  return facets
-}
-
-export interface ImageDraftInput {
-  modelId: ImageModelId
-  desire: string
-  history?: GeminiContextMessage[]
-  referenceText?: string
-  signal: AbortSignal
-}
-
-export interface ImageDraftResult {
-  modelId: ImageModelId
-  facets: ImageDraftFacets
-  prompt: string
-}
-
-export async function draftImagePrompt(input: ImageDraftInput): Promise<ImageDraftResult> {
-  const res = await fetch('/api/ai-platform/images/draft', {
-    credentials: 'include',
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      modelId: input.modelId,
-      desire: input.desire,
-      ...(input.history?.length ? { history: input.history.slice(0, 20) } : {}),
-      ...(input.referenceText?.trim() ? { referenceText: input.referenceText.trim() } : {}),
-    }),
-    signal: input.signal,
-  })
-  const payload = await responsePayload(res)
-  if (!res.ok) {
-    throw new Error(typeof payload?.error === 'string' ? payload.error : '提示词起草失败，请稍后重试。')
-  }
-  if (!payload || typeof payload.prompt !== 'string') {
-    throw new Error('提示词起草服务返回了无效结果，请稍后重试。')
-  }
-  return {
-    modelId: input.modelId,
-    facets: normalizeImageDraftFacets(payload.facets),
-    prompt: payload.prompt,
-  }
 }
 
 export async function streamChat(opts: StreamChatOptions): Promise<void> {

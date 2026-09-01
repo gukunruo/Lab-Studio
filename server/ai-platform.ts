@@ -17,7 +17,6 @@ import { seedAiModels } from './ai-platform-seed'
 import { engineerContext } from './context-engine'
 import { buildAnthropicWebSearchTools, runWebSearch } from './web-search'
 import { enrichImagePrompt } from './image-prompt-enricher'
-import { draftImagePrompt, type ImageDraftFacets } from './image-prompt-drafter'
 import {
   buildAnthropicTools,
   buildOpenAiTools,
@@ -128,21 +127,6 @@ export type GeminiMultimodalRequestBody = {
 export type GeminiMultimodalResponse = {
   content: string
   imageUrl?: string
-}
-
-export type ImageDraftRequestBody = {
-  modelId: string
-  desire: string
-  // 「追问补细节」时带前一版卡 + 补语，让模型据此增改要素。
-  history?: GeminiContextMessage[]
-  // 参考图的文字提示（前端把上一张图的 prompt 当作提示），用于沿用风格。
-  referenceText?: string
-}
-
-export type ImageDraftResponseBody = {
-  modelId: string
-  facets: ImageDraftFacets
-  prompt: string
 }
 
 type PrivateImageReference = {
@@ -1323,38 +1307,6 @@ export function registerAiPlatformRoutes(app: Hono): void {
     } catch {
       return c.json({ error: '图片生成结果保存失败，请稍后重试。' }, 502)
     }
-  })
-
-  app.post('/ai-platform/images/draft', async (c) => {
-    await ensureSeeded()
-    const body = await c.req.json<ImageDraftRequestBody>().catch(() => null)
-    if (!body || (body.modelId !== 'gpt-image-2' && body.modelId !== 'gemini-3-pro-image')) {
-      return c.json({ error: '不支持的图片模型。' }, 400)
-    }
-    const desire = typeof body.desire === 'string' ? body.desire.trim() : ''
-    if (!desire || desire.length > IMAGE_PROMPT_MAX) {
-      return c.json({ error: '图片描述不能为空且不能超过 2000 个字符。' }, 400)
-    }
-    const model = await db.select().from(aiModels).where(eq(aiModels.modelId, body.modelId)).get()
-    if (!model || model.enabled !== 1 || model.category !== 'image') {
-      return c.json({ error: '图片模型当前不可用。' }, 400)
-    }
-
-    // 起草只用 Claude（联网消歧 + 要素拆解），与图片服务配置无关；未配置 Claude 时退化为需求原样。
-    const anthropicConfig = readAnthropicConfig()
-    if (!anthropicConfig) {
-      return c.json({
-        modelId: body.modelId,
-        facets: { subject: desire, style: '', composition: '', details: '', negative: '' },
-        prompt: desire,
-      } satisfies ImageDraftResponseBody)
-    }
-
-    const draft = await draftImagePrompt(desire, anthropicConfig, 2, {
-      ...(body.history?.length ? { history: body.history.slice(0, 20) } : {}),
-      ...(body.referenceText?.trim() ? { referenceHint: body.referenceText.trim() } : {}),
-    })
-    return c.json({ ...draft, modelId: body.modelId } satisfies ImageDraftResponseBody)
   })
 
   app.get('/ai-platform/images/:id', async (c) => imageAssetResponse(USER_KEY, c.req.param('id')))
