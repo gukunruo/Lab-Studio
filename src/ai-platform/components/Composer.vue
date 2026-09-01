@@ -6,6 +6,9 @@ import {
   composerSubmitMatches,
   nextTextareaHeight,
 } from '../composer'
+import { IMAGE_STYLES, imageStyleName } from '../image-styles'
+import { IMAGE_TEMPLATES, type ImageTemplate } from '../image-templates'
+import { createImageTemplate, deleteImageTemplate, fetchImageTemplates } from '../api'
 import { PhChats, PhGlobe, PhImage, PhLightning, PhPaperPlaneRight, PhSparkle, PhStop } from '@phosphor-icons/vue'
 
 const props = defineProps<{
@@ -24,9 +27,10 @@ const emit = defineEmits<{
     prompt: string
     aspectRatio?: ImageAspectRatio
     modelId: 'gpt-image-2'
+    style?: string
     referenceImageId?: string
   }]
-  'generate-gemini': [input: { prompt: string; aspectRatio?: ImageAspectRatio }]
+  'generate-gemini': [input: { prompt: string; aspectRatio?: ImageAspectRatio; style?: string }]
   'clear-reference': []
   abort: []
   'abort-image': []
@@ -38,9 +42,17 @@ const chatDraft = ref('')
 const gptImageDraft = ref('')
 const geminiDraft = ref('')
 const imageAspectRatio = ref<ImageAspectRatio | ''>('')
+const imageStyleId = ref<string>('')
 const imageModelId = ref<ImageModelId>('gpt-image-2')
 const composerWrapRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const IMAGE_ASPECT_RATIO_OPTIONS: ImageAspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16']
+const templatesOpen = ref(false)
+const customTemplates = ref<ImageTemplate[]>([])
+const templateFormOpen = ref(false)
+const templateForm = ref<{ name: string; prompt: string; aspectRatio: ImageAspectRatio | ''; style: string }>({
+  name: '', prompt: '', aspectRatio: '', style: '',
+})
 
 const currentDraft = computed({
   get: () => {
@@ -100,6 +112,7 @@ async function generateImage() {
     prompt,
     aspectRatio: imageAspectRatio.value || undefined,
     modelId: 'gpt-image-2',
+    style: imageStyleId.value || undefined,
     ...(props.referenceImageId ? { referenceImageId: props.referenceImageId } : {}),
   })
   gptImageDraft.value = ''
@@ -110,7 +123,7 @@ async function generateImage() {
 async function generateGemini() {
   const prompt = geminiDraft.value.trim()
   if (!prompt || props.streaming || props.busy || props.imageGenerating) return
-  emit('generate-gemini', { prompt, aspectRatio: imageAspectRatio.value || undefined })
+  emit('generate-gemini', { prompt, aspectRatio: imageAspectRatio.value || undefined, style: imageStyleId.value || undefined })
   geminiDraft.value = ''
   await nextTick()
   await autoResize()
@@ -137,6 +150,38 @@ function changeImageModel() {
   mode.value = imageModelId.value === 'gemini-3-pro-image' ? 'gemini' : 'gpt-image'
 }
 
+function toggleAspectRatio(ratio: ImageAspectRatio) {
+  imageAspectRatio.value = imageAspectRatio.value === ratio ? '' : ratio
+}
+function toggleStyle(id: string) {
+  imageStyleId.value = imageStyleId.value === id ? '' : id
+}
+function applyTemplate(t: ImageTemplate) {
+  if (mode.value === 'gemini') geminiDraft.value = t.prompt
+  else gptImageDraft.value = t.prompt
+  imageAspectRatio.value = t.aspectRatio ?? ''
+  imageStyleId.value = t.style ?? ''
+  templatesOpen.value = false
+}
+async function saveTemplate() {
+  const name = templateForm.value.name.trim()
+  const prompt = templateForm.value.prompt.trim()
+  if (!name || !prompt) return
+  await createImageTemplate({
+    name,
+    prompt,
+    ...(templateForm.value.aspectRatio ? { aspectRatio: templateForm.value.aspectRatio } : {}),
+    ...(templateForm.value.style ? { style: templateForm.value.style } : {}),
+  })
+  customTemplates.value = await fetchImageTemplates()
+  templateForm.value = { name: '', prompt: '', aspectRatio: '', style: '' }
+  templateFormOpen.value = false
+}
+async function removeTemplate(id: number) {
+  await deleteImageTemplate(id)
+  customTemplates.value = await fetchImageTemplates()
+}
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && imageMode.value) {
     event.preventDefault()
@@ -150,21 +195,27 @@ function onKeydown(event: KeyboardEvent) {
   else void generateGemini()
 }
 
-function restoreImageDraft(input: { prompt: string; aspectRatio?: ImageAspectRatio; referenceImageId?: string }) {
+function restoreImageDraft(input: { prompt: string; aspectRatio?: ImageAspectRatio; referenceImageId?: string; style?: string }) {
   gptImageDraft.value = input.prompt
   imageAspectRatio.value = input.aspectRatio ?? ''
+  imageStyleId.value = input.style ?? ''
   imageModelId.value = 'gpt-image-2'
   mode.value = 'gpt-image'
 }
 
-function restoreGeminiDraft(input: { prompt: string }) {
+function restoreGeminiDraft(input: { prompt: string; aspectRatio?: ImageAspectRatio; style?: string }) {
   geminiDraft.value = input.prompt
+  imageAspectRatio.value = input.aspectRatio ?? ''
+  imageStyleId.value = input.style ?? ''
   imageModelId.value = 'gemini-3-pro-image'
   mode.value = 'gemini'
 }
 
 watch([mode, currentDraft], () => void nextTick(autoResize))
-onMounted(() => void autoResize())
+onMounted(async () => {
+  void autoResize()
+  customTemplates.value = await fetchImageTemplates()
+})
 defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 </script>
 
@@ -222,6 +273,64 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
           <button type="button" @click="emit('clear-reference')">移除参考图</button>
         </span>
         <span class="composer__image-hint">Enter {{ mode === 'gemini' ? '发送' : (gptEditing ? '编辑' : '生成') }}</span>
+      </div>
+      <div v-if="imageMode" class="composer__image-options">
+        <div class="composer__chip-row">
+          <span class="composer__chip-label">比例</span>
+          <button
+            v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS"
+            :key="ratio"
+            type="button"
+            class="composer__chip"
+            :class="{ 'composer__chip--active': imageAspectRatio === ratio }"
+            @click="toggleAspectRatio(ratio)"
+          >{{ ratio }}</button>
+        </div>
+        <div class="composer__chip-row">
+          <span class="composer__chip-label">风格</span>
+          <button
+            v-for="style in IMAGE_STYLES"
+            :key="style.id"
+            type="button"
+            class="composer__chip"
+            :class="{ 'composer__chip--active': imageStyleId === style.id }"
+            @click="toggleStyle(style.id)"
+          >{{ style.name }}</button>
+          <button type="button" class="composer__chip composer__chip--template" :class="{ 'composer__chip--active': templatesOpen }" @click="templatesOpen = !templatesOpen">模板</button>
+        </div>
+
+        <div v-if="templatesOpen" class="composer__template-panel">
+          <div v-if="IMAGE_TEMPLATES.length || customTemplates.length" class="composer__template-grid">
+            <template v-for="t in [...IMAGE_TEMPLATES, ...customTemplates]" :key="t.id">
+              <div class="composer__template-card">
+                <div class="composer__template-info">
+                  <strong>{{ t.name }}</strong>
+                  <span class="composer__template-tags">{{ [t.aspectRatio, imageStyleName(t.style)].filter(Boolean).join(' · ') }}</span>
+                  <p>{{ t.prompt }}</p>
+                </div>
+                <div class="composer__template-actions">
+                  <button type="button" class="composer__template-action" @click="applyTemplate(t)">同款</button>
+                  <button v-if="customTemplates.includes(t)" type="button" class="composer__template-action composer__template-action--danger" @click="removeTemplate(Number(t.id))">删除</button>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div v-if="templateFormOpen" class="composer__template-form">
+            <input v-model="templateForm.name" placeholder="模板名称" class="composer__template-input" />
+            <input v-model="templateForm.prompt" placeholder="示例 prompt（这里的一句话会被原样填进输入框）" class="composer__template-input" />
+            <div class="composer__chip-row">
+              <button v-for="ratio in IMAGE_ASPECT_RATIO_OPTIONS" :key="ratio" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.aspectRatio === ratio }" @click="templateForm.aspectRatio = templateForm.aspectRatio === ratio ? '' : ratio">{{ ratio }}</button>
+            </div>
+            <div class="composer__chip-row">
+              <button v-for="style in IMAGE_STYLES" :key="style.id" type="button" class="composer__chip" :class="{ 'composer__chip--active': templateForm.style === style.id }" @click="templateForm.style = templateForm.style === style.id ? '' : style.id">{{ style.name }}</button>
+            </div>
+            <div class="composer__template-form-actions">
+              <button type="button" class="composer__template-action" @click="templateFormOpen = false">取消</button>
+              <button type="button" class="composer__template-action composer__template-action--primary" :disabled="!templateForm.name.trim() || !templateForm.prompt.trim()" @click="saveTemplate">保存模板</button>
+            </div>
+          </div>
+          <button v-else type="button" class="composer__template-action composer__template-action--primary" @click="templateFormOpen = true">＋ 添加模板</button>
+        </div>
       </div>
       <textarea
         ref="textareaRef"
@@ -347,4 +456,26 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft })
 .composer__send:disabled { opacity: .3; cursor: not-allowed; }
 .composer__send--stop { background: var(--color-danger); }
 @media (max-width: 640px) { .composer-wrap { padding-inline: 12px; } .composer__image-mode { flex-wrap: wrap; } .composer__image-hint { display: none; } }
+.composer__image-options { display: grid; gap: 6px; padding: 10px 18px 0; }
+.composer__chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.composer__chip-label { color: var(--color-text-muted); font-size: 11px; flex-shrink: 0; }
+.composer__chip { height: 22px; padding: 0 9px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; }
+.composer__chip:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
+.composer__chip--active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
+.composer__chip--template { margin-left: auto; }
+.composer__template-panel { border-top: 1px solid var(--color-border); margin-top: 8px; padding-top: 8px; }
+.composer__template-grid { display: grid; gap: 8px; max-height: 260px; overflow: auto; }
+.composer__template-card { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); padding: 8px 10px; }
+.composer__template-info { min-width: 0; }
+.composer__template-info strong { font-size: 12px; color: var(--color-text); display: block; }
+.composer__template-tags { font-size: 10.5px; color: var(--color-text-muted); }
+.composer__template-info p { margin: 3px 0 0; font-size: 11px; color: var(--color-text-muted); line-clamp: 2; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.composer__template-actions { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.composer__template-action { border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); cursor: pointer; font: 600 11px var(--font-sans); padding: 4px 8px; }
+.composer__template-action--primary { border-color: var(--color-accent); background: var(--color-accent); color: #fff; }
+.composer__template-action--danger { color: var(--color-danger); }
+.composer__template-form { display: grid; gap: 6px; padding: 8px 0; }
+.composer__template-input { border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 12px; padding: 6px 8px; outline: none; }
+.composer__template-input:focus { border-color: var(--color-accent); }
+.composer__template-form-actions { display: flex; gap: 6px; justify-content: flex-end; }
 </style>
