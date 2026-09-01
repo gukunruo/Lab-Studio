@@ -215,8 +215,7 @@ onMounted(loadSummary)
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(3px);
+  background: var(--color-bg);
 }
 
 .add-template__dialog {

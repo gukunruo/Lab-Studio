@@ -575,7 +575,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
 .composer__chip { height: 22px; padding: 0 9px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; }
 .composer__chip:hover { border-color: var(--color-accent); color: var(--color-accent-strong); }
 .composer__chip--active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
-.template-panel { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 30; display: flex; flex-direction: column; max-height: min(600px, 62vh); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: 0 -18px 48px rgba(0,0,0,.32); overflow: hidden; }
+.template-panel { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 30; display: flex; flex-direction: column; max-height: min(600px, 62vh); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: 0 -18px 48px rgba(0,0,0,.32); overflow: hidden; animation: template-panel-in .18s cubic-bezier(.16,1,.3,1); }
 .template-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--color-border-subtle); }
 .template-panel__title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-text); }
 .template-panel__header-actions { display: flex; align-items: center; gap: 8px; }
@@ -583,13 +583,13 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
 .template-panel__grid { columns: 2; column-gap: 12px; }
 .template-panel__grid > * { break-inside: avoid; }
 @media (max-width: 520px) { .template-panel__grid { columns: 1; } }
-.template-card { margin-bottom: 12px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface); overflow: hidden; cursor: pointer; transition: border-color .15s; }
-.template-card:hover { border-color: var(--color-accent); }
+.template-card { margin-bottom: 12px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface); overflow: hidden; cursor: pointer; transition: border-color .15s, box-shadow .18s, transform .18s; }
+.template-card:hover, .template-card:focus-visible { border-color: var(--color-accent); box-shadow: 0 6px 18px rgba(0,0,0,.14); transform: translateY(-1px); outline: none; }
 .template-card__media { position: relative; overflow: hidden; }
 .template-card__img { display: block; width: 100%; height: auto; }
 .template-card__ratio { position: absolute; top: 8px; left: 8px; padding: 2px 7px; border-radius: var(--radius-full); background: rgba(0,0,0,.55); color: #fff; font-size: 10.5px; font-family: var(--font-mono); }
 .template-card__cta { position: absolute; left: 8px; bottom: 8px; padding: 4px 10px; border-radius: var(--radius-full); background: var(--color-accent); color: #fff; font-size: 11px; font-weight: 600; opacity: 0; transform: translateY(4px); transition: opacity .15s, transform .15s; }
-.template-card:hover .template-card__cta { opacity: 1; transform: translateY(0); }
+.template-card:hover .template-card__cta, .template-card:focus-visible .template-card__cta { opacity: 1; transform: translateY(0); }
 .template-card__body { padding: 8px 10px 10px; }
 .template-card__name { display: block; font-size: 12.5px; color: var(--color-text); }
 .template-card__prompt { margin: 4px 0 0; font-size: 11px; color: var(--color-text-muted); line-height: 1.4; line-clamp: 2; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
@@ -608,4 +608,5 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
 .composer__template-input { border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 12px; padding: 6px 8px; outline: none; }
 .composer__template-input:focus { border-color: var(--color-accent); }
 .composer__template-form-actions { display: flex; gap: 6px; justify-content: flex-end; }
+@keyframes template-panel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 </style>
