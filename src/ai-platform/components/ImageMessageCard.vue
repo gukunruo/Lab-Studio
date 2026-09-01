@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { PhArrowClockwise, PhDownloadSimple, PhImage, PhSpinnerGap, PhStop, PhXCircle } from '@phosphor-icons/vue'
 import type { ImageRequestMessage, ImageResultMessage } from '../types'
 import { controlledImageAssetId, isSafeImageUrl } from '../api'
+import { imageStyleName } from '../image-styles'
 
 const props = defineProps<{
   message: ImageRequestMessage | ImageResultMessage
@@ -34,6 +35,8 @@ const hasReferenceImage = computed(() => Boolean(controlledImageAssetId(imageUrl
       <p class="image-card__prompt">{{ message.prompt }}</p>
       <div class="image-card__meta">
         <span>{{ message.modelId === 'gpt-image-2' ? 'GPT-Image-2' : 'Gemini 3 Pro Image' }}</span>
+        <span v-if="message.aspectRatio">· {{ message.aspectRatio }}</span>
+        <span v-if="message.style">· {{ imageStyleName(message.style) }}</span>
       </div>
     </template>
     <template v-else>

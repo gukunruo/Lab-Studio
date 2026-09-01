@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { PhListChecks } from '@phosphor-icons/vue'
 import type { ChatMessage, ToolCallTrace } from '../types'
 import { isTextMessage } from '../api'
+import { imageStyleName } from '../image-styles'
 import { renderMarkdown } from '../message-markdown'
 import GeminiMultimodalCard from './GeminiMultimodalCard.vue'
 import ImageMessageCard from './ImageMessageCard.vue'
@@ -170,6 +171,10 @@ const planTasks = computed<PlanTaskItem[]>(() => {
     <div class="message__body">
       <template v-if="geminiUserMessage">
         <div class="message__content"><div class="message__plain">{{ geminiUserMessage.content }}</div></div>
+        <div v-if="geminiUserMessage.aspectRatio || geminiUserMessage.style" class="message__meta-tags">
+          <span v-if="geminiUserMessage.aspectRatio">{{ geminiUserMessage.aspectRatio }}</span>
+          <span v-if="geminiUserMessage.style">{{ imageStyleName(geminiUserMessage.style) }}</span>
+        </div>
       </template>
       <template v-else-if="geminiAssistantMessage">
         <GeminiMultimodalCard
@@ -329,6 +334,9 @@ const planTasks = computed<PlanTaskItem[]>(() => {
 }
 
 .message__plain { white-space: pre-wrap; }
+
+.message__meta-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.message__meta-tags span { height: 18px; padding: 0 7px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent-strong); font-size: 10px; line-height: 18px; }
 
 .message__toolcalls {
   display: grid;
