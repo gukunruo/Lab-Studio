@@ -7,11 +7,11 @@ import { aiImageAssets } from './db/schema'
 
 const DATABASE_URL = process.env.DATABASE_URL ?? './data/lab-studio.db'
 const DATABASE_PATH = DATABASE_URL.startsWith('file:') ? DATABASE_URL.slice(5) : DATABASE_URL
-const ASSET_DIRECTORY = process.env.AI_IMAGE_ASSET_DIR
+export const ASSET_DIRECTORY = process.env.AI_IMAGE_ASSET_DIR
   ? resolve(process.env.AI_IMAGE_ASSET_DIR)
   : join(dirname(resolve(DATABASE_PATH)), 'ai-images')
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
-const ASSET_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+export const ASSET_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type ImageFileType = {
   mimeType: 'image/png' | 'image/jpeg' | 'image/webp'
