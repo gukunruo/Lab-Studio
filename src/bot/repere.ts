@@ -29,3 +29,14 @@ export const RAYON = 100
  * verrouille.
  */
 export const DEMI_VIEWBOX = 158
+
+/**
+ * Demi-cote du viewBox des vignettes du personnalisateur. Les deux grilles (formes
+ * et expressions) partagent la meme fenetre pour que les tuiles aient la meme
+ * echelle — une seule valeur qui les rend coherentes.
+ *
+ * Plus petit que `DEMI_VIEWBOX` pour que la boule remplisse la tuile, mais
+ * suffisamment grand pour laisser la silhouette arrondie et loger la forme la plus
+ * large (le triangle monte a 1,12 fois le rayon, soit ~112).
+ */
+export const THUMB_VIEWBOX = 132

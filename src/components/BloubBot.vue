@@ -61,6 +61,12 @@ const props = withDefaults(
      * lire une emotion d'un coup d'oeil, pas retrouver la pose de la video.
      */
     flat?: boolean
+    /**
+     * Demi-cote du viewBox. Les vignettes du personnalisateur (formes et
+     * expressions) partagent `THUMB_VIEWBOX` pour que chaque grille soit a la meme
+     * echelle. Sans `viewBox`, on garde `DEMI_VIEWBOX` qui loge les anneaux.
+     */
+    viewBox?: number
   }>(),
   {
     size: 320,
@@ -93,14 +99,12 @@ const elapsed = defineModel<number>('elapsed', { default: 0 })
 // gabarit.
 const R = RAYON
 /**
- * Fenêtre de vue des vignettes flat : la tête remise en face ne laisse voir que
- * les yeux, donc on resserre le viewBox autour de la zone du visage. ±66 couvre
- * les plus grands yeux (surpris/excité/effrayé, étendus sur ±60) sans les rogner,
- * tout en les faisant dominer la tuile pour lire l'émotion d'un coup d'œil — la
- * vue entière, elle, garde DEMI_VIEWBOX pour loger les anneaux.
+ * Fenêtre de vue. Par défaut `DEMI_VIEWBOX` (loge les anneaux). Les tuiles du
+ * personnalisateur passent un `viewBox` explicite pour resserrer la fenêtre sur la
+ * boule — la montrer arrondie, pas rognée en carré — et rester a la meme echelle
+ * d'une grille a l'autre.
  */
-const FACE_VB = 66
-const VB = computed(() => (props.flat ? FACE_VB : DEMI_VIEWBOX))
+const VB = computed(() => props.viewBox ?? DEMI_VIEWBOX)
 
 const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')

@@ -36,6 +36,7 @@ import {
   pngFromMarkup
 } from '@/bot/exporter'
 import { DEFAULT_EXPRESSION, EXPRESSIONS } from '@/bot/expressions'
+import { THUMB_VIEWBOX } from '@/bot/repere'
 import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from '@/bot/skins'
 import { POSES, SEQUENCE, STATE_BY_ID, type StateId } from '@/bot/states'
 
@@ -481,7 +482,7 @@ const stateLabels: Record<string, string> = {
               :class="{ 'bloub__shape--active': shape === s.id }"
               @click="shape = s.id"
             >
-              <BloubBot :size="40" :shape="s.id" :frozen-at="1.2" />
+              <BloubBot :size="40" :shape="s.id" :frozen-at="1.2" :view-box="THUMB_VIEWBOX" />
               <span>{{ shapeLabels[s.id] }}</span>
             </button>
           </div>
@@ -501,7 +502,7 @@ const stateLabels: Record<string, string> = {
               <!-- Figé à 0,6 s, avant le premier clignement du calendrier (1,4 s) : à
                    1,5 s les yeux étaient en plein clignement, écrasés à ~24 %, et toutes
                    les émotions se ressemblaient. -->
-              <BloubBot :size="40" :state="'idle'" :frozen-at="0.6" :expression="e.id" :flat="true" />
+              <BloubBot :size="40" :state="'idle'" :frozen-at="0.6" :expression="e.id" :flat="true" :view-box="THUMB_VIEWBOX" />
               <span>{{ expressionLabels[e.id] }}</span>
             </button>
           </div>
