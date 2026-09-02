@@ -381,7 +381,7 @@ const stateLabels: Record<string, string> = {
           :frozen-at="freezeTime"
         />
 
-        <span ref="menu" class="bloub__export">
+        <span ref="menu" class="bloub__export" v-show="mode === 'custom'">
           <div class="bloub__split">
             <button
               type="button"
