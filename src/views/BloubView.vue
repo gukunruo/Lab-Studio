@@ -463,7 +463,7 @@ const stateLabels: Record<string, string> = {
           <span class="bloub__state-name">{{ stateLabels[state] }}</span>
         </div>
 
-        <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
+        <p v-show="mode === 'custom'" class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
       </section>
 
       <!-- 右侧自定义面板 : 无卡片分组的标签区块. Toujours monté (pas de remontage
