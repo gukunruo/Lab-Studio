@@ -286,45 +286,54 @@ const stateLabels: Record<string, string> = {
         <PhSmiley :size="15" weight="bold" />
         G's bot
       </span>
-      <span class="bloub__float bloub__export">
-        <div ref="menu" class="bloub__menu">
+      <span ref="menu" class="bloub__float bloub__export">
+        <div class="bloub__split">
           <button
             type="button"
-            class="bloub__pill bloub__pill--primary"
-            :class="{ 'bloub__pill--busy': busy }"
+            class="bloub__split-btn"
+            :class="{ 'bloub__split-btn--busy': busy }"
             :disabled="busy"
-            aria-haspopup="menu"
-            :aria-expanded="menuOpen"
-            @click="menuOpen = !menuOpen"
+            aria-label="导出 PNG"
+            @click="doExportPng"
           >
             <PhDownloadSimple :size="14" />
             <span>{{ busy ? '导出中…' : '导出 PNG' }}</span>
+          </button>
+          <span class="bloub__split-divider" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="bloub__split-btn bloub__split-btn--caret"
+            aria-haspopup="menu"
+            :aria-expanded="menuOpen"
+            :disabled="busy"
+            @click="menuOpen = !menuOpen"
+          >
             <PhCaretUp :size="12" class="bloub__caret" :class="{ 'bloub__caret--open': menuOpen }" />
           </button>
-          <transition name="bloub-pop">
-            <div v-if="menuOpen" class="bloub__dropdown" role="menu">
-              <button type="button" class="bloub__item" role="menuitem" @click="doExportPng">
-                下载 PNG
-              </button>
-              <button type="button" class="bloub__item" role="menuitem" @click="doExportSvg">
-                下载 SVG
-              </button>
-              <button type="button" class="bloub__item" role="menuitem" @click="doExportSvgAnim">
-                下载 SVG 动图
-              </button>
-              <button type="button" class="bloub__item" role="menuitem" @click="doExportGif">
-                下载 GIF 动图
-              </button>
-              <div class="bloub__dropdown-sep"></div>
-              <button type="button" class="bloub__item" role="menuitem" @click="doCopyPng">
-                复制图片
-              </button>
-              <button type="button" class="bloub__item" role="menuitem" @click="doCopySvg">
-                复制 SVG
-              </button>
-            </div>
-          </transition>
         </div>
+        <transition name="bloub-pop">
+          <div v-if="menuOpen" class="bloub__dropdown" role="menu">
+            <button type="button" class="bloub__item" role="menuitem" @click="doExportPng">
+              下载 PNG
+            </button>
+            <button type="button" class="bloub__item" role="menuitem" @click="doExportSvg">
+              下载 SVG
+            </button>
+            <button type="button" class="bloub__item" role="menuitem" @click="doExportSvgAnim">
+              下载 SVG 动图
+            </button>
+            <button type="button" class="bloub__item" role="menuitem" @click="doExportGif">
+              下载 GIF 动图
+            </button>
+            <div class="bloub__dropdown-sep"></div>
+            <button type="button" class="bloub__item" role="menuitem" @click="doCopyPng">
+              复制图片
+            </button>
+            <button type="button" class="bloub__item" role="menuitem" @click="doCopySvg">
+              复制 SVG
+            </button>
+          </div>
+        </transition>
         <transition name="bloub-pop">
           <span v-if="notice" class="bloub__notice">{{ notice }}</span>
         </transition>
@@ -547,44 +556,14 @@ const stateLabels: Record<string, string> = {
 }
 
 .bloub__export {
+  position: relative;
   margin-left: auto;
   display: flex;
   gap: 8px;
   padding: 6px;
 }
 
-.bloub__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border: 1px solid var(--bloub-line-strong);
-  border-radius: var(--radius-full);
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.12s;
-
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
-  }
-
-  &--primary {
-    background: var(--color-text);
-    color: var(--color-bg);
-    border-color: var(--color-text);
-  }
-
-  &--busy {
-    opacity: 0.6;
-    cursor: progress;
-  }
-}
-
-/* ---------- export : menu deroulant + notice ---------- */
+/* ---------- export : split button + menu deroulant + notice ---------- */
 
 .bloub__exporter {
   position: absolute;
@@ -595,9 +574,48 @@ const stateLabels: Record<string, string> = {
   pointer-events: none;
 }
 
-.bloub__menu {
-  position: relative;
+.bloub__split {
   display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--color-text);
+  border-radius: var(--radius-full);
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.bloub__split-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-bg) 12%, transparent);
+  }
+
+  &--caret {
+    padding: 7px 9px;
+  }
+
+  &--busy {
+    opacity: 0.6;
+    cursor: progress;
+  }
+}
+
+.bloub__split-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 6px 0;
+  background: color-mix(in srgb, var(--color-bg) 25%, transparent);
 }
 
 .bloub__caret {
