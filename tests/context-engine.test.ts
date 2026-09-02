@@ -248,3 +248,17 @@ test('engineerContext threads images through untouched for multimodal', () => {
   assert.equal(result.messages[0].content, '你好')
   assert.equal(result.messages[1].images, undefined)
 })
+
+test('engineerContext threads files through untouched for chat attachments', () => {
+  const files = [{ url: '/api/ai-platform/files/123e4567-e89b-42d3-a456-426614174000', name: '报告.pdf', size: 1024, mimeType: 'application/pdf' }]
+  const result = engineerContext({
+    messages: [
+      { role: 'user', content: '帮我读一下', files },
+      { role: 'assistant', content: '好的' },
+    ],
+  })
+  assert.equal(result.messages.length, 2)
+  assert.deepEqual(result.messages[0].files, files)
+  assert.equal(result.messages[0].content, '帮我读一下')
+  assert.equal(result.messages[1].files, undefined)
+})

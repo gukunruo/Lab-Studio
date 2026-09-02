@@ -22,11 +22,20 @@ const CJK_RE = /[　-〿一-鿿＀-￯]/g
 
 const BASE_SYSTEM = '你是 Lab-Studio 的 AI 助手。请用与用户相同的语言回答，内容准确、清晰、可执行；信息不足时明确说明，不要编造。对话中，以用户最新一条消息为当前任务；仅当其与对话前文相关时才参考前文，不要把无关的旧主题与当前问题强行结合。'
 
+export interface FileAttachment {
+  url: string
+  name: string
+  size?: number
+  mimeType?: string
+}
+
 export interface EngineeredContextMessage {
   role: 'user' | 'assistant'
   content: string
   /** 该条消息附带的受控图床 URL（对话多模态）。仅原样透传，不参与压缩/截断。 */
   images?: string[]
+  /** 该条消息附带的受控文件附件。仅原样透传，不参与压缩/截断。 */
+  files?: FileAttachment[]
 }
 
 export interface EngineerContextInput {
@@ -38,7 +47,7 @@ export interface EngineerContextInput {
 }
 
 // 消息的统一结构：`images` 是可选的附件，压缩/截断只看 `content`，附件原样透传。
-export type ContextEngineMessage = { role: string; content: string; images?: string[] }
+export type ContextEngineMessage = { role: string; content: string; images?: string[]; files?: FileAttachment[] }
 
 export interface EngineerContextResult {
   system: string
@@ -253,6 +262,7 @@ function tryEngineer(
       role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
       content: truncateMessageContent(message.content, max),
       ...(message.images?.length ? { images: message.images } : {}),
+      ...(message.files?.length ? { files: message.files } : {}),
     }
   })
   const estimatedTokens = estimateTokens(compactedSystem)
