@@ -1,9 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { PhArrowLeft, PhDownloadSimple, PhPause, PhPlay, PhSmiley, PhSnowflake } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhCaretUp, PhDownloadSimple, PhPause, PhPlay, PhSmiley, PhSnowflake } from '@phosphor-icons/vue'
 import BloubBot from '@/components/BloubBot.vue'
-import { defaultCycle, MIN_BLOCK, type Block } from '@/bot/cycles'
+import { defaultCycle, MIN_BLOCK, totalDuration, type Block } from '@/bot/cycles'
+import {
+  copyPng,
+  copySvg,
+  EXPORT_SIZE,
+  filmStrip,
+  frameCount,
+  frameInnerMarkup,
+  frameMarkup,
+  GIF_SIZE,
+  gifFromMarkups,
+  pngFromMarkup
+} from '@/bot/exporter'
 import { DEFAULT_EXPRESSION, EXPRESSIONS } from '@/bot/expressions'
 import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from '@/bot/skins'
 import { POSES, SEQUENCE, STATE_BY_ID, type StateId } from '@/bot/states'
@@ -25,6 +37,7 @@ const frozen = ref(false)
 const freezeTime = ref(1.2)
 
 const bot = ref<InstanceType<typeof BloubBot> | null>(null)
+const exporter = ref<InstanceType<typeof BloubBot> | null>(null)
 
 const DEFAULT_BLOCKS = defaultCycle().blocks
 const cycle = computed<Block[]>(() => {
@@ -68,18 +81,21 @@ function toggleFreeze() {
 
 /* ------------------------------------------------------------------ export */
 
-const EXPORT_SIZE = 1024
+const menu = ref<HTMLElement | null>(null)
+const menuOpen = ref(false)
+const busy = ref(false)
+const notice = ref('')
+let noticeTimer: ReturnType<typeof setTimeout> | null = null
 
+function showNotice(message: string) {
+  notice.value = message
+  if (noticeTimer) clearTimeout(noticeTimer)
+  noticeTimer = setTimeout(() => (notice.value = ''), 2200)
+}
+
+/** `<svg>` autonome de la frame affichee a l'ecran (regard et pose compris). */
 function svgMarkup(): string {
-  const svg = bot.value!.$el as SVGSVGElement
-  const clone = svg.cloneNode(true) as SVGSVGElement
-  clone.removeAttribute('class')
-  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-  clone.setAttribute('width', String(EXPORT_SIZE))
-  clone.setAttribute('height', String(EXPORT_SIZE))
-  // Stripe les commentaires : le XML livre ne doit pas transporter les notes de
-  // conception du composant.
-  return new XMLSerializer().serializeToString(clone).replace(/<!--[\s\S]*?-->/g, '')
+  return frameMarkup(bot.value!.$el as SVGSVGElement, EXPORT_SIZE)
 }
 
 function telecharge(blob: Blob, nom: string) {
@@ -92,30 +108,107 @@ function telecharge(blob: Blob, nom: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-function exportSvg() {
-  telecharge(new Blob([svgMarkup()], { type: 'image/svg+xml' }), `gs-bot-${state.value}.svg`)
+function doExportSvg() {
+  runExport(() => {
+    telecharge(new Blob([svgMarkup()], { type: 'image/svg+xml' }), `gs-bot-${state.value}.svg`)
+  })
 }
 
-async function exportPng() {
-  const markup = svgMarkup()
-  const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }))
+async function doExportPng() {
+  await runExport(async () => {
+    telecharge(await pngFromMarkup(svgMarkup(), EXPORT_SIZE), `gs-bot-${state.value}.png`)
+  })
+}
+
+async function doExportSvgAnim() {
+  await runExport(async () => {
+    const { els, total } = await collectFrames()
+    const inners = els.map((el, i) => frameInnerMarkup(el, `-f${i}`))
+    telecharge(
+      new Blob([filmStrip(inners, total, EXPORT_SIZE)], { type: 'image/svg+xml' }),
+      `gs-bot-${state.value}-anime.svg`
+    )
+  })
+}
+
+async function doExportGif() {
+  await runExport(async () => {
+    const { els } = await collectFrames()
+    const markups = els.map((el) => frameMarkup(el, GIF_SIZE))
+    telecharge(await gifFromMarkups(markups, GIF_SIZE), `gs-bot-${state.value}.gif`)
+  })
+}
+
+async function doCopyPng() {
+  await runExport(async () => {
+    await copyPng(svgMarkup(), EXPORT_SIZE)
+    showNotice('图片已复制')
+  })
+}
+
+async function doCopySvg() {
+  await runExport(async () => {
+    await copySvg(svgMarkup())
+    showNotice('SVG 已复制')
+  })
+}
+
+/**
+ * Capture un cycle entier sur l'instance hors ecran : une frame par date du
+ * montage, pilotee par `rendAt` (le composant est monte avec `frozenAt: 0`, sans
+ * horloge). On retourne au debut a la fin pour permettre une seconde passe — le
+ * GIF et le SVG anime en font chacun une.
+ */
+async function collectFrames(): Promise<{ els: SVGSVGElement[]; total: number }> {
+  const comp = exporter.value!
+  const blocks = cycle.value
+  const total = totalDuration(blocks)
+  const n = frameCount(total)
+  const step = total / n
+  const els: SVGSVGElement[] = []
+  for (let i = 0; i < n; i++) {
+    comp.rendAt(step * i)
+    await nextTick()
+    els.push(comp.$el as SVGSVGElement)
+  }
+  comp.rendAt(0)
+  await nextTick()
+  return { els, total }
+}
+
+async function runExport(task: () => Promise<void> | void) {
+  if (busy.value) return
+  busy.value = true
+  menuOpen.value = false
   try {
-    const img = new Image()
-    img.src = url
-    await img.decode()
-    const canvas = document.createElement('canvas')
-    canvas.width = EXPORT_SIZE
-    canvas.height = EXPORT_SIZE
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.clearRect(0, 0, EXPORT_SIZE, EXPORT_SIZE)
-    ctx.drawImage(img, 0, 0, EXPORT_SIZE, EXPORT_SIZE)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (blob) telecharge(blob, `gs-bot-${state.value}.png`)
+    await task()
+  } catch (err) {
+    showNotice(err instanceof Error ? err.message : '导出失败')
   } finally {
-    URL.revokeObjectURL(url)
+    busy.value = false
   }
 }
+
+function onDocumentClick(event: MouseEvent) {
+  if (!menuOpen.value) return
+  if (menu.value?.contains(event.target as Node)) return
+  menuOpen.value = false
+}
+
+function onDocumentKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') menuOpen.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+  document.addEventListener('keydown', onDocumentKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('keydown', onDocumentKeydown)
+  if (noticeTimer) clearTimeout(noticeTimer)
+})
 
 /* ------------------------------------------------------------------ labels */
 
@@ -170,6 +263,20 @@ const stateLabels: Record<string, string> = {
 
 <template>
   <div class="bloub">
+    <!-- Instance hors ecran montee figee (sans horloge), pilotee par rendAt
+         pour capturer un cycle image par image : SVG anime et GIF. -->
+    <div class="bloub__exporter" aria-hidden="true">
+      <BloubBot
+        ref="exporter"
+        :size="64"
+        :shape="shape"
+        :color="color"
+        :expression="expression"
+        :cycle="cycle"
+        :frozen-at="0"
+      />
+    </div>
+
     <!-- Infos en blocs flottants : pas de barre de titre, comme la reference. -->
     <div class="bloub__floats">
       <RouterLink to="/" class="bloub__float bloub__back" aria-label="返回 Lab" title="返回 Lab">
@@ -180,14 +287,47 @@ const stateLabels: Record<string, string> = {
         G's bot
       </span>
       <span class="bloub__float bloub__export">
-        <button type="button" class="bloub__pill" @click="exportSvg">
-          <PhDownloadSimple :size="14" />
-          导出 SVG
-        </button>
-        <button type="button" class="bloub__pill bloub__pill--primary" @click="exportPng">
-          <PhDownloadSimple :size="14" />
-          导出 PNG
-        </button>
+        <div ref="menu" class="bloub__menu">
+          <button
+            type="button"
+            class="bloub__pill bloub__pill--primary"
+            :class="{ 'bloub__pill--busy': busy }"
+            :disabled="busy"
+            aria-haspopup="menu"
+            :aria-expanded="menuOpen"
+            @click="menuOpen = !menuOpen"
+          >
+            <PhDownloadSimple :size="14" />
+            <span>{{ busy ? '导出中…' : '导出 PNG' }}</span>
+            <PhCaretUp :size="12" class="bloub__caret" :class="{ 'bloub__caret--open': menuOpen }" />
+          </button>
+          <transition name="bloub-pop">
+            <div v-if="menuOpen" class="bloub__dropdown" role="menu">
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportPng">
+                下载 PNG
+              </button>
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportSvg">
+                下载 SVG
+              </button>
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportSvgAnim">
+                下载 SVG 动图
+              </button>
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportGif">
+                下载 GIF 动图
+              </button>
+              <div class="bloub__dropdown-sep"></div>
+              <button type="button" class="bloub__item" role="menuitem" @click="doCopyPng">
+                复制图片
+              </button>
+              <button type="button" class="bloub__item" role="menuitem" @click="doCopySvg">
+                复制 SVG
+              </button>
+            </div>
+          </transition>
+        </div>
+        <transition name="bloub-pop">
+          <span v-if="notice" class="bloub__notice">{{ notice }}</span>
+        </transition>
       </span>
     </div>
 
@@ -437,6 +577,98 @@ const stateLabels: Record<string, string> = {
     color: var(--color-bg);
     border-color: var(--color-text);
   }
+
+  &--busy {
+    opacity: 0.6;
+    cursor: progress;
+  }
+}
+
+/* ---------- export : menu deroulant + notice ---------- */
+
+.bloub__exporter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bloub__menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.bloub__caret {
+  transition: transform 0.15s;
+}
+
+.bloub__caret--open {
+  transform: rotate(180deg);
+}
+
+.bloub__dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 168px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--bloub-line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+}
+
+.bloub__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+
+  &:hover {
+    background: var(--bloub-accent-soft);
+  }
+}
+
+.bloub__dropdown-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--bloub-line);
+}
+
+.bloub__notice {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1px solid var(--bloub-line);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bloub-pop-enter-active,
+.bloub-pop-leave-active {
+  transition: opacity 0.14s, transform 0.14s;
+}
+
+.bloub-pop-enter-from,
+.bloub-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 /* ---------- stage ---------- */
