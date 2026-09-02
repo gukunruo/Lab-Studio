@@ -340,7 +340,11 @@ const stateLabels: Record<string, string> = {
 
 <style scoped lang="scss">
 .bloub {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--color-bg);
   color: var(--color-text);
 }
@@ -349,12 +353,10 @@ const stateLabels: Record<string, string> = {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 24px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  flex-shrink: 0;
 }
 
 .bloub__back {
@@ -407,17 +409,36 @@ const stateLabels: Record<string, string> = {
 }
 
 .bloub__stage {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 28px;
+  gap: 20px;
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 20px;
 }
 
 @media (max-width: 960px) {
+  .bloub {
+    height: auto;
+    overflow: visible;
+  }
+
   .bloub__stage {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bloub__bot {
+    justify-content: flex-start;
+    overflow: visible;
+    min-height: 420px;
+  }
+
+  .bloub__panel {
+    overflow: visible;
+    padding-right: 0;
   }
 }
 
@@ -425,8 +446,15 @@ const stateLabels: Record<string, string> = {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 24px;
+  justify-content: center;
+  gap: 24px;
+  min-height: 0;
+  padding: 32px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .bloub__playback {
@@ -500,7 +528,21 @@ const stateLabels: Record<string, string> = {
 .bloub__panel {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.bloub__panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.bloub__panel::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 4px;
 }
 
 .bloub__group {
@@ -508,6 +550,7 @@ const stateLabels: Record<string, string> = {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .bloub__group-title {
@@ -580,15 +623,17 @@ const stateLabels: Record<string, string> = {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 8px 4px;
+  padding: 10px 4px;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
 
   &:hover {
     border-color: var(--color-border-strong);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   }
 
   span {
