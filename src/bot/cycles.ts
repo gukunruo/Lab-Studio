@@ -149,6 +149,14 @@ export function moveBlock(blocks: Block[], from: number, to: number): Block[] {
   return next
 }
 
+/** Supprime le bloc `index`, en rendant une nouvelle liste (les etats Vue sont remplaces). */
+export function removeBlock(blocks: Block[], index: number): Block[] {
+  if (index < 0 || index >= blocks.length) return blocks
+  const next = blocks.slice()
+  next.splice(index, 1)
+  return next
+}
+
 /** `Mon cycle`, `Mon cycle 2`, `Mon cycle 3`... — jamais deux fois le meme nom. */
 export function uniqueName(base: string, cycles: Cycle[]): string {
   const taken = new Set(cycles.map((c) => c.name))
@@ -222,4 +230,30 @@ export function parseCycles(raw: string | null): Cycle[] {
     if (cycle) out.push(cycle)
   }
   return out
+}
+
+/* --------------------------------------------------- cycle unique (stockage) */
+
+/**
+ * Serialise un cycle pour le stockage local. JSON lisible, comme `parseCycles` :
+ * un utilisateur qui bricole la valeur a la main doit pouvoir la relire.
+ */
+export function cycleToJson(cycle: Cycle): string {
+  return JSON.stringify(cycle)
+}
+
+/**
+ * Relit un UNIQUE cycle depuis le stockage. Toute valeur invalide retombe sur
+ * `null` plutot que de casser la vue au demarrage — meme regle que `parseCycles`,
+ * qui jette en silence ce qu'elle ne relit pas.
+ */
+export function cycleFromJson(raw: string | null): Cycle | null {
+  if (!raw) return null
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  return parseCycle(data, [])
 }
