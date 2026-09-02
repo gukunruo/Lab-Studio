@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { PhListChecks } from '@phosphor-icons/vue'
+import { PhFile, PhListChecks } from '@phosphor-icons/vue'
 import type { ChatMessage, ToolCallTrace } from '../types'
 import { isTextMessage } from '../api'
 import { imageStyleName } from '../image-styles'
@@ -112,6 +112,12 @@ function formatArgs(args: Record<string, unknown>): string {
 function truncateResult(result: string): string {
   if (!result) return '（无返回内容）'
   return result.length > 200 ? `${result.slice(0, 200)}…` : result
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 // agent_plan 在工具调用清单里「原地更新」：多次调用会在同一消息里留下多条痕迹。
@@ -263,6 +269,13 @@ const planTasks = computed<PlanTaskItem[]>(() => {
             <div v-if="!isAssistant && textMessage?.images?.length" class="message__user-images">
               <img v-for="(url, index) in textMessage.images" :key="index" :src="url" alt="用户上传的图片" />
             </div>
+            <div v-if="!isAssistant && textMessage?.files?.length" class="message__user-files">
+              <span v-for="(file, index) in textMessage.files" :key="index" class="message__user-file">
+                <PhFile :size="13" weight="bold" />
+                <span class="message__user-file-name">{{ file.name }}</span>
+                <span v-if="file.size" class="message__user-file-size">{{ formatFileSize(file.size) }}</span>
+              </span>
+            </div>
             <div v-if="isAssistant" class="message__markdown" v-html="renderedContent" />
             <div v-else class="message__plain">{{ textMessage?.content }}</div>
             <span v-if="isStreaming" class="message__cursor" />
@@ -328,6 +341,40 @@ const planTasks = computed<PlanTaskItem[]>(() => {
   border-radius: var(--radius-sm);
   object-fit: cover;
   border: 1px solid var(--color-border-subtle);
+}
+
+.message__user-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.message__user-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.message__user-file-name {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message__user-file-size {
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .message--assistant .message__body {

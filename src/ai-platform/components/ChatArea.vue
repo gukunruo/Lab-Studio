@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, nextTick, watch, computed } from 'vue'
-import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from '../types'
+import type { AiModel, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, FileAttachment, GeminiMultimodalAssistantMessage, GeminiMultimodalUserMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from '../types'
 import { buildGeminiSubThreadHistory, controlledImageAssetId, isTextMessage, parseConversationDigest } from '../api'
 import { composeImagePrompt } from '../image-styles'
 import MessageBubble from './MessageBubble.vue'
@@ -291,12 +291,13 @@ async function requestReply(messages: ChatMessage[]) {
   }
 }
 
-async function handleSend(content: string, images?: string[]) {
+async function handleSend(content: string, images?: string[], files?: FileAttachment[]) {
   if (streaming.value) return
   const userMsg: ChatMessage = {
     role: 'user',
     content,
     ...(images?.length ? { images } : {}),
+    ...(files?.length ? { files } : {}),
     createdAt: new Date().toISOString(),
   }
   const newMessages = [...props.messages, userMsg]
