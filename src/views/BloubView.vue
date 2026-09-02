@@ -353,7 +353,7 @@ const stateLabels: Record<string, string> = {
       </div>
     </div>
 
-    <div class="bloub__stage" :class="{ 'bloub__stage--anim': mode === 'anim' }">
+    <div class="bloub__stage">
       <!-- 居中列 : bot 浮在背景上, 导出 pill 在其正下方置中 -->
       <section class="bloub__bot">
 
@@ -437,59 +437,6 @@ const stateLabels: Record<string, string> = {
         </span>
 
         <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
-
-        <!-- Controles d'animation : toujours montes, on les fond (pas de remontage
-             des vignettes a chaque bascule — c'est ce qui faisait saccader). -->
-        <div v-show="mode === 'anim'" class="bloub__animrows">
-          <div class="bloub__playback">
-            <button
-              class="bloub__ctl"
-              type="button"
-              :class="{ 'bloub__ctl--active': playing }"
-              :disabled="frozen"
-              @click="playing = !playing"
-            >
-              <component :is="playing ? PhPause : PhPlay" :size="15" />
-              {{ playing ? '暂停' : '播放' }}
-            </button>
-            <button
-              class="bloub__ctl"
-              type="button"
-              :class="{ 'bloub__ctl--active': frozen }"
-              @click="toggleFreeze"
-            >
-              <PhSnowflake :size="15" />
-              {{ frozen ? '取消冻结' : '冻结帧' }}
-            </button>
-            <label v-if="frozen" class="bloub__freeze">
-              <input v-model.number="freezeTime" type="range" min="0" max="3" step="0.05" />
-              <span>{{ freezeTime.toFixed(2) }}s</span>
-            </label>
-            <span class="bloub__state-name">{{ stateLabels[state] }}</span>
-          </div>
-
-          <div class="bloub__states">
-            <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
-            <button
-              v-for="s in order"
-              :key="s.id"
-              type="button"
-              class="bloub__state"
-              :class="{ 'bloub__state--active': state === s.id }"
-              @click="appendState(s.id)"
-            >
-              <BloubBot
-                :size="46"
-                :state="s.id"
-                :frozen-at="POSES[s.id]"
-                :shape="shape"
-                :color="color"
-                :expression="expression"
-              />
-              <span>{{ stateLabels[s.id] }}</span>
-            </button>
-          </div>
-        </div>
       </section>
 
       <!-- 右侧自定义面板 : 无卡片分组的标签区块. Toujours monté (pas de remontage
@@ -547,6 +494,59 @@ const stateLabels: Record<string, string> = {
         </section>
         </div>
       </aside>
+
+      <!-- Animation : bot a gauche, grille d'etats a droite — meme squelette que le
+           panneau custom. Toujours monte, on le fond en mode custom. -->
+      <div v-show="mode === 'anim'" class="bloub__animrows">
+        <div class="bloub__playback">
+          <button
+            class="bloub__ctl"
+            type="button"
+            :class="{ 'bloub__ctl--active': playing }"
+            :disabled="frozen"
+            @click="playing = !playing"
+          >
+            <component :is="playing ? PhPause : PhPlay" :size="15" />
+            {{ playing ? '暂停' : '播放' }}
+          </button>
+          <button
+            class="bloub__ctl"
+            type="button"
+            :class="{ 'bloub__ctl--active': frozen }"
+            @click="toggleFreeze"
+          >
+            <PhSnowflake :size="15" />
+            {{ frozen ? '取消冻结' : '冻结帧' }}
+          </button>
+          <label v-if="frozen" class="bloub__freeze">
+            <input v-model.number="freezeTime" type="range" min="0" max="3" step="0.05" />
+            <span>{{ freezeTime.toFixed(2) }}s</span>
+          </label>
+          <span class="bloub__state-name">{{ stateLabels[state] }}</span>
+        </div>
+
+        <div class="bloub__states">
+          <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
+          <button
+            v-for="s in order"
+            :key="s.id"
+            type="button"
+            class="bloub__state"
+            :class="{ 'bloub__state--active': state === s.id }"
+            @click="appendState(s.id)"
+          >
+            <BloubBot
+              :size="46"
+              :state="s.id"
+              :frozen-at="POSES[s.id]"
+              :shape="shape"
+              :color="color"
+              :expression="expression"
+            />
+            <span>{{ stateLabels[s.id] }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Piste toujours montee : on la fond plutot que de la remonter (ses vignettes
@@ -864,24 +864,23 @@ const stateLabels: Record<string, string> = {
 
 /* Controles d'animation : montes en permanence (leurs vignettes ne sont pas
    remontees a chaque bascule — c'est ce qui faisait saccader), mais replies
-   (`display:none`) en mode custom pour ne pas decaler le bot ni deborder. */
+   (`display:none`) en mode custom. En mode animation ils occupent la colonne
+   de droite, comme le panneau custom — le squelette de la grille reste le meme
+   dans les deux modes. */
 .bloub__animrows {
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 14px;
-}
-
-/* En mode animation le panneau de personnalisation (et sa colonne) disparait :
-   le bot prend toute la largeur. On ne TRANSITE pas `grid-template-columns`
-   (reflow par frame = la source du saccade) — on laisse le grille se poser. */
-.bloub__stage--anim {
-  grid-template-columns: minmax(0, 1fr);
+  overflow-y: auto;
+  padding: 12px;
 }
 
 .bloub__playback {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -948,13 +947,13 @@ const stateLabels: Record<string, string> = {
   color: var(--color-text-muted);
 }
 
-/* grille d'etats : compacte et toujours pres de l'apercu */
+/* grille d'etats : compacte et toujours pres de la colonne, elle s'adapte a sa
+   largeur (4-5 colonnes dans le panneau de droite, davantage en pleine largeur). */
 .bloub__states {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
   gap: 8px;
   width: 100%;
-  max-width: 560px;
 }
 
 .bloub__states-title {
