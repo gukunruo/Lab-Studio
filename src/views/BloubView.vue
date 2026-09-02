@@ -353,7 +353,7 @@ const stateLabels: Record<string, string> = {
       </div>
     </div>
 
-    <div class="bloub__stage">
+    <div class="bloub__stage" :class="{ 'bloub__stage--anim': mode === 'anim' }">
       <!-- 居中列 : bot 浮在背景上, 导出 pill 在其正下方置中 -->
       <section class="bloub__bot">
 
@@ -440,7 +440,7 @@ const stateLabels: Record<string, string> = {
 
         <!-- Controles d'animation : toujours montes, on les fond (pas de remontage
              des vignettes a chaque bascule — c'est ce qui faisait saccader). -->
-        <div class="bloub__animrows" :class="{ 'bloub__animrows--hidden': mode !== 'anim' }">
+        <div v-show="mode === 'anim'" class="bloub__animrows">
           <div class="bloub__playback">
             <button
               class="bloub__ctl"
@@ -494,7 +494,7 @@ const stateLabels: Record<string, string> = {
 
       <!-- 右侧自定义面板 : 无卡片分组的标签区块. Toujours monté (pas de remontage
            des 36 vignettes a la bascule), on le fond seulement. -->
-      <aside class="bloub__panel" :class="{ 'bloub__panel--anim': mode === 'anim' }">
+      <aside v-show="mode === 'custom'" class="bloub__panel">
         <div class="bloub__panel-inner">
         <section class="bloub__group">
           <h3 class="bloub__group-title">形状</h3>
@@ -552,7 +552,7 @@ const stateLabels: Record<string, string> = {
     <!-- Piste toujours montee : on la fond plutot que de la remonter (ses vignettes
          sont des blocs), pour que la bascule ne fasse pas saccader le bot. -->
     <BloubTimeline
-      :class="{ 'bloub__timeline--hidden': mode !== 'anim' }"
+      v-show="mode === 'anim'"
       v-model:blocks="blocks"
       :current="block"
       :elapsed="elapsed"
@@ -870,27 +870,13 @@ const stateLabels: Record<string, string> = {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-
-  &--hidden {
-    display: none;
-  }
 }
 
-.bloub__panel {
-  transition: opacity 0.3s ease, transform 0.3s ease;
-
-  &--anim {
-    opacity: 0;
-    transform: translateX(24px);
-    visibility: hidden;
-    pointer-events: none;
-  }
-}
-
-.bloub__timeline--hidden {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
+/* En mode animation le panneau de personnalisation (et sa colonne) disparait :
+   le bot prend toute la largeur. On ne TRANSITE pas `grid-template-columns`
+   (reflow par frame = la source du saccade) — on laisse le grille se poser. */
+.bloub__stage--anim {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .bloub__playback {
