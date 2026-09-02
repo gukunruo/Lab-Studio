@@ -326,15 +326,14 @@ const stateLabels: Record<string, string> = {
         <PhSmiley :size="15" weight="bold" />
         G's bot
       </span>
-    </div>
 
-    <div class="bloub__stage" :class="{ 'bloub__stage--anim': mode === 'anim' }">
-      <!-- 左侧竖排模式轨 : palette=自定义(实心块), clap=动画(描边块) -->
-      <nav class="bloub__rail" aria-label="模式切换">
+      <!-- Segmented switch en haut a droite : deux boutons dans un seul boitier,
+           le pouce sombre glisse entre eux. Palette=custom, clap=animation. -->
+      <div class="bloub__mode" :class="{ 'bloub__mode--anim': mode === 'anim' }">
         <button
           type="button"
-          class="bloub__rail-btn"
-          :class="{ 'bloub__rail-btn--active': mode === 'custom' }"
+          class="bloub__mode-btn"
+          :class="{ 'bloub__mode-btn--active': mode === 'custom' }"
           title="自定义"
           aria-label="自定义"
           @click="setMode('custom')"
@@ -343,16 +342,18 @@ const stateLabels: Record<string, string> = {
         </button>
         <button
           type="button"
-          class="bloub__rail-btn"
-          :class="{ 'bloub__rail-btn--active': mode === 'anim' }"
+          class="bloub__mode-btn"
+          :class="{ 'bloub__mode-btn--active': mode === 'anim' }"
           title="动画"
           aria-label="动画"
           @click="setMode('anim')"
         >
           <PhFilmStrip :size="18" />
         </button>
-      </nav>
+      </div>
+    </div>
 
+    <div class="bloub__stage">
       <!-- 居中列 : bot 浮在背景上, 导出 pill 在其正下方置中 -->
       <section class="bloub__bot">
 
@@ -437,8 +438,10 @@ const stateLabels: Record<string, string> = {
 
         <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
 
-        <transition name="bloub-swap">
-          <div v-if="mode === 'anim'" class="bloub__playback">
+        <!-- Controles d'animation : toujours montes, on les fond (pas de remontage
+             des vignettes a chaque bascule — c'est ce qui faisait saccader). -->
+        <div class="bloub__animrows" :class="{ 'bloub__animrows--hidden': mode !== 'anim' }">
+          <div class="bloub__playback">
             <button
               class="bloub__ctl"
               type="button"
@@ -464,10 +467,8 @@ const stateLabels: Record<string, string> = {
             </label>
             <span class="bloub__state-name">{{ stateLabels[state] }}</span>
           </div>
-        </transition>
 
-        <transition name="bloub-swap">
-          <div v-if="mode === 'anim'" class="bloub__states">
+          <div class="bloub__states">
             <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
             <button
               v-for="s in order"
@@ -488,69 +489,70 @@ const stateLabels: Record<string, string> = {
               <span>{{ stateLabels[s.id] }}</span>
             </button>
           </div>
-        </transition>
+        </div>
       </section>
 
-      <!-- 右侧自定义面板 : 无卡片分组的标签区块 -->
-      <transition name="bloub-panel">
-        <aside v-if="mode === 'custom'" class="bloub__panel">
-          <div class="bloub__panel-inner">
-          <section class="bloub__group">
-            <h3 class="bloub__group-title">形状</h3>
-            <div class="bloub__shapes">
-              <button
-                v-for="s in SHAPES"
-                :key="s.id"
-                type="button"
-                class="bloub__shape"
-                :class="{ 'bloub__shape--active': shape === s.id }"
-                @click="shape = s.id"
-              >
-                <BloubBot :size="40" :shape="s.id" :frozen-at="1.2" />
-                <span>{{ shapeLabels[s.id] }}</span>
-              </button>
-            </div>
-          </section>
-
-          <section class="bloub__group">
-            <h3 class="bloub__group-title">表情</h3>
-            <div class="bloub__exprs">
-              <button
-                v-for="e in EXPRESSIONS"
-                :key="e.id"
-                type="button"
-                class="bloub__expr"
-                :class="{ 'bloub__expr--active': expression === e.id }"
-                @click="expression = e.id"
-              >
-                <BloubBot :size="40" :state="'idle'" :frozen-at="1.5" :expression="e.id" :flat="true" />
-                <span>{{ expressionLabels[e.id] }}</span>
-              </button>
-            </div>
-          </section>
-
-          <section class="bloub__group">
-            <h3 class="bloub__group-title">颜色</h3>
-            <div class="bloub__colors">
-              <button
-                v-for="c in COLORS"
-                :key="c.id"
-                type="button"
-                class="bloub__color"
-                :class="{ 'bloub__color--active': color === c.id }"
-                :style="{ background: c.hex }"
-                :title="c.id"
-                @click="color = c.id"
-              />
-            </div>
-          </section>
+      <!-- 右侧自定义面板 : 无卡片分组的标签区块. Toujours monté (pas de remontage
+           des 36 vignettes a la bascule), on le fond seulement. -->
+      <aside class="bloub__panel" :class="{ 'bloub__panel--anim': mode === 'anim' }">
+        <div class="bloub__panel-inner">
+        <section class="bloub__group">
+          <h3 class="bloub__group-title">形状</h3>
+          <div class="bloub__shapes">
+            <button
+              v-for="s in SHAPES"
+              :key="s.id"
+              type="button"
+              class="bloub__shape"
+              :class="{ 'bloub__shape--active': shape === s.id }"
+              @click="shape = s.id"
+            >
+              <BloubBot :size="40" :shape="s.id" :frozen-at="1.2" />
+              <span>{{ shapeLabels[s.id] }}</span>
+            </button>
           </div>
-        </aside>
-      </transition>
+        </section>
+
+        <section class="bloub__group">
+          <h3 class="bloub__group-title">表情</h3>
+          <div class="bloub__exprs">
+            <button
+              v-for="e in EXPRESSIONS"
+              :key="e.id"
+              type="button"
+              class="bloub__expr"
+              :class="{ 'bloub__expr--active': expression === e.id }"
+              @click="expression = e.id"
+            >
+              <BloubBot :size="40" :state="'idle'" :frozen-at="1.5" :expression="e.id" :flat="true" />
+              <span>{{ expressionLabels[e.id] }}</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="bloub__group">
+          <h3 class="bloub__group-title">颜色</h3>
+          <div class="bloub__colors">
+            <button
+              v-for="c in COLORS"
+              :key="c.id"
+              type="button"
+              class="bloub__color"
+              :class="{ 'bloub__color--active': color === c.id }"
+              :style="{ background: c.hex }"
+              :title="c.id"
+              @click="color = c.id"
+            />
+          </div>
+        </section>
+        </div>
+      </aside>
     </div>
 
+    <!-- Piste toujours montee : on la fond plutot que de la remonter (ses vignettes
+         sont des blocs), pour que la bascule ne fasse pas saccader le bot. -->
     <BloubTimeline
-      v-if="mode === 'anim'"
+      :class="{ 'bloub__timeline--hidden': mode !== 'anim' }"
       v-model:blocks="blocks"
       :current="block"
       :elapsed="elapsed"
@@ -777,61 +779,76 @@ const stateLabels: Record<string, string> = {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 20px;
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
   padding: 64px 20px 20px;
-  transition: grid-template-columns 0.3s ease;
+}
 
-  /* Mode animation : le panneau personnalisation disparait, la colonne
-     apercu s'etend et la piste prend toute la largeur en bas. */
-  &--anim {
-    grid-template-columns: 64px minmax(0, 1fr);
+/* ---------- segmented switch (haut droite) : deux boutons, un boitier ---------- */
+
+.bloub__mode {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 4px;
+  border: 1px solid var(--bloub-line);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+
+  /* Pouce sombre qui glisse entre les deux modes — c'est ce pouce qui fait la
+     transition, pas un reflow de la grille. */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: 44px;
+    border-radius: var(--radius-full);
+    background: var(--color-text);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  &--anim::before {
+    transform: translateX(46px);
   }
 }
 
-/* ---------- rail de mode (bord gauche) : palette=perso, clap=animation ---------- */
-
-.bloub__rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  align-self: stretch;
-  gap: 10px;
-  padding-top: 8px;
-}
-
-.bloub__rail-btn {
+.bloub__mode-btn {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 44px;
-  height: 44px;
+  height: 40px;
   padding: 0;
-  border: 1px solid var(--bloub-line);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
+  transition: color 0.2s;
 
   &:hover {
     color: var(--color-text);
-    border-color: var(--bloub-line-strong);
-    transform: translateY(-1px);
   }
 
   &--active {
     color: var(--color-bg);
-    background: var(--color-text);
-    border-color: var(--color-text);
   }
 }
 
 /* Le bot flotte sur le fond de la page (comme la reference) : plus de carte
-   surface autour de l'apercu, les controles sont de petits pillons. */
+   surface autour de l'apercu, les controles sont de petits pillons. Le bot reste
+   centre sur [bot + export + indication] dans les DEUX modes : les controles
+   d'animation sont ancrees en bas, hors du flux, donc ils ne decalent pas le bot. */
 .bloub__bot {
   display: flex;
   flex-direction: column;
@@ -845,30 +862,35 @@ const stateLabels: Record<string, string> = {
 
 /* ---------- transition de mode ---------- */
 
-.bloub-swap-enter-active,
-.bloub-swap-leave-active {
-  transition: opacity 0.22s ease, transform 0.22s ease;
+/* Controles d'animation : montes en permanence (leurs vignettes ne sont pas
+   remontees a chaque bascule — c'est ce qui faisait saccader), mais replies
+   (`display:none`) en mode custom pour ne pas decaler le bot ni deborder. */
+.bloub__animrows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+
+  &--hidden {
+    display: none;
+  }
 }
 
-.bloub-swap-enter-from {
+.bloub__panel {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+
+  &--anim {
+    opacity: 0;
+    transform: translateX(24px);
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+.bloub__timeline--hidden {
   opacity: 0;
-  transform: translateY(-6px);
-}
-
-.bloub-swap-leave-to {
-  opacity: 0;
-  transform: translateY(6px);
-}
-
-.bloub-panel-enter-active,
-.bloub-panel-leave-active {
-  transition: opacity 0.28s ease, transform 0.28s ease;
-}
-
-.bloub-panel-enter-from,
-.bloub-panel-leave-to {
-  opacity: 0;
-  transform: translateX(20px);
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .bloub__playback {
@@ -1113,14 +1135,14 @@ const stateLabels: Record<string, string> = {
     padding-top: 64px;
   }
 
-  .bloub__rail {
-    flex-direction: row;
-    justify-content: flex-start;
-  }
-
   .bloub__bot {
     justify-content: flex-start;
     overflow: visible;
+  }
+
+  .bloub__animrows {
+    position: static;
+    padding-top: 8px;
   }
 
   .bloub__panel {
