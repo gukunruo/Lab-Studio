@@ -26,6 +26,11 @@ const router = createRouter({
       component: () => import('@/views/AiPlatformView.vue'),
     },
     {
+      path: '/bloub',
+      name: 'bloub',
+      component: () => import('@/views/BloubView.vue'),
+    },
+    {
       path: '/',
       component: LabShell,
       children: [
