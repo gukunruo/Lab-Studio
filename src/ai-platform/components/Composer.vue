@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { ChatParams, ImageAspectRatio, ImageModelId } from '../types'
+import type { ChatParams, FileAttachment, ImageAspectRatio, ImageModelId } from '../types'
 import {
   COMPOSER_INPUT_MAX_HEIGHT,
   composerSubmitMatches,
@@ -8,8 +8,8 @@ import {
 } from '../composer'
 import { IMAGE_STYLES, imageStyleName } from '../image-styles'
 import { IMAGE_TEMPLATES, type ImageTemplate } from '../image-templates'
-import { createImageTemplate, deleteImageTemplate, fetchImageTemplates, uploadImage } from '../api'
-import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhSparkle, PhSquaresFour, PhStop, PhUploadSimple, PhX } from '@phosphor-icons/vue'
+import { createImageTemplate, deleteImageTemplate, fetchImageTemplates, uploadFile, uploadImage } from '../api'
+import { PhCaretDown, PhChats, PhCheck, PhCrop, PhFrameCorners, PhGlobe, PhImage, PhLightning, PhPalette, PhPaperPlaneRight, PhPlus, PhSparkle, PhSquaresFour, PhStop, PhUploadSimple, PhX } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -22,7 +22,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  send: [content: string, images?: string[]]
+  send: [content: string, images?: string[], files?: FileAttachment[]]
   'generate-image': [input: {
     prompt: string
     aspectRatio?: ImageAspectRatio
@@ -136,9 +136,17 @@ async function onReferenceFileChange(event: Event) {
   }
 }
 
-// —— 对话多模态：随消息附图的本地上传（复用参考图资产，无需桶）——
+// —— 对话多模态：随消息附图上本地上传的图片 + 文件文档（复用参考图资产，无需桶）——
 const chatFileInput = ref<HTMLInputElement | null>(null)
-const chatImages = ref<string[]>([])
+interface ComposerAttachment {
+  id: string
+  url: string
+  kind: 'image' | 'file'
+  name: string
+  size?: number
+  mimeType?: string
+}
+const chatAttachments = ref<ComposerAttachment[]>([])
 const chatUploading = ref(false)
 const chatUploadError = ref('')
 
@@ -155,24 +163,36 @@ async function onChatAttachmentChange(event: Event) {
   chatUploading.value = true
   try {
     for (const file of files) {
-      if (file.size > 8 * 1024 * 1024) {
-        chatUploadError.value = '图片不能超过 8MB。'
+      const isImage = file.type.startsWith('image/')
+      const sizeLimit = isImage ? 8 * 1024 * 1024 : 10 * 1024 * 1024
+      if (file.size > sizeLimit) {
+        chatUploadError.value = isImage ? '图片不能超过 8MB。' : '文件不能超过 10MB。'
         continue
       }
       const base64 = await readFileAsBase64(file)
-      const { url } = await uploadImage({ base64 })
-      if (!chatImages.value.includes(url)) chatImages.value.push(url)
+      const { id, url } = isImage
+        ? await uploadImage({ base64 })
+        : await uploadFile({ base64, mimeType: file.type, fileName: file.name })
+      if (!chatAttachments.value.some((a) => a.id === id)) {
+        chatAttachments.value.push({ id, url, kind: isImage ? 'image' : 'file', name: file.name, size: file.size, mimeType: file.type })
+      }
     }
   } catch (error) {
-    chatUploadError.value = error instanceof Error ? error.message : '图片上传失败，请稍后重试。'
+    chatUploadError.value = error instanceof Error ? error.message : '上传失败，请稍后重试。'
   } finally {
     chatUploading.value = false
   }
 }
 
 function removeChatAttachment(index: number) {
-  chatImages.value.splice(index, 1)
+  chatAttachments.value.splice(index, 1)
 }
+
+// 发送按钮可用性：对话模式下无文字但有附件（图片/文件）也可发送；生图/Gemini 需有文案。
+const canSend = computed(() => {
+  if (mode.value === 'chat') return Boolean(currentDraft.value.trim() || chatAttachments.value.length)
+  return Boolean(currentDraft.value.trim())
+})
 
 async function autoResize() {
   const el = textareaRef.value
@@ -182,13 +202,27 @@ async function autoResize() {
   el.style.overflowY = el.scrollHeight > COMPOSER_INPUT_MAX_HEIGHT ? 'auto' : 'hidden'
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 async function submit() {
   const content = chatDraft.value.trim()
-  const images = chatImages.value.length ? [...chatImages.value] : undefined
-  if ((!content && !images) || props.streaming || props.busy || props.imageGenerating) return
-  emit('send', content, images)
+  const images = chatAttachments.value.length
+    ? chatAttachments.value.filter((a) => a.kind === 'image').map((a) => a.url)
+    : []
+  const files = chatAttachments.value.length
+    ? chatAttachments.value
+        .filter((a) => a.kind === 'file')
+        .map((a) => ({ url: a.url, name: a.name, size: a.size, mimeType: a.mimeType }))
+        .filter((file) => !!file.url && !!file.name)
+    : []
+  if ((!content && !images.length && !files.length) || props.streaming || props.busy || props.imageGenerating) return
+  emit('send', content, images.length ? images : undefined, files.length ? files : undefined)
   chatDraft.value = ''
-  chatImages.value = []
+  chatAttachments.value = []
   chatUploadError.value = ''
   await nextTick()
   await autoResize()
@@ -401,13 +435,18 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
         @input="autoResize"
         @keydown="onKeydown"
       />
-      <div v-if="mode === 'chat' && (chatImages.length || chatUploadError)" class="composer__attachments">
-        <div v-for="(image, index) in chatImages" :key="image" class="composer__attachment">
-          <img :src="image" alt="待发送图片" />
+      <div v-if="mode === 'chat' && (chatAttachments.length || chatUploadError)" class="composer__attachments">
+        <div v-for="(attachment, index) in chatAttachments" :key="attachment.id" class="composer__attachment" :class="{ 'composer__attachment--file': attachment.kind === 'file' }">
+          <img v-if="attachment.kind === 'image'" :src="attachment.url" alt="待发送图片" />
+          <span v-else class="composer__attachment-file">
+            <PhUploadSimple :size="13" weight="bold" />
+            <span class="composer__attachment-file-name">{{ attachment.name }}</span>
+            <span v-if="attachment.size" class="composer__attachment-file-size">{{ formatFileSize(attachment.size) }}</span>
+          </span>
           <button
             class="composer__attachment-remove"
             type="button"
-            :aria-label="`移除第 ${index + 1} 张图片`"
+            :aria-label="`移除第 ${index + 1} 个附件`"
             @click="removeChatAttachment(index)"
           >
             <PhX :size="12" weight="bold" />
@@ -419,13 +458,23 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
         ref="chatFileInput"
         class="composer__file-input"
         type="file"
-        accept="image/*"
+        accept="image/*,text/*,.md,.csv,.json,.xml,.pdf,.docx,.xlsx,.pptx"
         multiple
         @change="onChatAttachmentChange"
       />
       <div class="composer__bar">
         <div class="composer__tools">
           <template v-if="mode === 'chat'">
+            <button
+              class="composer__tool composer__tool--button composer__tool--plus"
+              type="button"
+              :disabled="streaming || busy || imageGenerating || chatUploading"
+              :title="chatUploading ? '上传中' : '添加图片或文件'"
+              :aria-label="chatUploading ? '上传中' : '添加图片或文件'"
+              @click="pickChatAttachment"
+            >
+              <PhPlus :size="15" weight="regular" />
+            </button>
             <button
               class="composer__tool composer__tool--button"
               :class="{ 'composer__tool--active': webSearchOn }"
@@ -448,17 +497,18 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
               <PhLightning :size="11" weight="regular" /> {{ params.reasoningEffort }}
             </button>
             <span v-if="params.maxTokens" class="composer__badge">max {{ params.maxTokens }}</span>
-            <button
-              class="composer__tool composer__tool--button"
-              type="button"
-              :disabled="streaming || busy || imageGenerating || chatUploading"
-              :title="chatUploading ? '上传中' : '添加图片，随本条消息发给 AI 识图'"
-              @click="pickChatAttachment"
-            >
-              <PhUploadSimple :size="13" weight="regular" /> {{ chatUploading ? '上传中' : '图片' }}
-            </button>
           </template>
           <template v-else>
+            <button
+              class="composer__tool composer__tool--button composer__tool--plus"
+              type="button"
+              :disabled="streaming || busy || imageGenerating || referenceUploading"
+              :title="referenceUploading ? '上传参考图' : '上传参考图片'"
+              :aria-label="referenceUploading ? '上传参考图' : '上传参考图片'"
+              @click="pickReferenceFile"
+            >
+              <PhPlus :size="15" weight="regular" />
+            </button>
             <div class="img-opt" :data-drop="'model'">
               <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': openDropdown === 'model' }" :disabled="streaming || busy || imageGenerating" :aria-expanded="openDropdown === 'model'" @click="toggleDropdown('model')">
                 <PhSparkle :size="13" weight="regular" />
@@ -523,13 +573,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
               </button>
             </div>
 
-            <div class="img-opt">
-              <button type="button" class="img-opt__trigger" :class="{ 'img-opt__trigger--open': hasReference }" :disabled="streaming || busy || imageGenerating || referenceUploading" :aria-expanded="hasReference" @click="pickReferenceFile">
-                <PhUploadSimple :size="13" weight="regular" />
-                <span class="img-opt__label">{{ referenceUploading ? '上传中' : '参考图' }}</span>
-              </button>
-              <input ref="referenceFileInput" type="file" accept="image/*" class="composer__file-input" hidden @change="onReferenceFileChange" />
-            </div>
+            <input ref="referenceFileInput" type="file" accept="image/*" class="composer__file-input" hidden @change="onReferenceFileChange" />
 
             <span v-if="hasReference" class="composer__reference">
               <img v-if="referenceImageUrl" class="composer__reference-thumb" :src="referenceImageUrl" alt="参考图" />
@@ -563,7 +607,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
           v-else
           class="composer__send"
           type="button"
-          :disabled="!currentDraft.trim() || busy"
+          :disabled="!canSend || busy"
           :title="mode === 'chat' ? '发送' : (mode === 'gemini' ? '发送创作指令' : (gptEditing ? '编辑图片' : '生成图片'))"
           :aria-label="mode === 'chat' ? '发送消息' : (mode === 'gemini' ? '发送创作指令' : (gptEditing ? '编辑图片' : '生成图片'))"
           @click="mode === 'chat' ? submit() : (mode === 'gemini' ? generateGemini() : generateImage())"
@@ -649,6 +693,11 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
 .composer__attachment-remove { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: var(--radius-full); border: 0; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 .composer__attachment-remove:hover { background: rgba(0,0,0,.8); }
 .composer__attachment-error { margin: 0; color: var(--color-danger); font-size: 12px; font-weight: 600; }
+.composer__attachment--file { width: auto; height: 30px; padding: 0 24px 0 9px; overflow: hidden; background: var(--color-surface); border-radius: var(--radius-full); display: inline-flex; align-items: center; }
+.composer__attachment--file .composer__attachment-remove { top: 50%; transform: translateY(-50%); right: 4px; }
+.composer__attachment-file { display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 100%; color: var(--color-text); font-size: 12px; }
+.composer__attachment-file-name { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer__attachment-file-size { color: var(--color-text-muted); font-size: 10.5px; white-space: nowrap; }
 .img-opt { position: relative; display: inline-flex; }
 .img-opt__trigger { height: 28px; padding: 0 10px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); font-size: 11px; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .img-opt__trigger:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent-strong); }
@@ -703,6 +752,7 @@ defineExpose({ composerWrapRef, restoreImageDraft, restoreGeminiDraft, refreshTe
 .composer__tool--button { cursor: pointer; font-family: var(--font-sans); }
 .composer__tool--button:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent-strong); }
 .composer__tool--button:disabled { cursor: not-allowed; opacity: .45; }
+.composer__tool--plus { width: 28px; padding: 0; justify-content: center; flex-shrink: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .composer__send { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--color-accent); border: none; color: var(--color-bg); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .2s cubic-bezier(.16,1,.3,1); box-shadow: 0 0 12px var(--color-accent-glow); }
 .composer__send:hover:not(:disabled) { background: var(--color-accent-strong); transform: scale(1.05); }
