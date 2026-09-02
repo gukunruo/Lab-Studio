@@ -11,13 +11,6 @@ export interface ImageTemplate {
 
 export const IMAGE_TEMPLATES: ImageTemplate[] = [
   {
-    id: 'moebius-float',
-    name: '莫比斯·空中浮岛',
-    prompt: 'Moebius (Jean Giraud) 风格，极繁主义，莫比斯风格插画，艺术家 Moebius 风格，极致细节，悬浮在空中的巨型岩石浮岛，参天的拱门建筑，空中楼阁，色彩丰富的异域民居，垂直相连的悬空天桥，飞艇码头，色彩层次丰富的建筑外墙，浮岛上的运河一角，淡蓝色透明的空中溪流，淡蓝色的能量水晶，淡紫色的漂浮圆石，瀑布般垂下的藤蔓植物，画面细腻耐看，宁静美好，爬山虎，空中花园，爬藤月季，牵牛花，紫藤花，夜来香，凌霄花，淡紫色和粉色的空中花卉，淡蓝色的奇异花草。',
-    image: '/ai-templates/tpl-moebius-float.webp',
-    aspectRatio: '16:9',
-  },
-  {
     id: 'plush-stickers',
     name: '3D毛绒潮玩贴纸',
     prompt: '3D 毛绒质感潮玩贴纸集合，纯白色背景，四组毛绒人物元素分区域排版：戴明黄色针织帽的男生举着橙色带笑脸的相机，穿黄色套装的女生从棕色礼盒里探出头，粉紫色头发女生躺在棕色月牙沙发上玩手机，圣诞帽男生坐在绿色月亮上拿着苹果，毛绒纹理清晰细腻，色彩活泼明亮，可爱治愈 3D 风格，方版构图。',
@@ -137,13 +130,6 @@ export const IMAGE_TEMPLATES: ImageTemplate[] = [
     aspectRatio: '3:4',
   },
   {
-    id: 'watermelon-summer',
-    name: '西瓜味的夏天',
-    prompt: '竖版海报，明亮高饱和配色，马克笔手绘质感。\n\n• 背景：卡通西瓜切片、冰棍、太阳涂鸦，铺满浅黄底色，线条活泼随性。\n\n• 文字排版：\n\n◦ 主标题（圆润卡通字）：西瓜味的夏天\n\n◦ 小字：空调+西瓜=快乐夏天\n\n◦ 角落涂鸦：小太阳+爱心\n\n• 氛围：元气搞怪，适合朋友圈或活动海报。',
-    image: '/ai-templates/tpl-watermelon-summer.webp',
-    aspectRatio: '3:4',
-  },
-  {
     id: 'rich-logo',
     name: '国潮书法·日进斗金',
     prompt: '国潮毛笔书法字体LOGO，粗粝飞白笔触+水墨肌理，国风高级感。\n居中主标题大字：「日进斗金」，搭配金币、钱包小插画，左上角红色印章「暴富」。\n底部毛笔拼音/英文：「Ri Jin Dou Jin」，白色背景，水墨质感，力量感拉满，适配搞钱标语设计。',
@@ -204,6 +190,34 @@ export const IMAGE_TEMPLATES: ImageTemplate[] = [
     name: '像素风·城市漫游',
     prompt: '像素风标题字效，高饱和橙黑配色，街头感拉满。\n\n• 主标题：城市漫游（像素块描边，橙黄底色+黑色粗体字，边缘做毛边像素颗粒效果）\n\n• 英文副标：CITY WANDER\n\n• 贴纸元素：左上角黄底贴纸写着「2026 STREET」，右下角贴纸写着「出逃计划」，搭配小相机涂鸦。\n\n• 整体氛围：街头潮酷感，充满城市探索的活力。',
     image: '/ai-templates/tpl-pixel-city.webp',
+    aspectRatio: '3:4',
+  },
+  {
+    id: 'shop-guide',
+    name: '进店指南·开业福利',
+    prompt: '竖版卡通扁平海报，暖粉网格背景；中央卡通女孩举黄色日历牌，旁有笑脸emoji和回形针装饰。\n文案：\n主标题：进店指南\n副标题：开业福利全攻略\n优惠：全场好物5折起\n福利：进店即送定制贴纸1张\n底部小字：快来打卡！',
+    image: '/ai-templates/tpl-shop-guide.webp',
+    aspectRatio: '3:4',
+  },
+  {
+    id: 'oil-cat-window',
+    name: '厚涂油画·探窗橘猫',
+    prompt: '厚涂油画风格猫咪插画，克莱因蓝背景（有厚涂颜料肌理），虎斑橘猫从蓝色墙与浅蓝色门框缝隙探出上半身，眼睛眯成月牙，嘴角上扬微笑，阳光打在猫脸上形成温暖金色光影，笔触松弛自然，治愈系动物油画风格。',
+    image: '/ai-templates/tpl-oil-cat-window.webp',
+    aspectRatio: '1:1',
+  },
+  {
+    id: 'sleep-wallpaper',
+    name: '手写壁纸·早睡宣言',
+    prompt: '搞怪手写风励志标语壁纸，竖版构图，深蓝底+撞色标签排版，活泼接地气。\n超大主标题居中：毛笔手写「今天早睡了吗？？？」，搭配卡通月亮、闹钟、星星装饰。\n多层彩色标签标语错落堆叠：\n「能早睡就早睡 忌熬夜刷手机」\n「熬夜没有前途」\n「不喝奶茶不吃夜宵」\n「多睡 多运动」\n「要健康作息」\n「早睡打卡中」\n粗粝毛笔字体，视觉冲击力强，搞怪励志，适配作息自律打卡。',
+    image: '/ai-templates/tpl-sleep-wallpaper.webp',
+    aspectRatio: '3:4',
+  },
+  {
+    id: 'diffuse-flower',
+    name: '弥散花卉·马卡龙',
+    prompt: '纯色背景，极简艺术+弥散渐变模糊风格，由各色光效作用生成的温柔花卉艺术风格，视觉错觉，简化的流行文化元素，马卡龙色彩抽象化。\n画面正上方有极细无衬线字体「春日来信」，\n艺术，高级的氛围感，干净，简洁，极简，温柔，治愈，艺术性，光线追踪，内容简洁，想象力爆表的获奖作品，光影加重，扁平化。',
+    image: '/ai-templates/tpl-diffuse-flower.webp',
     aspectRatio: '3:4',
   },
 ]
