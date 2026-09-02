@@ -436,6 +436,33 @@ const stateLabels: Record<string, string> = {
           </transition>
         </span>
 
+        <div v-show="mode === 'anim'" class="bloub__playback">
+          <button
+            class="bloub__ctl"
+            type="button"
+            :class="{ 'bloub__ctl--active': playing }"
+            :disabled="frozen"
+            @click="playing = !playing"
+          >
+            <component :is="playing ? PhPause : PhPlay" :size="15" />
+            {{ playing ? '暂停' : '播放' }}
+          </button>
+          <button
+            class="bloub__ctl"
+            type="button"
+            :class="{ 'bloub__ctl--active': frozen }"
+            @click="toggleFreeze"
+          >
+            <PhSnowflake :size="15" />
+            {{ frozen ? '取消冻结' : '冻结帧' }}
+          </button>
+          <label v-if="frozen" class="bloub__freeze">
+            <input v-model.number="freezeTime" type="range" min="0" max="3" step="0.05" />
+            <span>{{ freezeTime.toFixed(2) }}s</span>
+          </label>
+          <span class="bloub__state-name">{{ stateLabels[state] }}</span>
+        </div>
+
         <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
       </section>
 
@@ -498,33 +525,6 @@ const stateLabels: Record<string, string> = {
       <!-- Animation : bot a gauche, grille d'etats a droite — meme squelette que le
            panneau custom. Toujours monte, on le fond en mode custom. -->
       <div v-show="mode === 'anim'" class="bloub__animrows">
-        <div class="bloub__playback">
-          <button
-            class="bloub__ctl"
-            type="button"
-            :class="{ 'bloub__ctl--active': playing }"
-            :disabled="frozen"
-            @click="playing = !playing"
-          >
-            <component :is="playing ? PhPause : PhPlay" :size="15" />
-            {{ playing ? '暂停' : '播放' }}
-          </button>
-          <button
-            class="bloub__ctl"
-            type="button"
-            :class="{ 'bloub__ctl--active': frozen }"
-            @click="toggleFreeze"
-          >
-            <PhSnowflake :size="15" />
-            {{ frozen ? '取消冻结' : '冻结帧' }}
-          </button>
-          <label v-if="frozen" class="bloub__freeze">
-            <input v-model.number="freezeTime" type="range" min="0" max="3" step="0.05" />
-            <span>{{ freezeTime.toFixed(2) }}s</span>
-          </label>
-          <span class="bloub__state-name">{{ stateLabels[state] }}</span>
-        </div>
-
         <div class="bloub__states">
           <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
           <button
