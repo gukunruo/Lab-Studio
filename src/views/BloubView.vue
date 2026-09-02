@@ -958,6 +958,9 @@ const stateLabels: Record<string, string> = {
   grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
   gap: 8px;
   width: 100%;
+  /* meme raison que `.bloub__panel-inner` : centrer verticalement sans couper le
+     haut quand la grille deborde. */
+  margin: auto 0;
 }
 
 .bloub__states-title {
@@ -1005,6 +1008,8 @@ const stateLabels: Record<string, string> = {
 .bloub__panel {
   position: relative;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--bloub-line-strong) transparent;
@@ -1024,6 +1029,10 @@ const stateLabels: Record<string, string> = {
   flex-direction: column;
   gap: 14px;
   padding: 2px;
+  /* `margin: auto` (plutot que `justify-content: center` sur le parent) centre
+     verticalement sans le defaut de decoupage : quand le contenu deborde, les
+     marges auto retombent a 0 et le scroll reste accessible. */
+  margin: auto 0;
 }
 
 /* Section de personnalisation sans carte : un titre + une grille, separee par
