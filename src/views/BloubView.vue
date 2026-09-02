@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { PhArrowLeft, PhDownloadSimple, PhPause, PhPlay, PhSnowflake, PhSmiley } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhDownloadSimple, PhPause, PhPlay, PhSmiley, PhSnowflake } from '@phosphor-icons/vue'
 import BloubBot from '@/components/BloubBot.vue'
 import { defaultCycle, MIN_BLOCK, type Block } from '@/bot/cycles'
 import { DEFAULT_EXPRESSION, EXPRESSIONS } from '@/bot/expressions'
@@ -38,6 +38,9 @@ const order = SEQUENCE.map((id) => STATE_BY_ID.get(id)!)
 function selectState(id: StateId) {
   previewAll.value = false
   selectedState.value = id
+  // Le bot est en haut de la colonne ; sur un ecran etroit il faut defiler pour
+  // le retrouver. On le ramene en vue pour voir la pose sans re-scroller.
+  nextTick(() => bot.value?.$el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }))
 }
 
 function selectAll() {
@@ -163,37 +166,39 @@ const stateLabels: Record<string, string> = {
   comet: '彗星',
   swirl: '入场'
 }
-
 </script>
 
 <template>
   <div class="bloub">
-    <header class="bloub__bar">
-      <RouterLink to="/" class="bloub__back" aria-label="返回 Lab" title="返回 Lab">
-        <PhArrowLeft :size="18" />
+    <!-- Infos en blocs flottants : pas de barre de titre, comme la reference. -->
+    <div class="bloub__floats">
+      <RouterLink to="/" class="bloub__float bloub__back" aria-label="返回 Lab" title="返回 Lab">
+        <PhArrowLeft :size="16" />
       </RouterLink>
-      <div class="bloub__title">
-        <PhSmiley :size="18" weight="bold" />
-        <span>G's bot 工作台</span>
-      </div>
-      <div class="bloub__actions">
-        <button class="bloub__export" type="button" @click="exportSvg">
-          <PhDownloadSimple :size="15" />
+      <span class="bloub__float bloub__brand">
+        <PhSmiley :size="15" weight="bold" />
+        G's bot
+      </span>
+      <span class="bloub__float bloub__export">
+        <button type="button" class="bloub__pill" @click="exportSvg">
+          <PhDownloadSimple :size="14" />
           导出 SVG
         </button>
-        <button class="bloub__export" type="button" @click="exportPng">
-          <PhDownloadSimple :size="15" />
+        <button type="button" class="bloub__pill bloub__pill--primary" @click="exportPng">
+          <PhDownloadSimple :size="14" />
           导出 PNG
         </button>
-      </div>
-    </header>
+      </span>
+    </div>
 
     <div class="bloub__stage">
+      <!-- Colonne apercu : le bot, ses controles et la grille d'etats cote a cote,
+           pour qu'un clic sur un etat se voie sans defiler. -->
       <section class="bloub__bot">
         <BloubBot
           v-if="!frozen"
           ref="bot"
-          :size="440"
+          :size="420"
           :shape="shape"
           :color="color"
           :expression="expression"
@@ -207,7 +212,7 @@ const stateLabels: Record<string, string> = {
         <BloubBot
           v-else
           ref="bot"
-          :size="440"
+          :size="420"
           :shape="shape"
           :color="color"
           :expression="expression"
@@ -235,104 +240,98 @@ const stateLabels: Record<string, string> = {
             {{ frozen ? '取消冻结' : '冻结帧' }}
           </button>
           <label v-if="frozen" class="bloub__freeze">
-            <input
-              v-model.number="freezeTime"
-              type="range"
-              min="0"
-              max="3"
-              step="0.05"
-            />
+            <input v-model.number="freezeTime" type="range" min="0" max="3" step="0.05" />
             <span>{{ freezeTime.toFixed(2) }}s</span>
           </label>
           <span class="bloub__state-name">{{ stateLabels[state] }}</span>
         </div>
 
         <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
+
+        <div class="bloub__states">
+          <button
+            type="button"
+            class="bloub__state"
+            :class="{ 'bloub__state--active': previewAll }"
+            @click="selectAll"
+          >
+            <BloubBot :size="46" :shape="shape" :color="color" :expression="expression" :frozen-at="1" />
+            <span>全部</span>
+          </button>
+          <button
+            v-for="s in order"
+            :key="s.id"
+            type="button"
+            class="bloub__state"
+            :class="{ 'bloub__state--active': previewAll ? state === s.id : selectedState === s.id }"
+            @click="selectState(s.id)"
+          >
+            <BloubBot
+              :size="46"
+              :state="s.id"
+              :frozen-at="POSES[s.id]"
+              :shape="shape"
+              :color="color"
+              :expression="expression"
+            />
+            <span>{{ stateLabels[s.id] }}</span>
+          </button>
+        </div>
       </section>
 
+      <!-- Colonne personnalisation : silhouettes encreees + pastilles. -->
       <aside class="bloub__panel">
-        <section class="bloub__group">
-          <h3 class="bloub__group-title">形状</h3>
-          <div class="bloub__chips">
-            <button
-              v-for="s in SHAPES"
-              :key="s.id"
-              type="button"
-              class="bloub__chip"
-              :class="{ 'bloub__chip--active': shape === s.id }"
-              @click="shape = s.id"
-            >
-              {{ shapeLabels[s.id] }}
-            </button>
-          </div>
-        </section>
+        <div class="bloub__panel-inner">
+          <section class="bloub__group">
+            <h3 class="bloub__group-title">形状</h3>
+            <div class="bloub__shapes">
+              <button
+                v-for="s in SHAPES"
+                :key="s.id"
+                type="button"
+                class="bloub__shape"
+                :class="{ 'bloub__shape--active': shape === s.id }"
+                @click="shape = s.id"
+              >
+                <BloubBot :size="40" :shape="s.id" :frozen-at="1.2" />
+                <span>{{ shapeLabels[s.id] }}</span>
+              </button>
+            </div>
+          </section>
 
-        <section class="bloub__group">
-          <h3 class="bloub__group-title">颜色</h3>
-          <div class="bloub__colors">
-            <button
-              v-for="c in COLORS"
-              :key="c.id"
-              type="button"
-              class="bloub__color"
-              :class="{ 'bloub__color--active': color === c.id }"
-              :style="{ background: c.hex }"
-              :title="c.id"
-              @click="color = c.id"
-            />
-          </div>
-        </section>
+          <section class="bloub__group">
+            <h3 class="bloub__group-title">表情</h3>
+            <div class="bloub__exprs">
+              <button
+                v-for="e in EXPRESSIONS"
+                :key="e.id"
+                type="button"
+                class="bloub__expr"
+                :class="{ 'bloub__expr--active': expression === e.id }"
+                @click="expression = e.id"
+              >
+                <BloubBot :size="40" :state="'idle'" :frozen-at="1.5" :expression="e.id" />
+                <span>{{ expressionLabels[e.id] }}</span>
+              </button>
+            </div>
+          </section>
 
-        <section class="bloub__group">
-          <h3 class="bloub__group-title">表情</h3>
-          <div class="bloub__chips">
-            <button
-              v-for="e in EXPRESSIONS"
-              :key="e.id"
-              type="button"
-              class="bloub__chip"
-              :class="{ 'bloub__chip--active': expression === e.id }"
-              @click="expression = e.id"
-            >
-              {{ expressionLabels[e.id] }}
-            </button>
-          </div>
-        </section>
-
-        <section class="bloub__group">
-          <h3 class="bloub__group-title">状态</h3>
-          <div class="bloub__states">
-            <button
-              type="button"
-              class="bloub__state"
-              :class="{ 'bloub__state--active': previewAll }"
-              @click="selectAll"
-            >
-              <BloubBot :size="72" :shape="shape" :color="color" :expression="expression" :frozen-at="1" />
-              <span>全部</span>
-            </button>
-            <button
-              v-for="s in order"
-              :key="s.id"
-              type="button"
-              class="bloub__state"
-              :class="{
-                'bloub__state--active': previewAll ? state === s.id : selectedState === s.id
-              }"
-              @click="selectState(s.id)"
-            >
-              <BloubBot
-                :size="72"
-                :state="s.id"
-                :frozen-at="POSES[s.id]"
-                :shape="shape"
-                :color="color"
-                :expression="expression"
+          <section class="bloub__group">
+            <h3 class="bloub__group-title">颜色</h3>
+            <div class="bloub__colors">
+              <button
+                v-for="c in COLORS"
+                :key="c.id"
+                type="button"
+                class="bloub__color"
+                :class="{ 'bloub__color--active': color === c.id }"
+                :style="{ background: c.hex }"
+                :title="c.id"
+                @click="color = c.id"
               />
-              <span>{{ stateLabels[s.id] }}</span>
-            </button>
-          </div>
-        </section>
+            </div>
+          </section>
+        </div>
       </aside>
     </div>
   </div>
@@ -340,6 +339,13 @@ const stateLabels: Record<string, string> = {
 
 <style scoped lang="scss">
 .bloub {
+  // Monochrome, scope a cette vue : les bordures suivent l'encre du theme
+  // (noir sur fond clair, blanc sur fond sombre) au lieu de l'accent teal.
+  --bloub-line: var(--color-border);
+  --bloub-line-strong: var(--color-text);
+  --bloub-accent-soft: color-mix(in srgb, var(--color-text) 7%, transparent);
+
+  position: relative;
   height: 100vh;
   height: 100dvh;
   display: flex;
@@ -349,97 +355,102 @@ const stateLabels: Record<string, string> = {
   color: var(--color-text);
 }
 
-.bloub__bar {
+/* ---------- blocs flottants (pas de barre de titre) ---------- */
+
+.bloub__floats {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
-  flex-shrink: 0;
-}
+  gap: 8px;
+  padding: 0 18px;
+  pointer-events: none;
 
-.bloub__back {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  transition: background 0.15s, color 0.15s;
-
-  &:hover {
-    background: var(--color-border);
-    color: var(--color-text);
+  & > * {
+    pointer-events: auto;
   }
 }
 
-.bloub__title {
-  display: flex;
+.bloub__float {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
+  gap: 6px;
+  padding: 8px 13px;
+  border: 1px solid var(--bloub-line);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
 }
 
-.bloub__actions {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
+.bloub__back {
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: var(--color-text-muted);
+  transition: color 0.15s, border-color 0.15s;
+
+  &:hover {
+    color: var(--color-text);
+    border-color: var(--bloub-line-strong);
+  }
+}
+
+.bloub__brand {
+  color: var(--color-text-muted);
 }
 
 .bloub__export {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+}
+
+.bloub__pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 7px 12px;
+  border: 1px solid var(--bloub-line-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: transform 0.12s, box-shadow 0.12s;
 
   &:hover {
-    border-color: var(--color-border-strong);
-    background: var(--color-border);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+  }
+
+  &--primary {
+    background: var(--color-text);
+    color: var(--color-bg);
+    border-color: var(--color-text);
   }
 }
+
+/* ---------- stage ---------- */
 
 .bloub__stage {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 20px;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 20px;
-}
-
-@media (max-width: 960px) {
-  .bloub {
-    height: auto;
-    overflow: visible;
-  }
-
-  .bloub__stage {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .bloub__bot {
-    justify-content: flex-start;
-    overflow: visible;
-    min-height: 420px;
-  }
-
-  .bloub__panel {
-    overflow: visible;
-    padding-right: 0;
-  }
+  padding: 64px 20px 20px;
 }
 
 .bloub__bot {
@@ -447,20 +458,19 @@ const stateLabels: Record<string, string> = {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: 22px;
   min-height: 0;
-  padding: 32px;
+  padding: 28px 20px;
   overflow-y: auto;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--bloub-line);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .bloub__playback {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -472,7 +482,7 @@ const stateLabels: Record<string, string> = {
   font-size: 13px;
   color: var(--color-text-muted);
   background: transparent;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--bloub-line);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
@@ -484,13 +494,13 @@ const stateLabels: Record<string, string> = {
 
   &:hover:not(:disabled) {
     color: var(--color-text);
-    border-color: var(--color-border-strong);
+    border-color: var(--bloub-line-strong);
   }
 
   &--active {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
+    color: var(--color-text);
+    border-color: var(--bloub-line-strong);
+    background: var(--bloub-accent-soft);
   }
 }
 
@@ -500,8 +510,8 @@ const stateLabels: Record<string, string> = {
   gap: 8px;
 
   input[type='range'] {
-    width: 120px;
-    accent-color: var(--color-accent);
+    width: 110px;
+    accent-color: var(--color-text);
   }
 
   span {
@@ -512,28 +522,69 @@ const stateLabels: Record<string, string> = {
 }
 
 .bloub__state-name {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-text-muted);
   padding: 7px 12px;
   border-radius: var(--radius-md);
-  background: var(--color-border);
+  border: 1px solid var(--bloub-line);
   font-variant-numeric: tabular-nums;
 }
 
 .bloub__hint {
+  margin: 0;
   font-size: 12px;
   color: var(--color-text-muted);
 }
 
-.bloub__panel {
+/* grille d'etats : compacte et toujours pres de l'apercu */
+.bloub__states {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.bloub__state {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 3px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: var(--bloub-line);
+  }
+
+  span {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  &--active {
+    border-color: var(--bloub-line-strong);
+    background: var(--bloub-accent-soft);
+
+    span {
+      color: var(--color-text);
+    }
+  }
+}
+
+/* ---------- panneau personnalisation ---------- */
+
+.bloub__panel {
+  position: relative;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border-strong) transparent;
+  scrollbar-color: var(--bloub-line-strong) transparent;
 }
 
 .bloub__panel::-webkit-scrollbar {
@@ -541,113 +592,121 @@ const stateLabels: Record<string, string> = {
 }
 
 .bloub__panel::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
+  background: var(--bloub-line-strong);
   border-radius: 4px;
+}
+
+.bloub__panel-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 2px;
 }
 
 .bloub__group {
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--bloub-line);
   border-radius: var(--radius-lg);
-  padding: 14px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  padding: 12px;
 }
 
 .bloub__group-title {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-muted);
 }
 
-.bloub__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* silhouettes encreees : le bot d'encre, pas un libelle */
+.bloub__shapes,
+.bloub__exprs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
 }
 
-.bloub__chip {
-  padding: 6px 11px;
-  font-size: 13px;
-  color: var(--color-text);
+.bloub__shape,
+.bloub__expr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
   background: transparent;
-  border: 1px solid var(--color-border);
+  border: 2px solid transparent;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 
   &:hover {
-    border-color: var(--color-border-strong);
+    border-color: var(--bloub-line);
+  }
+
+  span {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
   }
 
   &--active {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
+    border-color: var(--bloub-line-strong);
+    background: var(--bloub-accent-soft);
+
+    span {
+      color: var(--color-text);
+    }
   }
 }
 
 .bloub__colors {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
   gap: 8px;
 }
 
 .bloub__color {
   width: 26px;
   height: 26px;
+  justify-self: center;
   border-radius: 50%;
-  border: 2px solid var(--color-border);
+  border: 2px solid var(--bloub-line);
   cursor: pointer;
-  transition: transform 0.12s, border-color 0.12s;
-  position: relative;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
 
   &:hover {
     transform: scale(1.08);
   }
 
   &--active {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px var(--color-accent-soft);
+    border-color: var(--bloub-line-strong);
+    box-shadow: 0 0 0 3px var(--bloub-accent-soft);
   }
 }
 
-.bloub__states {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: 10px;
-}
+/* ---------- empilement etroit ---------- */
 
-.bloub__state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 4px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
-
-  &:hover {
-    border-color: var(--color-border-strong);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+@media (max-width: 960px) {
+  .bloub {
+    height: auto;
+    overflow: visible;
   }
 
-  span {
-    font-size: 12px;
-    color: var(--color-text-muted);
+  .bloub__stage {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 64px;
   }
 
-  &--active {
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
+  .bloub__bot {
+    justify-content: flex-start;
+    overflow: visible;
+  }
 
-    span {
-      color: var(--color-accent);
-    }
+  .bloub__panel {
+    overflow: visible;
+  }
+
+  .bloub__floats {
+    flex-wrap: wrap;
   }
 }
 </style>
