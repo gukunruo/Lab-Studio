@@ -97,12 +97,13 @@ function resetCycle() {
   blocks.value = defaultCycle().blocks
 }
 
-/** Bascule custom <-> anim. On leve toujours le gel et on relance la lecture. */
-function toggleMode() {
-  mode.value = mode.value === 'custom' ? 'anim' : 'custom'
+/** Bascule vers le mode demande. On leve toujours le gel et on relance la lecture. */
+function setMode(next: 'custom' | 'anim') {
+  if (mode.value === next) return
+  mode.value = next
   frozen.value = false
   playing.value = true
-  if (mode.value === 'anim') nextTick(() => bot.value?.seek(0, 0))
+  if (next === 'anim') nextTick(() => bot.value?.seek(0, 0))
 }
 
 watch(blocks, (b) => localStorage.setItem(CYCLE_KEY, cycleToJson({ id: 'defaut', name: '', blocks: b })), { deep: true })
@@ -263,7 +264,7 @@ const shapeLabels: Record<string, string> = {
 }
 
 const expressionLabels: Record<string, string> = {
-  neutre: '中性',
+  neutre: '平静',
   attentif: '专注',
   surpris: '惊讶',
   excite: '兴奋',
@@ -275,9 +276,9 @@ const expressionLabels: Record<string, string> = {
   mefiant: '怀疑',
   confus: '困惑',
   curieux: '好奇',
-  fier: '自豪',
-  timide: '害羞',
-  blase: '冷漠',
+  fier: '得意',
+  timide: '羞怯',
+  blase: '无趣',
   somnolent: '困倦'
 }
 
@@ -325,70 +326,35 @@ const stateLabels: Record<string, string> = {
         <PhSmiley :size="15" weight="bold" />
         G's bot
       </span>
-      <span ref="menu" class="bloub__float bloub__export">
-        <div class="bloub__split">
-          <button
-            type="button"
-            class="bloub__split-btn"
-            :class="{ 'bloub__split-btn--busy': busy }"
-            :disabled="busy"
-            aria-label="导出 PNG"
-            @click="doExportPng"
-          >
-            <PhDownloadSimple :size="14" />
-            <span>{{ busy ? '导出中…' : '导出 PNG' }}</span>
-          </button>
-          <span class="bloub__split-divider" aria-hidden="true"></span>
-          <button
-            type="button"
-            class="bloub__split-btn bloub__split-btn--caret"
-            aria-haspopup="menu"
-            :aria-expanded="menuOpen"
-            :disabled="busy"
-            @click="menuOpen = !menuOpen"
-          >
-            <PhCaretUp :size="12" class="bloub__caret" :class="{ 'bloub__caret--open': menuOpen }" />
-          </button>
-        </div>
-        <transition name="bloub-pop">
-          <div v-if="menuOpen" class="bloub__dropdown" role="menu">
-            <button type="button" class="bloub__item" role="menuitem" @click="doExportPng">
-              下载 PNG
-            </button>
-            <button type="button" class="bloub__item" role="menuitem" @click="doExportSvg">
-              下载 SVG
-            </button>
-            <template v-if="mode === 'anim'">
-              <button type="button" class="bloub__item" role="menuitem" @click="doExportSvgAnim">
-                下载 SVG 动图
-              </button>
-              <button type="button" class="bloub__item" role="menuitem" @click="doExportGif">
-                下载 GIF 动图
-              </button>
-            </template>
-            <div class="bloub__dropdown-sep"></div>
-            <button type="button" class="bloub__item" role="menuitem" @click="doCopyPng">
-              复制图片
-            </button>
-            <button type="button" class="bloub__item" role="menuitem" @click="doCopySvg">
-              复制 SVG
-            </button>
-          </div>
-        </transition>
-        <transition name="bloub-pop">
-          <span v-if="notice" class="bloub__notice">{{ notice }}</span>
-        </transition>
-      </span>
     </div>
 
     <div class="bloub__stage" :class="{ 'bloub__stage--anim': mode === 'anim' }">
-      <!-- Colonne apercu : le bot, ses controles et la grille d'etats cote a cote,
-           pour qu'un clic sur un etat se voie sans defiler. -->
-      <section class="bloub__bot">
-        <button type="button" class="bloub__mode" @click="toggleMode">
-          <component :is="mode === 'custom' ? PhFilmStrip : PhPalette" :size="13" />
-          {{ mode === 'custom' ? '动画' : '自定义' }}
+      <!-- 左侧竖排模式轨 : palette=自定义(实心块), clap=动画(描边块) -->
+      <nav class="bloub__rail" aria-label="模式切换">
+        <button
+          type="button"
+          class="bloub__rail-btn"
+          :class="{ 'bloub__rail-btn--active': mode === 'custom' }"
+          title="自定义"
+          aria-label="自定义"
+          @click="setMode('custom')"
+        >
+          <PhPalette :size="18" />
         </button>
+        <button
+          type="button"
+          class="bloub__rail-btn"
+          :class="{ 'bloub__rail-btn--active': mode === 'anim' }"
+          title="动画"
+          aria-label="动画"
+          @click="setMode('anim')"
+        >
+          <PhFilmStrip :size="18" />
+        </button>
+      </nav>
+
+      <!-- 居中列 : bot 浮在背景上, 导出 pill 在其正下方置中 -->
+      <section class="bloub__bot">
 
         <BloubBot
           v-if="!frozen"
@@ -414,61 +380,121 @@ const stateLabels: Record<string, string> = {
           :frozen-at="freezeTime"
         />
 
-        <div v-if="mode === 'anim'" class="bloub__playback">
-          <button
-            class="bloub__ctl"
-            type="button"
-            :class="{ 'bloub__ctl--active': playing }"
-            :disabled="frozen"
-            @click="playing = !playing"
-          >
-            <component :is="playing ? PhPause : PhPlay" :size="15" />
-            {{ playing ? '暂停' : '播放' }}
-          </button>
-          <button
-            class="bloub__ctl"
-            type="button"
-            :class="{ 'bloub__ctl--active': frozen }"
-            @click="toggleFreeze"
-          >
-            <PhSnowflake :size="15" />
-            {{ frozen ? '取消冻结' : '冻结帧' }}
-          </button>
-          <label v-if="frozen" class="bloub__freeze">
-            <input v-model.number="freezeTime" type="range" min="0" max="3" step="0.05" />
-            <span>{{ freezeTime.toFixed(2) }}s</span>
-          </label>
-          <span class="bloub__state-name">{{ stateLabels[state] }}</span>
-        </div>
+        <span ref="menu" class="bloub__export">
+          <div class="bloub__split">
+            <button
+              type="button"
+              class="bloub__split-btn"
+              :class="{ 'bloub__split-btn--busy': busy }"
+              :disabled="busy"
+              aria-label="导出 PNG"
+              @click="doExportPng"
+            >
+              <PhDownloadSimple :size="14" />
+              <span>{{ busy ? '导出中…' : '导出 PNG' }}</span>
+            </button>
+            <span class="bloub__split-divider" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="bloub__split-btn bloub__split-btn--caret"
+              aria-haspopup="menu"
+              :aria-expanded="menuOpen"
+              :disabled="busy"
+              @click="menuOpen = !menuOpen"
+            >
+              <PhCaretUp :size="12" class="bloub__caret" :class="{ 'bloub__caret--open': menuOpen }" />
+            </button>
+          </div>
+          <transition name="bloub-pop">
+            <div v-if="menuOpen" class="bloub__dropdown" role="menu">
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportPng">
+                下载 PNG
+              </button>
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportSvg">
+                下载 SVG
+              </button>
+              <template v-if="mode === 'anim'">
+                <button type="button" class="bloub__item" role="menuitem" @click="doExportSvgAnim">
+                  下载 SVG 动图
+                </button>
+                <button type="button" class="bloub__item" role="menuitem" @click="doExportGif">
+                  下载 GIF 动图
+                </button>
+              </template>
+              <div class="bloub__dropdown-sep"></div>
+              <button type="button" class="bloub__item" role="menuitem" @click="doCopyPng">
+                复制图片
+              </button>
+              <button type="button" class="bloub__item" role="menuitem" @click="doCopySvg">
+                复制 SVG
+              </button>
+            </div>
+          </transition>
+          <transition name="bloub-pop">
+            <span v-if="notice" class="bloub__notice">{{ notice }}</span>
+          </transition>
+        </span>
 
         <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
 
-        <div v-if="mode === 'anim'" class="bloub__states">
-          <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
-          <button
-            v-for="s in order"
-            :key="s.id"
-            type="button"
-            class="bloub__state"
-            :class="{ 'bloub__state--active': state === s.id }"
-            @click="appendState(s.id)"
-          >
-            <BloubBot
-              :size="46"
-              :state="s.id"
-              :frozen-at="POSES[s.id]"
-              :shape="shape"
-              :color="color"
-              :expression="expression"
-            />
-            <span>{{ stateLabels[s.id] }}</span>
-          </button>
-        </div>
+        <transition name="bloub-swap">
+          <div v-if="mode === 'anim'" class="bloub__playback">
+            <button
+              class="bloub__ctl"
+              type="button"
+              :class="{ 'bloub__ctl--active': playing }"
+              :disabled="frozen"
+              @click="playing = !playing"
+            >
+              <component :is="playing ? PhPause : PhPlay" :size="15" />
+              {{ playing ? '暂停' : '播放' }}
+            </button>
+            <button
+              class="bloub__ctl"
+              type="button"
+              :class="{ 'bloub__ctl--active': frozen }"
+              @click="toggleFreeze"
+            >
+              <PhSnowflake :size="15" />
+              {{ frozen ? '取消冻结' : '冻结帧' }}
+            </button>
+            <label v-if="frozen" class="bloub__freeze">
+              <input v-model.number="freezeTime" type="range" min="0" max="3" step="0.05" />
+              <span>{{ freezeTime.toFixed(2) }}s</span>
+            </label>
+            <span class="bloub__state-name">{{ stateLabels[state] }}</span>
+          </div>
+        </transition>
+
+        <transition name="bloub-swap">
+          <div v-if="mode === 'anim'" class="bloub__states">
+            <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
+            <button
+              v-for="s in order"
+              :key="s.id"
+              type="button"
+              class="bloub__state"
+              :class="{ 'bloub__state--active': state === s.id }"
+              @click="appendState(s.id)"
+            >
+              <BloubBot
+                :size="46"
+                :state="s.id"
+                :frozen-at="POSES[s.id]"
+                :shape="shape"
+                :color="color"
+                :expression="expression"
+              />
+              <span>{{ stateLabels[s.id] }}</span>
+            </button>
+          </div>
+        </transition>
       </section>
 
-      <!-- Colonne personnalisation : silhouettes encreees + pastilles. -->
-      <aside v-if="mode === 'custom'" class="bloub__panel">
-        <div class="bloub__panel-inner">
+      <!-- 右侧自定义面板 : 无卡片分组的标签区块 -->
+      <transition name="bloub-panel">
+        <aside v-if="mode === 'custom'" class="bloub__panel">
+          <div class="bloub__panel-inner">
           <section class="bloub__group">
             <h3 class="bloub__group-title">形状</h3>
             <div class="bloub__shapes">
@@ -497,7 +523,7 @@ const stateLabels: Record<string, string> = {
                 :class="{ 'bloub__expr--active': expression === e.id }"
                 @click="expression = e.id"
               >
-                <BloubBot :size="40" :state="'idle'" :frozen-at="1.5" :expression="e.id" />
+                <BloubBot :size="40" :state="'idle'" :frozen-at="1.5" :expression="e.id" :flat="true" />
                 <span>{{ expressionLabels[e.id] }}</span>
               </button>
             </div>
@@ -518,8 +544,9 @@ const stateLabels: Record<string, string> = {
               />
             </div>
           </section>
-        </div>
-      </aside>
+          </div>
+        </aside>
+      </transition>
     </div>
 
     <BloubTimeline
@@ -612,8 +639,8 @@ const stateLabels: Record<string, string> = {
 
 .bloub__export {
   position: relative;
-  margin-left: auto;
   display: flex;
+  align-items: center;
   gap: 8px;
   padding: 6px;
 }
@@ -750,17 +777,56 @@ const stateLabels: Record<string, string> = {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: 64px minmax(0, 1fr) 360px;
   gap: 20px;
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
   padding: 64px 20px 20px;
+  transition: grid-template-columns 0.3s ease;
 
   /* Mode animation : le panneau personnalisation disparait, la colonne
-     apercu s'etend sur toute la largeur sous la piste. */
+     apercu s'etend et la piste prend toute la largeur en bas. */
   &--anim {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+}
+
+/* ---------- rail de mode (bord gauche) : palette=perso, clap=animation ---------- */
+
+.bloub__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.bloub__rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--bloub-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
+
+  &:hover {
+    color: var(--color-text);
+    border-color: var(--bloub-line-strong);
+    transform: translateY(-1px);
+  }
+
+  &--active {
+    color: var(--color-bg);
+    background: var(--color-text);
+    border-color: var(--color-text);
   }
 }
 
@@ -771,30 +837,38 @@ const stateLabels: Record<string, string> = {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: 16px;
   min-height: 0;
   padding: 12px;
   overflow-y: auto;
 }
 
-.bloub__mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  background: var(--color-surface);
-  border: 1px solid var(--bloub-line);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+/* ---------- transition de mode ---------- */
 
-  &:hover {
-    color: var(--color-text);
-    border-color: var(--bloub-line-strong);
-  }
+.bloub-swap-enter-active,
+.bloub-swap-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.bloub-swap-enter-from {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.bloub-swap-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.bloub-panel-enter-active,
+.bloub-panel-leave-active {
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.bloub-panel-enter-from,
+.bloub-panel-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
 }
 
 .bloub__playback {
@@ -941,11 +1015,16 @@ const stateLabels: Record<string, string> = {
   padding: 2px;
 }
 
+/* Section de personnalisation sans carte : un titre + une grille, separee par
+   un filet — comme la reference, pas des boites encadrees. */
 .bloub__group {
-  background: var(--color-surface);
-  border: 1px solid var(--bloub-line);
-  border-radius: var(--radius-lg);
-  padding: 12px;
+  padding: 2px 0 14px;
+  border-bottom: 1px solid var(--bloub-line);
+
+  &:last-child {
+    border-bottom: none;
+    padding-bottom: 2px;
+  }
 }
 
 .bloub__group-title {
@@ -1032,6 +1111,11 @@ const stateLabels: Record<string, string> = {
   .bloub__stage {
     grid-template-columns: minmax(0, 1fr);
     padding-top: 64px;
+  }
+
+  .bloub__rail {
+    flex-direction: row;
+    justify-content: flex-start;
   }
 
   .bloub__bot {
