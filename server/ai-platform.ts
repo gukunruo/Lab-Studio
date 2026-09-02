@@ -13,6 +13,7 @@ import {
   storeImageAsset,
   type DecodedImage,
 } from './ai-image-assets'
+import { decodeBase64File, fileAssetResponse, fileAssetUrl, storeFileAsset } from './ai-file-assets'
 import { seedAiModels } from './ai-platform-seed'
 import { engineerContext } from './context-engine'
 import { buildAnthropicWebSearchTools, runWebSearch } from './web-search'
@@ -1418,6 +1419,27 @@ export function registerAiPlatformRoutes(app: Hono): void {
   })
 
   app.get('/ai-platform/images/:id', async (c) => imageAssetResponse(USER_KEY, c.req.param('id')))
+
+  // 用户本地上传文档类附件：入参为 base64，复用同一 ai_image_assets 表与磁盘目录。
+  // 与图片不同，这类文件由服务端解析成正文供对话注入给模型（见 /files/:id 与 readFileAssetText）。
+  app.post('/ai-platform/files/upload', async (c) => {
+    await ensureSeeded()
+    const body = await c.req.json<{ file?: unknown; mimeType?: unknown; fileName?: unknown }>().catch(() => null)
+    const decoded = decodeBase64File(body?.file, { mimeType: body?.mimeType, fileName: body?.fileName })
+    if (!decoded) {
+      return c.json({ error: '该附件类型不受支持，或已超过 10MB 上限。' }, 400)
+    }
+    try {
+      const asset = await storeFileAsset(USER_KEY, decoded)
+      const url = fileAssetUrl(asset.id)
+      if (!url) return c.json({ error: '附件保存失败，请稍后重试。' }, 502)
+      return c.json({ id: asset.id, url })
+    } catch {
+      return c.json({ error: '附件保存失败，请稍后重试。' }, 502)
+    }
+  })
+
+  app.get('/ai-platform/files/:id', async (c) => fileAssetResponse(USER_KEY, c.req.param('id')))
 
   // 自定义生图模板：按 USER_KEY 归属，aspect_ratio / style 可空，与应用「比例默认不选」一致。
   app.get('/ai-platform/image-templates', async (c) => {
