@@ -13,9 +13,9 @@ import {
   storeImageAsset,
   type DecodedImage,
 } from './ai-image-assets'
-import { decodeBase64File, fileAssetResponse, fileAssetUrl, storeFileAsset } from './ai-file-assets'
+import { decodeBase64File, fileAssetResponse, fileAssetUrl, readFileAssetText, storeFileAsset } from './ai-file-assets'
 import { seedAiModels } from './ai-platform-seed'
-import { engineerContext } from './context-engine'
+import { engineerContext, type FileAttachment } from './context-engine'
 import { buildAnthropicWebSearchTools, runWebSearch } from './web-search'
 import { enrichImagePrompt } from './image-prompt-enricher'
 import { deriveTemplateName, summarizeTemplatePrompt } from './image-template-prompter'
@@ -88,7 +88,7 @@ function ensureSeeded(): Promise<void> {
 
 export interface ChatRequestBody {
   modelId: string
-  messages: { role: string; content: string; images?: string[] }[]
+  messages: { role: string; content: string; images?: string[]; files?: FileAttachment[] }[]
   system?: string
   summary?: string
   params?: { reasoningEffort?: string; maxTokens?: number; webSearch?: boolean }
@@ -123,23 +123,33 @@ function imageAssetIdFromUrl(value: unknown): string | null {
   return match?.[1]?.toLowerCase() ?? null
 }
 
-// 把带 `images` 的消息解析为上游可直接序列化的内容块：文本 + 每张图对应的图片块。
+const CONTROLLED_FILE_URL_RE = /^\/api\/ai-platform\/files\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
+
+function fileAssetIdFromUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = value.match(CONTROLLED_FILE_URL_RE)
+  return match?.[1]?.toLowerCase() ?? null
+}
+
+// 把带 `images`/`files` 的消息解析为上游可直接序列化的内容块：文本 + 每张图对应的图片块 + 每个文件对应的正文文本块。
 // `provider === 'anthropic'` 走 base64 source，否则走 openai-compatible 的 image_url（data URL）。
-// 无法解析的图片（非受控 URL / 资产不存在）会被静默丢弃，避免整条请求失败。
-async function resolveChatImages(
-  messages: { role: string; content: string; images?: string[] }[],
+// 无法解析的图片（非受控 URL / 资产不存在）会被静默丢弃，避免整条请求失败；文件正文解析失败也不阻断整条消息。
+export async function resolveChatContent(
+  messages: { role: string; content: string; images?: string[]; files?: FileAttachment[] }[],
   provider: SupportedModelProvider,
 ): Promise<ResolvedChatMessage[]> {
   const resolved: ResolvedChatMessage[] = []
   for (const message of messages) {
     const role = message.role === 'assistant' ? 'assistant' as const : 'user' as const
-    if (!message.images?.length) {
+    const hasImages = !!message.images?.length
+    const hasFiles = !!message.files?.length
+    if (!hasImages && !hasFiles) {
       resolved.push({ role, content: message.content })
       continue
     }
     const parts: ChatContentPart[] = []
     if (message.content.trim()) parts.push({ type: 'text', text: message.content })
-    for (const imageUrl of message.images) {
+    for (const imageUrl of message.images ?? []) {
       const assetId = imageAssetIdFromUrl(imageUrl)
       const reference = assetId ? await resolvePrivateImageReference(assetId) : null
       if (!reference) continue
@@ -149,6 +159,11 @@ async function resolveChatImages(
         const dataUrl = privateImageDataUrl(reference)
         if (dataUrl) parts.push({ type: 'image_url', image_url: { url: dataUrl } })
       }
+    }
+    for (const file of message.files ?? []) {
+      const assetId = fileAssetIdFromUrl(file.url)
+      const text = assetId ? await readFileAssetText(USER_KEY, assetId) : ''
+      if (text) parts.push({ type: 'text', text: `[文件：${file.name}]\n${text}` })
     }
     resolved.push({ role, content: parts.length ? parts : message.content })
   }
@@ -1549,8 +1564,16 @@ export function registerAiPlatformRoutes(app: Hono): void {
       && (message.images === undefined
         || (Array.isArray(message.images)
           && message.images.every((url) => typeof url === 'string' && !!url)))
+      && (message.files === undefined
+        || (Array.isArray(message.files)
+          && message.files.every((file) => (
+            !!file && typeof file.url === 'string' && !!file.url
+            && (file.name === undefined || typeof file.name === 'string')
+            && (file.size === undefined || typeof file.size === 'number')
+            && (file.mimeType === undefined || typeof file.mimeType === 'string')
+          ))))
     ))) {
-      return c.json({ error: 'messages must contain only user or assistant text, with optional image urls' }, 400)
+      return c.json({ error: 'messages must contain only user or assistant text, with optional image urls and file attachments' }, 400)
     }
 
     const modelRow = await db.select().from(aiModels).where(eq(aiModels.modelId, body.modelId)).get()
@@ -1572,8 +1595,8 @@ export function registerAiPlatformRoutes(app: Hono): void {
     // openai-compatible 的检索执行依赖 Claude web_search（零新增 Key）；未配置则退化为纯直通。
     const useWebSearch = webSearch && (modelRow.provider === 'anthropic' || !!anthropicConfig)
 
-    // 对话多模态：把带 `images` 的消息按 provider 解析成上游图片内容块。
-    const resolvedMessages = await resolveChatImages(engineered.messages, modelRow.provider)
+    // 对话多模态：把带 `images`/`files` 的消息按 provider 解析成上游内容块。
+    const resolvedMessages = await resolveChatContent(engineered.messages, modelRow.provider)
     const engineeredBody: ChatUpstreamBody = {
       modelId: body.modelId,
       messages: resolvedMessages,
