@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { PhArrowLeft, PhCaretUp, PhDownloadSimple, PhPause, PhPlay, PhSmiley, PhSnowflake } from '@phosphor-icons/vue'
+import {
+  PhArrowLeft,
+  PhCaretUp,
+  PhDownloadSimple,
+  PhFilmStrip,
+  PhPalette,
+  PhPause,
+  PhPlay,
+  PhSmiley,
+  PhSnowflake
+} from '@phosphor-icons/vue'
 import BloubBot from '@/components/BloubBot.vue'
 import BloubTimeline from '@/components/BloubTimeline.vue'
 import {
@@ -32,6 +42,17 @@ import { POSES, SEQUENCE, STATE_BY_ID, type StateId } from '@/bot/states'
 const shape = ref(DEFAULT_SHAPE)
 const color = ref(DEFAULT_COLOR)
 const expression = ref(DEFAULT_EXPRESSION)
+
+/**
+ * Deux modes, deux metiers : « custom » designe la mascotte (forme/expression/
+ * couleur) et « anim » monte la sequence. Ils sont mutuellement exclusifs — on
+ * n'a jamais besoin de la palette d'animation et des reglages en meme temps.
+ * Le bouton de bascule affiche donc le mode DESTINATION (go-to), pas la position.
+ */
+const mode = ref<'custom' | 'anim'>('custom')
+
+/** En mode custom le bot ne boucle pas le montage : il respire en idle, yeux suivis. */
+const customCycle: Block[] = [{ state: 'idle', duration: 6 }]
 
 /**
  * Le montage edite par la piste du bas. Il est relu du stockage local (comme le
@@ -74,6 +95,14 @@ function seekTo(t: number) {
 /** Restaure le montage mesure sur la video — la piste fait office de « tout ». */
 function resetCycle() {
   blocks.value = defaultCycle().blocks
+}
+
+/** Bascule custom <-> anim. On leve toujours le gel et on relance la lecture. */
+function toggleMode() {
+  mode.value = mode.value === 'custom' ? 'anim' : 'custom'
+  frozen.value = false
+  playing.value = true
+  if (mode.value === 'anim') nextTick(() => bot.value?.seek(0, 0))
 }
 
 watch(blocks, (b) => localStorage.setItem(CYCLE_KEY, cycleToJson({ id: 'defaut', name: '', blocks: b })), { deep: true })
@@ -329,12 +358,14 @@ const stateLabels: Record<string, string> = {
             <button type="button" class="bloub__item" role="menuitem" @click="doExportSvg">
               下载 SVG
             </button>
-            <button type="button" class="bloub__item" role="menuitem" @click="doExportSvgAnim">
-              下载 SVG 动图
-            </button>
-            <button type="button" class="bloub__item" role="menuitem" @click="doExportGif">
-              下载 GIF 动图
-            </button>
+            <template v-if="mode === 'anim'">
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportSvgAnim">
+                下载 SVG 动图
+              </button>
+              <button type="button" class="bloub__item" role="menuitem" @click="doExportGif">
+                下载 GIF 动图
+              </button>
+            </template>
             <div class="bloub__dropdown-sep"></div>
             <button type="button" class="bloub__item" role="menuitem" @click="doCopyPng">
               复制图片
@@ -350,10 +381,15 @@ const stateLabels: Record<string, string> = {
       </span>
     </div>
 
-    <div class="bloub__stage">
+    <div class="bloub__stage" :class="{ 'bloub__stage--anim': mode === 'anim' }">
       <!-- Colonne apercu : le bot, ses controles et la grille d'etats cote a cote,
            pour qu'un clic sur un etat se voie sans defiler. -->
       <section class="bloub__bot">
+        <button type="button" class="bloub__mode" @click="toggleMode">
+          <component :is="mode === 'custom' ? PhFilmStrip : PhPalette" :size="13" />
+          {{ mode === 'custom' ? '动画' : '自定义' }}
+        </button>
+
         <BloubBot
           v-if="!frozen"
           ref="bot"
@@ -362,7 +398,7 @@ const stateLabels: Record<string, string> = {
           :color="color"
           :expression="expression"
           :follow="true"
-          :cycle="blocks"
+          :cycle="mode === 'custom' ? customCycle : blocks"
           v-model:state="state"
           v-model:block="block"
           v-model:elapsed="elapsed"
@@ -378,7 +414,7 @@ const stateLabels: Record<string, string> = {
           :frozen-at="freezeTime"
         />
 
-        <div class="bloub__playback">
+        <div v-if="mode === 'anim'" class="bloub__playback">
           <button
             class="bloub__ctl"
             type="button"
@@ -407,7 +443,7 @@ const stateLabels: Record<string, string> = {
 
         <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
 
-        <div class="bloub__states">
+        <div v-if="mode === 'anim'" class="bloub__states">
           <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
           <button
             v-for="s in order"
@@ -431,7 +467,7 @@ const stateLabels: Record<string, string> = {
       </section>
 
       <!-- Colonne personnalisation : silhouettes encreees + pastilles. -->
-      <aside class="bloub__panel">
+      <aside v-if="mode === 'custom'" class="bloub__panel">
         <div class="bloub__panel-inner">
           <section class="bloub__group">
             <h3 class="bloub__group-title">形状</h3>
@@ -487,6 +523,7 @@ const stateLabels: Record<string, string> = {
     </div>
 
     <BloubTimeline
+      v-if="mode === 'anim'"
       v-model:blocks="blocks"
       :current="block"
       :elapsed="elapsed"
@@ -719,8 +756,16 @@ const stateLabels: Record<string, string> = {
   max-width: 1180px;
   margin: 0 auto;
   padding: 64px 20px 20px;
+
+  /* Mode animation : le panneau personnalisation disparait, la colonne
+     apercu s'etend sur toute la largeur sous la piste. */
+  &--anim {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
+/* Le bot flotte sur le fond de la page (comme la reference) : plus de carte
+   surface autour de l'apercu, les controles sont de petits pillons. */
 .bloub__bot {
   display: flex;
   flex-direction: column;
@@ -728,11 +773,28 @@ const stateLabels: Record<string, string> = {
   justify-content: center;
   gap: 22px;
   min-height: 0;
-  padding: 28px 20px;
+  padding: 12px;
   overflow-y: auto;
+}
+
+.bloub__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
   background: var(--color-surface);
   border: 1px solid var(--bloub-line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+
+  &:hover {
+    color: var(--color-text);
+    border-color: var(--bloub-line-strong);
+  }
 }
 
 .bloub__playback {
