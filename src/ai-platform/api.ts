@@ -1,4 +1,4 @@
-import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from './types'
+import type { ModelsByCategory, AiConversation, AiConversationSummary, AiPreferences, AiRecommendation, ChatMessage, ChatParams, ConversationDigest, FileAttachment, GeminiContextMessage, GeminiMultimodalAssistantMessage, ImageAspectRatio, ImageModelId, ImageResultMessage, TextMessage, ToolCallTrace } from './types'
 import type { ImageTemplate } from './image-templates'
 
 export async function fetchModels(): Promise<ModelsByCategory> {
@@ -143,14 +143,15 @@ export function isTextMessage(message: ChatMessage): message is TextMessage {
   return message.type === undefined || message.type === 'text'
 }
 
-export function toUpstreamMessages(messages: ChatMessage[]): Array<Pick<TextMessage, 'role' | 'content'> & { images?: string[] }> {
+export function toUpstreamMessages(messages: ChatMessage[]): Array<Pick<TextMessage, 'role' | 'content'> & { images?: string[]; files?: FileAttachment[] }> {
   return messages
     .filter(isTextMessage)
     .filter((message) => message.status !== 'error')
-    .map(({ role, content, images }) => ({
+    .map(({ role, content, images, files }) => ({
       role,
       content,
       ...(images?.length ? { images: images.filter((url): url is string => typeof url === 'string' && !!controlledImageAssetId(url)) } : {}),
+      ...(files?.length ? { files: files.filter((file) => !!controlledFileAssetId(file.url)) } : {}),
     }))
 }
 
@@ -177,6 +178,14 @@ export interface GeminiMultimodalResponse {
 export function controlledImageAssetId(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const match = value.match(CONTROLLED_IMAGE_ASSET_PATH)
+  return match?.[1]?.toLowerCase() ?? null
+}
+
+const CONTROLLED_FILE_ASSET_PATH = /^\/api\/ai-platform\/files\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
+
+export function controlledFileAssetId(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = value.match(CONTROLLED_FILE_ASSET_PATH)
   return match?.[1]?.toLowerCase() ?? null
 }
 
@@ -314,6 +323,33 @@ export async function uploadImage(input: { base64: string; signal?: AbortSignal 
   }
   if (!payload || typeof payload.id !== 'string' || typeof payload.url !== 'string') {
     throw new Error('图片上传服务返回了无效结果，请稍后重试。')
+  }
+  return { id: payload.id, url: payload.url }
+}
+
+export function isControlledFileAttachment(value: unknown): value is FileAttachment {
+  return !!value && typeof value === 'object'
+    && typeof (value as FileAttachment).url === 'string'
+    && !!controlledFileAssetId((value as FileAttachment).url)
+    && typeof (value as FileAttachment).name === 'string'
+}
+
+// 用户本地上传文档类附件，存入受控资产（复用图片资产表），返回资产 id 与受控 URL。
+// 对话发送时经 files 字段透传，服务端解析成正文再注入给模型。
+export async function uploadFile(input: { base64: string; mimeType?: string; fileName?: string; signal?: AbortSignal }): Promise<ImageUploadResponse> {
+  const res = await fetch('/api/ai-platform/files/upload', {
+    credentials: 'include',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file: input.base64, mimeType: input.mimeType, fileName: input.fileName }),
+    signal: input.signal,
+  })
+  const payload = await res.json().catch(() => null) as { error?: unknown; id?: unknown; url?: unknown } | null
+  if (!res.ok) {
+    throw new Error(typeof payload?.error === 'string' ? payload.error : '文件上传失败，请稍后重试。')
+  }
+  if (!payload || typeof payload.id !== 'string' || typeof payload.url !== 'string') {
+    throw new Error('文件上传服务返回了无效结果，请稍后重试。')
   }
   return { id: payload.id, url: payload.url }
 }

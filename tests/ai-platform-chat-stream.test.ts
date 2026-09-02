@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseConversationDigest, streamChat, toUpstreamMessages } from '../src/ai-platform/api'
+import { controlledFileAssetId } from '../src/ai-platform/api'
 import type { ChatMessage } from '../src/ai-platform/types'
 
 function sseResponse(chunks: string[]): Response {
@@ -102,6 +103,32 @@ test('toUpstreamMessages excludes Gemini multimodal conversation messages', () =
   ]
 
   assert.deepEqual(toUpstreamMessages(messages), [{ role: 'user', content: '请总结这段话' }])
+})
+
+test('toUpstreamMessages keeps controlled file attachments and drops foreign ones', () => {
+  const fileUrl = '/api/ai-platform/files/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56'
+  const messages: ChatMessage[] = [
+    {
+      role: 'user',
+      content: '帮我读一下',
+      files: [
+        { url: fileUrl, name: '报告.pdf', size: 1024, mimeType: 'application/pdf' },
+        { url: 'https://evil.example.org/x.txt', name: 'x.txt' },
+      ],
+    },
+  ]
+
+  assert.deepEqual(toUpstreamMessages(messages), [
+    { role: 'user', content: '帮我读一下', files: [{ url: fileUrl, name: '报告.pdf', size: 1024, mimeType: 'application/pdf' }] },
+  ])
+})
+
+test('controlledFileAssetId extracts a controlled file asset id from its url', () => {
+  assert.equal(
+    controlledFileAssetId('/api/ai-platform/files/b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56'),
+    'b4d7cf09-5548-4c45-ac5a-8f5a5f7e6b56',
+  )
+  assert.equal(controlledFileAssetId('https://evil.example.org/x.txt'), null)
 })
 
 test('streamChat sends only usable message history to the chat endpoint', async () => {

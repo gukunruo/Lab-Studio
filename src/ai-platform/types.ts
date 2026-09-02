@@ -55,12 +55,21 @@ export interface ToolCallTrace {
   status?: 'running' | 'done'
 }
 
+export interface FileAttachment {
+  url: string
+  name: string
+  size?: number
+  mimeType?: string
+}
+
 export interface TextMessage {
   type?: 'text'
   role: 'user' | 'assistant'
   content: string
   /** 对话多模态：该条 user 消息附带的受控图床 URL（用户上传资产）。 */
   images?: string[]
+  /** 对话附件：该条 user 消息附带的受控文件（用户上传的文档）。 */
+  files?: FileAttachment[]
   createdAt?: string
   status?: 'error' | 'interrupted'
   modelId?: string
