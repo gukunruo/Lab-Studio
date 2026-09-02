@@ -54,6 +54,13 @@ const props = withDefaults(
      * ici c'est le script qui decide de tout, y compris de sa duree.
      */
     gaze?: GazeScript | null
+    /**
+     * Vignette plate : la tete revient en face (yaw/pitch a zero, le roulis
+     * reste) et seule la GEOMETRIE des yeux — forme, ecart, inclinaison —
+     * porte l'expression. Sert aux tuiles du personnalisateur, ou l'on veut
+     * lire une emotion d'un coup d'oeil, pas retrouver la pose de la video.
+     */
+    flat?: boolean
   }>(),
   {
     size: 320,
@@ -64,7 +71,8 @@ const props = withDefaults(
     frozenAt: undefined,
     cycle: () => defaultCycle().blocks,
     follow: false,
-    gaze: null
+    gaze: null,
+    flat: false
   }
 )
 
@@ -88,7 +96,14 @@ const VB = DEMI_VIEWBOX
 
 const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
-const expression = computed(() => EXPRESSION_BY_ID.get(props.expression) ?? null)
+const expression = computed(() => {
+  const e = EXPRESSION_BY_ID.get(props.expression) ?? null
+  if (!e || !props.flat) return e
+  // Tuile de personnalisateur : on remet la tete en face pour que la FORME des
+  // yeux lise l'emotion (cf. prop `flat`). L'id, l'ecart et la geometrie restent
+  // ceux de l'expression — `decalageDesYeux` s'appuie dessus.
+  return { ...e, gaze: { yaw: 0, pitch: 0, roll: e.gaze.roll } }
+})
 
 const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value)
 const frame = shallowRef<BotFrame>(engine.sample(props.frozenAt ?? 0))
