@@ -92,7 +92,15 @@ const elapsed = defineModel<number>('elapsed', { default: 0 })
 // composant n'en est qu'un client. Les noms courts restent, ils sont partout dans le
 // gabarit.
 const R = RAYON
-const VB = DEMI_VIEWBOX
+/**
+ * Fenêtre de vue des vignettes flat : la tête remise en face ne laisse voir que
+ * les yeux, donc on resserre le viewBox autour de la zone du visage. ±66 couvre
+ * les plus grands yeux (surpris/excité/effrayé, étendus sur ±60) sans les rogner,
+ * tout en les faisant dominer la tuile pour lire l'émotion d'un coup d'œil — la
+ * vue entière, elle, garde DEMI_VIEWBOX pour loger les anneaux.
+ */
+const FACE_VB = 66
+const VB = computed(() => (props.flat ? FACE_VB : DEMI_VIEWBOX))
 
 const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')

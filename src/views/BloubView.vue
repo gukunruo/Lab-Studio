@@ -498,7 +498,10 @@ const stateLabels: Record<string, string> = {
               :class="{ 'bloub__expr--active': expression === e.id }"
               @click="expression = e.id"
             >
-              <BloubBot :size="40" :state="'idle'" :frozen-at="1.5" :expression="e.id" :flat="true" />
+              <!-- Figé à 0,6 s, avant le premier clignement du calendrier (1,4 s) : à
+                   1,5 s les yeux étaient en plein clignement, écrasés à ~24 %, et toutes
+                   les émotions se ressemblaient. -->
+              <BloubBot :size="40" :state="'idle'" :frozen-at="0.6" :expression="e.id" :flat="true" />
               <span>{{ expressionLabels[e.id] }}</span>
             </button>
           </div>
