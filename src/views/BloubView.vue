@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { PhArrowLeft, PhCaretUp, PhDownloadSimple, PhPause, PhPlay, PhSmiley, PhSnowflake } from '@phosphor-icons/vue'
 import BloubBot from '@/components/BloubBot.vue'
-import { defaultCycle, MIN_BLOCK, totalDuration, type Block } from '@/bot/cycles'
+import BloubTimeline from '@/components/BloubTimeline.vue'
+import {
+  blockAt,
+  blocksWith,
+  cycleFromJson,
+  cycleToJson,
+  defaultCycle,
+  totalDuration,
+  type Block
+} from '@/bot/cycles'
 import {
   copyPng,
   copySvg,
@@ -24,9 +33,16 @@ const shape = ref(DEFAULT_SHAPE)
 const color = ref(DEFAULT_COLOR)
 const expression = ref(DEFAULT_EXPRESSION)
 
-/** true = joue tout le montage ; false = isole un seul etat. */
-const previewAll = ref(true)
-const selectedState = ref<StateId>('idle')
+/**
+ * Le montage edite par la piste du bas. Il est relu du stockage local (comme le
+ * hash de l'URL, le localStorage est modifiable a la main : `cycleFromJson` jette
+ * ce qui ne se relit pas), sinon il part du montage mesure sur la video.
+ */
+const CYCLE_KEY = 'lab-studio.bloub.cycle'
+const blocks = ref<Block[]>(
+  cycleFromJson(localStorage.getItem(CYCLE_KEY))?.blocks ?? defaultCycle().blocks
+)
+
 const block = ref(0)
 const state = ref<StateId>('idle')
 const elapsed = ref(0)
@@ -39,34 +55,28 @@ const freezeTime = ref(1.2)
 const bot = ref<InstanceType<typeof BloubBot> | null>(null)
 const exporter = ref<InstanceType<typeof BloubBot> | null>(null)
 
-const DEFAULT_BLOCKS = defaultCycle().blocks
-const cycle = computed<Block[]>(() => {
-  if (previewAll.value) return DEFAULT_BLOCKS
-  const def = STATE_BY_ID.get(selectedState.value)!
-  return [{ state: selectedState.value, duration: Math.max(def.duration, MIN_BLOCK) }]
-})
-
 const order = SEQUENCE.map((id) => STATE_BY_ID.get(id)!)
 
-function selectState(id: StateId) {
-  previewAll.value = false
-  selectedState.value = id
+/** Ajoute un etat de la palette a la fin du montage (bloub-style, pas un apercu isole). */
+function appendState(id: StateId) {
+  blocks.value = blocksWith(blocks.value, id)
   // Le bot est en haut de la colonne ; sur un ecran etroit il faut defiler pour
   // le retrouver. On le ramene en vue pour voir la pose sans re-scroller.
   nextTick(() => bot.value?.$el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }))
 }
 
-function selectAll() {
-  previewAll.value = true
+/** Deplace la tete de lecture a la date absolue `t`, en tombant au milieu du bloc. */
+function seekTo(t: number) {
+  const { index, elapsed: off } = blockAt(blocks.value, t)
+  bot.value?.seek(index, off)
 }
 
-// Le cycle a change (montage <-> etat isole) : on force la reprise du bloc 0 une
-// fois que le composant a bien recu le nouveau cycle, sinon le watcher de cycle,
-// voyant le meme index, ne reapplique rien et le moteur reste sur l'etat precedent.
-watch([previewAll, selectedState], async () => {
-  await nextTick()
-  bot.value?.seek(0)
-})
+/** Restaure le montage mesure sur la video — la piste fait office de « tout ». */
+function resetCycle() {
+  blocks.value = defaultCycle().blocks
+}
+
+watch(blocks, (b) => localStorage.setItem(CYCLE_KEY, cycleToJson({ id: 'defaut', name: '', blocks: b })), { deep: true })
 
 function toggleFreeze() {
   if (frozen.value) {
@@ -161,8 +171,8 @@ async function doCopySvg() {
  */
 async function collectFrames(): Promise<{ els: SVGSVGElement[]; total: number }> {
   const comp = exporter.value!
-  const blocks = cycle.value
-  const total = totalDuration(blocks)
+  const seq = blocks.value
+  const total = totalDuration(seq)
   const n = frameCount(total)
   const step = total / n
   const els: SVGSVGElement[] = []
@@ -272,7 +282,7 @@ const stateLabels: Record<string, string> = {
         :shape="shape"
         :color="color"
         :expression="expression"
-        :cycle="cycle"
+        :cycle="blocks"
         :frozen-at="0"
       />
     </div>
@@ -352,7 +362,7 @@ const stateLabels: Record<string, string> = {
           :color="color"
           :expression="expression"
           :follow="true"
-          :cycle="cycle"
+          :cycle="blocks"
           v-model:state="state"
           v-model:block="block"
           v-model:elapsed="elapsed"
@@ -398,22 +408,14 @@ const stateLabels: Record<string, string> = {
         <p class="bloub__hint">让鼠标在页面上移动，它的眼睛会跟着你。</p>
 
         <div class="bloub__states">
-          <button
-            type="button"
-            class="bloub__state"
-            :class="{ 'bloub__state--active': previewAll }"
-            @click="selectAll"
-          >
-            <BloubBot :size="46" :shape="shape" :color="color" :expression="expression" :frozen-at="1" />
-            <span>全部</span>
-          </button>
+          <h3 class="bloub__states-title">动画 · 点击添加到序列</h3>
           <button
             v-for="s in order"
             :key="s.id"
             type="button"
             class="bloub__state"
-            :class="{ 'bloub__state--active': previewAll ? state === s.id : selectedState === s.id }"
-            @click="selectState(s.id)"
+            :class="{ 'bloub__state--active': state === s.id }"
+            @click="appendState(s.id)"
           >
             <BloubBot
               :size="46"
@@ -483,6 +485,22 @@ const stateLabels: Record<string, string> = {
         </div>
       </aside>
     </div>
+
+    <BloubTimeline
+      v-model:blocks="blocks"
+      :current="block"
+      :elapsed="elapsed"
+      :playing="playing"
+      :total="totalDuration(blocks)"
+      :shape="shape"
+      :color="color"
+      :expression="expression"
+      @scrub="seekTo"
+      @toggle-play="playing = !playing"
+      @export-anim="doExportGif"
+      @reset="resetCycle"
+      @add="appendState"
+    />
   </div>
 </template>
 
@@ -793,6 +811,14 @@ const stateLabels: Record<string, string> = {
   gap: 8px;
   width: 100%;
   max-width: 560px;
+}
+
+.bloub__states-title {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
 }
 
 .bloub__state {
