@@ -1,6 +1,8 @@
-import type { Look } from '@/bot/engine'
-import type { ExpressionId } from '@/bot/expressions'
-import { clamp, easings } from '@/bot/math'
+// Imports relatifs : `src/bot` est consomme tel quel par les tests node (tsx
+// ne resout pas les alias `@/`), et tout le dossier evite les alias pour cette raison.
+import type { Look } from '../bot/engine'
+import type { ExpressionId } from '../bot/expressions'
+import { clamp, easings } from '../bot/math'
 
 /**
  * Ou le bot regarde quand il suit le curseur. Pur, comme `src/ui/timeline.ts` :
@@ -10,34 +12,18 @@ import { clamp, easings } from '@/bot/math'
  */
 
 /**
- * Angles en degres d'orientation de tete. CHOISIS, pas releves : la video de
- * reference ne montre aucun suivi de curseur. Assez amples pour se distinguer de
- * la derive au repos (±7deg de lacet, ±5,5 de tangage), assez retenus pour
- * qu'aucun oeil ne parte derriere le limbe de la sphere.
- */
-export const YAW_MAX = 16
-export const PITCH_MAX = 13
-
-/**
- * Hauteur a laquelle le regard se tient, curseur au centre. CHOISIE : legerement
- * au-dessus de l'equateur, ce qui donne un bot attentif plutot qu'absent.
+ * Angles en degres d'orientation de tete quand le bot suit le curseur. CHOISIS,
+ * pas releves : la video de reference ne montre aucun suivi de curseur.
  *
- * C'est une valeur ABSOLUE, et c'est tout le point : en relatif, la hauteur des
- * yeux suivait celle de chaque expression, et comme « neutre » regarde a
- * +28,6deg quand les humeurs sont entre -9 et +9, les yeux tombaient d'un coup
- * au premier changement d'humeur.
+ * Assez amples pour que le bot TOURNE la tete vers le curseur — les yeux se
+ * detachent nettement du centre, comme sur bloub.vercel.app — et bornees pour
+ * que rien ne quitte la sphere : avec les yeux ecartes de ±15,46deg
+ * (`EYE_SPLIT`), le lacet maximal met l'oeil externe a ~51deg de la normale,
+ * profondeur 0,62 — encore bien visible, la compression orthographique et le
+ * masque du contour faisant le reste.
  */
-export const PITCH = 10
-
-/**
- * Direction ou la tete se pose dans la vue des reglages : le bot cesse de regarder en haut a
- * droite (sa pose de repos) pour regarder a GAUCHE, du cote du panneau.
- *
- * Ce n'est pas un miroir de l'image : les yeux font vraiment le tour de la
- * sphere, donc ils gardent leur inclinaison en `\\` et leur compression de
- * profondeur. Retourner l'image les aurait couches en `//`.
- */
-export const TURN = 26
+export const YAW_MAX = 36
+export const PITCH_MAX = 26
 
 /**
  * Tour complet parcouru EN CHEMIN : les yeux ne glissent pas en travers du
@@ -56,7 +42,7 @@ export const SPIN = 360
 
 /**
  * Duree du tour. Un peu plus courte que le bloc d'entree (`swirl`) : les yeux
- * doivent etre poses a gauche avant que les anneaux ne s'effacent.
+ * doivent etre posees avant que les anneaux ne s'effacent.
  */
 export const TURN_TIME = 1.1
 
@@ -139,16 +125,24 @@ export interface Aim {
   ny: number
   /** avancement de l'arrivee, 0 a 1 */
   tour: number
-  /** false = aucun pointeur connu : la tete reste tournee, mais elle revit */
+  /** false = aucun pointeur connu : le regard reste droit devant, mais il revit */
   pointer: boolean
 }
 
 /**
- * Cible de regard.
+ * Cible de regard : le curseur, tout simplement.
+ *
+ * `nx`/`ny` sont l'ecart du pointeur au centre du bot, deja normalises et
+ * bornes. Ils se lisent DIRECTEMENT comme la direction de la tete, dans la
+ * convention de `face.ts` : a droite lacet positif, en bas tangage negatif —
+ * le y de l'ecran descend, le tangage positif monte, d'ou le signe. Curseur au
+ * centre, regard droit devant : c'est le « il me fixe » recherche. Aucun biais
+ * lateral : l'ancien cap « vers le panneau » faisait regarder a gauche meme
+ * quand le curseur etait ailleurs.
  *
  * `tour` mene tout : il fait monter l'emprise sur la pose (`mix`) et fondre le
- * tour parcouru (`spin`) en meme temps. A 0 la pose de l'etat commande seule ; a
- * 1 la tete est posee a gauche et suit le curseur.
+ * tour parcouru (`spin`) en meme temps. A 0 la pose de l'etat commande seule ;
+ * a 1 la tete est posee sur le curseur et le suit.
  *
  * Rien ici ne compense l'expression affichee : c'est le moteur qui melange,
  * parce que lui seul connait la pose a l'instant t. Le faire ici obligerait a
@@ -157,14 +151,13 @@ export interface Aim {
  */
 export function lookTarget({ nx, ny, tour, pointer }: Aim): Look {
   return {
-    yaw: -TURN + nx * YAW_MAX,
-    // tangage positif = regard vers le haut, alors que le y de l'ecran descend
-    pitch: PITCH - ny * PITCH_MAX,
+    yaw: nx * YAW_MAX,
+    pitch: -ny * PITCH_MAX,
     mix: tour,
     spin: SPIN * (1 - tour),
-    // Sans pointeur la tete reste tournee vers le panneau, mais on lui rend sa
-    // derive : sinon le bot fixe un point mort, et arriver au clavier ou au
-    // tactile donnait un avatar completement immobile.
+    // Sans pointeur le regard reste droit devant, mais on lui rend sa derive :
+    // sinon le bot fixe un point mort, et arriver au clavier ou au tactile
+    // donnait un avatar completement immobile.
     wander: pointer ? 0 : 1
   }
 }
