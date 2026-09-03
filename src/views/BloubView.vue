@@ -13,6 +13,7 @@ import {
   PhSnowflake
 } from '@phosphor-icons/vue'
 import BloubBot from '@/components/BloubBot.vue'
+import BloubGooLab from '@/components/BloubGooLab.vue'
 import BloubTimeline from '@/components/BloubTimeline.vue'
 import {
   blockAt,
@@ -41,6 +42,13 @@ import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from '@/bot/skins'
 import { POSES, SEQUENCE, STATE_BY_ID, type StateId } from '@/bot/states'
 
 const shape = ref(DEFAULT_SHAPE)
+
+/**
+ * Le labo de design de la peau Goo : `/bloub?goo` le monte en couvercle opaque
+ * au-dessus de la page normale. Lu une fois au chargement — un outil de design
+ * n'a pas besoin de reagir a l'historique.
+ */
+const gooLab = new URLSearchParams(window.location.search).has('goo')
 const color = ref(DEFAULT_COLOR)
 const expression = ref(DEFAULT_EXPRESSION)
 
@@ -356,6 +364,8 @@ const stateLabels: Record<string, string> = {
 
 <template>
   <div class="bloub" :class="{ 'bloub--entering': entering }">
+    <!-- Labo de design Goo : couvercle opaque, monte seulement par /bloub?goo. -->
+    <BloubGooLab v-if="gooLab" />
     <!-- Instance hors ecran montee figee (sans horloge), pilotee par rendAt
          pour capturer un cycle image par image : SVG anime et GIF. -->
     <div class="bloub__exporter" aria-hidden="true">

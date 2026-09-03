@@ -530,6 +530,13 @@ onMounted(() => {
   }
   // le curseur peut arriver deja pose (URL, cycle relu du stockage)
   apply(block.value, elapsed.value)
+  /*
+   * L'antenne se peint des le montage, sans attendre la boucle : un onglet en
+   * arriere-plan suspend rAF, et le bot resterait sinon sans antenne jusqu'a
+   * sa premiere image — les vignettes cote a cote du labo en faisaient la
+   * demonstration.
+   */
+  drawAntenna()
   raf = requestAnimationFrame(tick)
 })
 onBeforeUnmount(() => {
