@@ -6,7 +6,8 @@ import { clamp, easings } from '@/bot/math'
 import { lookTarget, TURN_TIME, type GazeScript } from '@/ui/gaze'
 import {
   DEFAULT_EXPRESSION,
-  EXPRESSION_BY_ID
+  EXPRESSION_BY_ID,
+  type BotExpression
 } from '@/bot/expressions'
 import {
   COLOR_BY_ID,
@@ -16,6 +17,7 @@ import {
   mixHex
 } from '@/bot/skins'
 import { blockAt, defaultCycle, offsetOf, type Block } from '@/bot/cycles'
+import { antennaRig, blushAttrs, pupilSize, roundifyExpression, type GooSkin } from '@/bot/goo'
 import { DEMI_VIEWBOX, RAYON } from '@/bot/repere'
 import { STATE_BY_ID, type StateId } from '@/bot/states'
 
@@ -67,6 +69,12 @@ const props = withDefaults(
      * echelle. Sans `viewBox`, on garde `DEMI_VIEWBOX` qui loge les anneaux.
      */
     viewBox?: number
+    /**
+     * La peau « Goo » : yeux ronds, pupille, antenne, joues. Toutes les couches
+     * sont facultatives et se posent par-dessus le rendu du moteur — sans `goo`,
+     * le bot d'origine, au pixel pres.
+     */
+    goo?: GooSkin | null
   }>(),
   {
     size: 320,
@@ -78,7 +86,8 @@ const props = withDefaults(
     cycle: () => defaultCycle().blocks,
     follow: false,
     gaze: null,
-    flat: false
+    flat: false,
+    goo: null
   }
 )
 
@@ -110,17 +119,53 @@ const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
 const expression = computed(() => {
   const e = EXPRESSION_BY_ID.get(props.expression) ?? null
-  if (!e || !props.flat) return e
-  // Tuile de personnalisateur : on remet la tete en face pour que la FORME des
-  // yeux lise l'emotion (cf. prop `flat`). L'id, l'ecart et la geometrie restent
-  // ceux de l'expression — `decalageDesYeux` s'appuie dessus.
-  return { ...e, gaze: { yaw: 0, pitch: 0, roll: e.gaze.roll } }
+  let resolved: BotExpression | null = e
+  if (e && props.flat) {
+    // Tuile de personnalisateur : on remet la tete en face pour que la FORME des
+    // yeux lise l'emotion (cf. prop `flat`). L'id, l'ecart et la geometrie restent
+    // ceux de l'expression — `decalageDesYeux` s'appuie dessus.
+    resolved = { ...e, gaze: { yaw: 0, pitch: 0, roll: e.gaze.roll } }
+  }
+  // Peau Goo : les yeux ronds sont une reecriture de l'expression de repos, pas
+  // une couche de rendu — le moteur doit morpher vers eux comme vers toute
+  // expression. L'id survive, donc la table des decalages reste valable.
+  if (resolved && props.goo?.round) {
+    resolved = roundifyExpression(resolved, props.goo.round)
+  }
+  return resolved
 })
 
 const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value)
 const frame = shallowRef<BotFrame>(engine.sample(props.frozenAt ?? 0))
 const uid = Math.random().toString(36).slice(2, 8)
 const maskId = `bot-mask-${uid}`
+
+/* ------------------------------------------------------------ peau Goo */
+
+/**
+ * L'antenne se redessine a chaque image : son ancre est le sommet du corps,
+ * qui bouge avec la respiration et les squash. La geometrie vient de
+ * `antennaRig` (pur) — ici il n'y a que le branchement sur l'horloge de scene.
+ * La phase propre a chaque instance evite la parade synchronisee quand
+ * plusieurs bots sont affiches cote a cote.
+ */
+const antenna = shallowRef<{ rig: ReturnType<typeof antennaRig>; halo: number } | null>(null)
+const antennaPhase = ((parseInt(uid, 36) % 100) / 100) * Math.PI * 2
+
+/** Couleur d'ambiance de la bille allumee : l'ambre de la palette d'origine. */
+const GLOW_COLOR = COLOR_BY_ID.get('ambre')!.hex
+
+function drawAntenna() {
+  const skin = props.goo
+  if (!skin?.antenna || skin.antenna === 'none') {
+    antenna.value = null
+    return
+  }
+  antenna.value = {
+    rig: antennaRig(frame.value.top, skin.antenna, clock, antennaPhase, R * 0.3),
+    halo: 0.2 + 0.16 * Math.sin((clock / 1.2) * Math.PI * 2)
+  }
+}
 
 let raf = 0
 let nextAt = Infinity
@@ -369,6 +414,7 @@ function tick(ms: number) {
 
   frame.value = engine.sample(clock)
   triggerRef(frame)
+  drawAntenna()
 }
 
 /** Redessine sans la boucle : sert aux vignettes figees quand la forme change. */
@@ -376,6 +422,7 @@ function redrawFrozen() {
   if (props.frozenAt === undefined) return
   frame.value = engine.sample(props.frozenAt)
   triggerRef(frame)
+  drawAntenna()
 }
 
 // Curseur deplace de l'exterieur : clic sur un bloc de la timeline. Quand c'est
@@ -476,7 +523,11 @@ function detach() {
 }
 
 onMounted(() => {
-  if (props.frozenAt !== undefined) return
+  if (props.frozenAt !== undefined) {
+    // vignette figee : pas de boucle, l'antenne se dessine une fois pour toutes
+    drawAntenna()
+    return
+  }
   // le curseur peut arriver deja pose (URL, cycle relu du stockage)
   apply(block.value, elapsed.value)
   raf = requestAnimationFrame(tick)
@@ -609,6 +660,58 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
       <g :mask="`url(#${maskId})`">
         <rect :x="-VB" :y="-VB" :width="VB * 2" :height="VB * 2" :fill="ink" />
       </g>
+
+      <!--
+        La pupille : de l'encre DANS le trou de l'oeil. La matrice de l'oeil
+        lui transmet tout gratuitement — l'orientation de la tete, l'inclinaison
+        propre, et le clignement (la colonne y de la matrice porte deja
+        l'ecrasement) — et son opacite la fait s'effacer au limbe avec l'oeil.
+      -->
+      <g v-if="props.goo?.pupil && props.goo.pupil !== 'none'">
+        <template v-for="(eye, i) in frame.eyes" :key="`pupil${i}`">
+          <rect
+            v-if="props.goo.pupil === 'square'"
+            :transform="eye.matrix"
+            :x="-pupilSize(eye) / 2"
+            :y="-pupilSize(eye) / 2"
+            :width="pupilSize(eye)"
+            :height="pupilSize(eye)"
+            :fill="ink"
+            :opacity="eye.alpha"
+          />
+          <circle
+            v-else
+            :transform="eye.matrix"
+            :r="pupilSize(eye) / 2"
+            :fill="ink"
+            :opacity="eye.alpha"
+          />
+        </template>
+      </g>
+
+      <!-- Les joues : deux points d'encre diluee, pousses sous l'oeil vers l'exterieur. -->
+      <g v-if="props.goo?.blush" :fill="ink" opacity="0.1">
+        <ellipse v-for="(eye, i) in frame.eyes" :key="`blush${i}`" v-bind="blushAttrs(eye, R)" />
+      </g>
+    </g>
+
+    <!-- L'antenne : ancree au sommet du corps, elle suit respiration et squash. -->
+    <g v-if="antenna" stroke-linecap="round">
+      <path :d="antenna.rig.d" fill="none" :stroke="ink" :stroke-width="R * 0.05" />
+      <circle
+        v-if="props.goo?.glow"
+        :cx="antenna.rig.tip.x"
+        :cy="antenna.rig.tip.y"
+        :r="antenna.rig.ballR * 2.4"
+        :fill="GLOW_COLOR"
+        :opacity="Math.max(0, antenna.halo)"
+      />
+      <circle
+        :cx="antenna.rig.tip.x"
+        :cy="antenna.rig.tip.y"
+        :r="antenna.rig.ballR"
+        :fill="props.goo?.glow ? GLOW_COLOR : ink"
+      />
     </g>
 
     <g v-if="!frame.dotsBehind">
