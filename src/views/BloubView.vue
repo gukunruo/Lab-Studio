@@ -328,7 +328,7 @@ const stateLabels: Record<string, string> = {
 </script>
 
 <template>
-  <div class="bloub">
+  <div class="bloub" :class="{ 'bloub--entering': entering }">
     <!-- Instance hors ecran montee figee (sans horloge), pilotee par rendAt
          pour capturer un cycle image par image : SVG anime et GIF. -->
     <div class="bloub__exporter" aria-hidden="true">
@@ -1133,6 +1133,43 @@ const stateLabels: Record<string, string> = {
   &--active {
     border-color: var(--bloub-line-strong);
     box-shadow: 0 0 0 3px var(--bloub-accent-soft);
+  }
+}
+
+/* ---------- entree : l'interface attend la fin du tourbillon ---------- */
+
+/*
+ * Comme la reference : la page s'ouvre sur la boule SEULE, centre-haut, qui
+ * fait son tour ; quand le bloc d'entree est epuise (`entering` retombe) le
+ * reste de l'interface se revele d'un meme mouvement — fondu + petite montee.
+ *
+ * Les elements restent DANS la mise en page (on ne les derive pas) : le bot ne
+ * bouge pas d'un pixel entre le splash et la page Revelee, c'est le decor qui
+ * apparait autour de lui. `pointer-events: none` pendant l'entree pour qu'aucun
+ * controle invisible ne reponde.
+ */
+.bloub__floats,
+.bloub__export,
+.bloub__playback,
+.bloub__hint,
+.bloub__panel,
+.bloub__animrows,
+.bloub__timeline {
+  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bloub--entering {
+  .bloub__floats,
+  .bloub__export,
+  .bloub__playback,
+  .bloub__hint,
+  .bloub__panel,
+  .bloub__animrows,
+  .bloub__timeline {
+    opacity: 0;
+    transform: translateY(12px);
+    pointer-events: none;
   }
 }
 
