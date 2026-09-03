@@ -18,6 +18,14 @@ export interface RenderedEye {
   d: string
   matrix: string
   alpha: number
+  /**
+   * Dimensions du path LOCAL de l'oeil, en unites de viewBox, avant la matrice
+   * (rotation, clignement). La matrice ne fait que tourner et ecraser : ce sont
+   * donc elles qui disent la taille reelle de l'oeil — c'est ce dont une couche
+   * posee DANS l'oeil (la pupille carre de la peau Goo) a besoin pour se caler.
+   */
+  w: number
+  h: number
 }
 
 export interface BotFrame {
@@ -30,6 +38,12 @@ export interface BotFrame {
   arcs: ArcRender[]
   notif: { x: number; y: number; r: number } | null
   notch: { x: number; y: number; r: number } | null
+  /**
+   * Sommet du corps a l'ecran, en unites de viewBox. Le point d'ancrage de ce
+   * qui se pose SUR la tete — l'antenne de la peau Goo — a travers la respiration,
+   * la derive et les squash des etats, sans recalculer la silhouette.
+   */
+  top: { x: number; y: number }
 }
 
 /**
@@ -489,7 +503,14 @@ export class BotEngine {
       cy: pose.sil.cy + offY,
       sy: pose.sil.sy * life.breath
     }
-    const bodyPath = closedPath(toPoints(sil, R, this.pts))
+    const pts = toPoints(sil, R, this.pts)
+    const bodyPath = closedPath(pts)
+
+    // sommet du corps : le plus haut des points deja projetes, sans reload
+    let top = pts[0]!
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i]!.y < top.y) top = pts[i]!
+    }
 
     // --- yeux -------------------------------------------------------------
     // Les yeux vivent sur une sphere de rayon 1 ; des que la silhouette n'est
@@ -522,7 +543,9 @@ export class BotEngine {
         eyes.push({
           d: capsulePath(cfg.w * R, cfg.h * R),
           matrix: `matrix(${r2(ax)},${r2(ay * k)},${r2(cx2)},${r2(cy2 * k)},${r2(e.x * fit + (offX + decalage.x) * R)},${r2(e.y * fit + (offY + decalage.y) * R)})`,
-          alpha: pose.eyeAlpha * clamp(e.depth / 0.12)
+          alpha: pose.eyeAlpha * clamp(e.depth / 0.12),
+          w: cfg.w * R,
+          h: cfg.h * R
         })
       }
     }
@@ -551,7 +574,8 @@ export class BotEngine {
         .filter((a) => a.opacity > 0.01)
         .map((a) => arcRender(a.seed, a.t, R, a.id, a.opacity)),
       notif,
-      notch
+      notch,
+      top: { x: top.x, y: top.y }
     }
   }
 }
