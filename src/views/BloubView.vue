@@ -95,6 +95,23 @@ watch(block, (i) => {
   if (entering.value && i >= ENTRY.length) entering.value = false
 })
 
+/**
+ * Le travelling d'entree : pendant le splash la boule est transportee AU CENTRE
+ * de la fenetre (la reference l'y montre seule, tourbillon compris), puis elle
+ * glisse a sa place dans la mise en page quand l'interface se revele.
+ *
+ * Le deplacement est une transform, pas un repositionnement : la mise en page
+ * ne bouge pas, et la retour est animer par la transition CSS posee sur
+ * `.bloub__dolly`. Mesure une seule fois au montage, avant la premiere peinture
+ * — la boule nait deja centree, sans glissement parasite au chargement.
+ */
+const dolly = ref({ x: 0, y: 0 })
+const dollyStyle = computed(() =>
+  entering.value && (dolly.value.x || dolly.value.y)
+    ? { transform: `translate(${dolly.value.x}px, ${dolly.value.y}px)` }
+    : undefined
+)
+
 /** Fige le rendu a une date precise : veritable pause, sans boucle rAF. */
 const frozen = ref(false)
 const freezeTime = ref(1.2)
@@ -268,6 +285,16 @@ function onDocumentKeydown(event: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('click', onDocumentClick)
   document.addEventListener('keydown', onDocumentKeydown)
+  // Mesure du travelling AVANT la premiere peinture (meme tache que le montage) :
+  // la boule apparait deja centree, aucune transition ne se declenche au chargement.
+  const el = bot.value?.$el as SVGSVGElement | null
+  if (el && entering.value) {
+    const r = el.getBoundingClientRect()
+    dolly.value = {
+      x: window.innerWidth / 2 - (r.left + r.width / 2),
+      y: window.innerHeight * 0.38 - (r.top + r.height / 2)
+    }
+  }
 })
 
 onBeforeUnmount(() => {
@@ -386,6 +413,8 @@ const stateLabels: Record<string, string> = {
         <BloubBot
           v-if="!frozen"
           ref="bot"
+          class="bloub__dolly"
+          :style="dollyStyle"
           :size="420"
           :shape="shape"
           :color="color"
@@ -1171,6 +1200,16 @@ const stateLabels: Record<string, string> = {
     transform: translateY(12px);
     pointer-events: none;
   }
+}
+
+/*
+ * Le retour du travelling : la transform qui a porte la boule au centre part,
+ * et la transition la fait GLISSER jusqu'a sa place pendant que le decor
+ * s'y revele autour d'elle. Un peu plus longue que le fondu de l'interface :
+ * c'est le mouvement principal du revealed, le decor n'est que l'accompagne.
+ */
+.bloub__dolly {
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ---------- empilement etroit ---------- */
