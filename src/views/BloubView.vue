@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   PhArrowLeft,
@@ -69,6 +69,31 @@ const block = ref(0)
 const state = ref<StateId>('idle')
 const elapsed = ref(0)
 const playing = ref(true)
+
+/**
+ * L'entree a l'ouverture de la page : le bot joue son etat `swirl` — anneaux qui
+ * se posent, morphing vers la forme choisie masque par un clin d'oeil — pendant
+ * que ses yeux font le tour de la boule et viennent s'arreter sur le curseur.
+ * Puis la lecture retombe sur le montage normal.
+ *
+ * Le bloc d'entree ne vit QUE dans le cycle du lecteur, jamais dans `blocks` :
+ * sur la reference c'est une transition d'interface, pas une pose du montage —
+ * elle ne s'edite pas, elle ne se rejoue qu'au rechargement de la page.
+ */
+const entering = ref(true)
+const ENTRY: Block[] = [{ state: 'swirl', duration: STATE_BY_ID.get('swirl')!.duration }]
+
+const playCycle = computed(() => {
+  const base = mode.value === 'custom' ? customCycle : blocks.value
+  return entering.value ? [...ENTRY, ...base] : base
+})
+
+// La fin de l'entree n'a pas d'horloge propre : c'est le curseur qui la dit.
+// Quand il quitte le bloc d'entree, on le retire du cycle — le lecteur recale
+// seul son curseur sur le montage qui reste, sans reprendre le bloc a zero.
+watch(block, (i) => {
+  if (entering.value && i >= ENTRY.length) entering.value = false
+})
 
 /** Fige le rendu a une date precise : veritable pause, sans boucle rAF. */
 const frozen = ref(false)
@@ -366,7 +391,7 @@ const stateLabels: Record<string, string> = {
           :color="color"
           :expression="expression"
           :follow="true"
-          :cycle="mode === 'custom' ? customCycle : blocks"
+          :cycle="playCycle"
           v-model:state="state"
           v-model:block="block"
           v-model:elapsed="elapsed"
