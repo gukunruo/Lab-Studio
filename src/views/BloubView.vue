@@ -786,8 +786,6 @@ const stateLabels: Record<string, string> = {
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 20px;
   width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
   padding: 64px 20px 20px;
 }
 
