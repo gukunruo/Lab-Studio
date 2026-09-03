@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import BloubBot from '@/components/BloubBot.vue'
 import type { Block } from '@/bot/cycles'
 import type { ExpressionId } from '@/bot/expressions'
-import { GOO_GHOST, GOO_PUDDING, type GooEye, type GooSkin } from '@/bot/goo'
+import { GOO_EYES, GOO_GHOST, GOO_PUDDING, type GooSkin } from '@/bot/goo'
 
 /**
  * Le labo de design de la peau Goo, v2 : trois AXES de caractere, dans l'ordre
@@ -34,12 +34,12 @@ interface Variant {
   cycle?: Block[]
 }
 
-/* Yeux en couleur : le haut plus clair que le bas, reflets blancs. */
-const AMBER: GooEye = { fill: '#f6c445', fill2: '#c67c05' }
-const MINT: GooEye = { fill: '#4ade8f', fill2: '#17915f' }
-const AURORA: GooEye = { fill: '#2fbfa0', fill2: '#8b5cf6' }
-const CORAL: GooEye = { fill: '#f06455', fill2: '#b02a20' }
-const BLUEVIOLET: GooEye = { fill: '#4f9df5', fill2: '#7c4fe0' }
+/* Yeux en couleur : les teintes partagees avec le personnalisateur. */
+const AMBER = GOO_EYES.ambre
+const MINT = GOO_EYES.menthe
+const AURORA = GOO_EYES.aurore
+const CORAL = GOO_EYES.corail
+const BLUEVIOLET = GOO_EYES.violet
 
 const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
   {

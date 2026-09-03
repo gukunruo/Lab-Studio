@@ -37,6 +37,7 @@ import {
   pngFromMarkup
 } from '@/bot/exporter'
 import { DEFAULT_EXPRESSION, EXPRESSIONS } from '@/bot/expressions'
+import { GOO_EYES, type GooSkin } from '@/bot/goo'
 import { THUMB_VIEWBOX } from '@/bot/repere'
 import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from '@/bot/skins'
 import { POSES, SEQUENCE, STATE_BY_ID, type StateId } from '@/bot/states'
@@ -51,6 +52,27 @@ const shape = ref(DEFAULT_SHAPE)
 const gooLab = new URLSearchParams(window.location.search).has('goo')
 const color = ref(DEFAULT_COLOR)
 const expression = ref(DEFAULT_EXPRESSION)
+
+/**
+ * Les yeux du personnalisateur : l'oeil d'origine, puis les teintes en pleine
+ * couleur posees SUR la geometrie d'origine (la capsule) — les 16 expressions
+ * gardent leur vocabulaire d'inclinaison et d'ecrasement. Comme la forme et
+ * l'expression, ce choix se propage a TOUTES les vignettes : la grille montre
+ * toujours la vraie combinaison.
+ */
+const EYE_LABELS: Record<string, string> = {
+  ambre: '琥珀',
+  menthe: '薄荷',
+  aurore: '极光',
+  corail: '珊瑚',
+  violet: '蓝紫'
+}
+const EYES: { id: string; label: string; goo: GooSkin | null }[] = [
+  { id: 'origin', label: '原眼', goo: null },
+  ...Object.entries(GOO_EYES).map(([id, eye]) => ({ id, label: EYE_LABELS[id] ?? id, goo: { eye } }))
+]
+const eyeId = ref('origin')
+const gooSkin = computed(() => EYES.find((e) => e.id === eyeId.value)?.goo ?? null)
 
 /**
  * Deux modes, deux metiers : « custom » designe la mascotte (forme/expression/
@@ -375,6 +397,7 @@ const stateLabels: Record<string, string> = {
         :shape="shape"
         :color="color"
         :expression="expression"
+        :goo="gooSkin"
         :cycle="blocks"
         :frozen-at="0"
       />
@@ -429,6 +452,7 @@ const stateLabels: Record<string, string> = {
           :shape="shape"
           :color="color"
           :expression="expression"
+          :goo="gooSkin"
           :follow="true"
           :cycle="playCycle"
           v-model:state="state"
@@ -443,6 +467,7 @@ const stateLabels: Record<string, string> = {
           :shape="shape"
           :color="color"
           :expression="expression"
+          :goo="gooSkin"
           :frozen-at="freezeTime"
         />
 
@@ -548,7 +573,7 @@ const stateLabels: Record<string, string> = {
             >
               <!-- Chaque vignette montre la VRAIE combinaison : la forme parcourue
                    avec l'expression choisie, pas un bot neutre generique. -->
-              <BloubBot :size="40" :shape="s.id" :expression="expression" :frozen-at="1.2" :view-box="THUMB_VIEWBOX" />
+              <BloubBot :size="40" :shape="s.id" :expression="expression" :goo="gooSkin" :frozen-at="1.2" :view-box="THUMB_VIEWBOX" />
               <span>{{ shapeLabels[s.id] }}</span>
             </button>
           </div>
@@ -568,8 +593,28 @@ const stateLabels: Record<string, string> = {
               <!-- Figé à 0,6 s, avant le premier clignement du calendrier (1,4 s) : à
                    1,5 s les yeux étaient en plein clignement, écrasés à ~24 %, et toutes
                    les émotions se ressemblaient. -->
-              <BloubBot :size="40" :state="'idle'" :frozen-at="0.6" :expression="e.id" :shape="shape" :flat="true" :view-box="THUMB_VIEWBOX" />
+              <BloubBot :size="40" :state="'idle'" :frozen-at="0.6" :expression="e.id" :shape="shape" :flat="true" :goo="gooSkin" :view-box="THUMB_VIEWBOX" />
               <span>{{ expressionLabels[e.id] }}</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="bloub__group">
+          <h3 class="bloub__group-title">眼睛</h3>
+          <div class="bloub__eyes">
+            <button
+              v-for="e in EYES"
+              :key="e.id"
+              type="button"
+              class="bloub__eye"
+              :class="{ 'bloub__eye--active': eyeId === e.id }"
+              :title="e.label"
+              @click="eyeId = e.id"
+            >
+              <!-- La VRAIE teinte rendue par le vrai moteur, au repos : la vignette
+                   EST l'oeil, pas une pastille approximative. Sans etiquette — la
+                   vignette se lit d'elle-meme, comme les pastilles de couleurs. -->
+              <BloubBot :size="40" :shape="shape" :frozen-at="0.6" :flat="true" :goo="e.goo" :view-box="THUMB_VIEWBOX" />
             </button>
           </div>
         </section>
@@ -612,6 +657,7 @@ const stateLabels: Record<string, string> = {
               :shape="shape"
               :color="color"
               :expression="expression"
+              :goo="gooSkin"
             />
             <span>{{ stateLabels[s.id] }}</span>
           </button>
@@ -631,6 +677,7 @@ const stateLabels: Record<string, string> = {
       :shape="shape"
       :color="color"
       :expression="expression"
+      :goo="gooSkin"
       @scrub="seekTo"
       @toggle-play="playing = !playing"
       @export-anim="doExportGif"
@@ -1117,8 +1164,17 @@ const stateLabels: Record<string, string> = {
   gap: 4px;
 }
 
+/* Six vignettes sur une seule rangee : la rangee des yeux se lit comme les
+   pastilles de couleurs — une rangee, sans etiquette, la vignette suffit. */
+.bloub__eyes {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
 .bloub__shape,
-.bloub__expr {
+.bloub__expr,
+.bloub__eye {
   display: flex;
   flex-direction: column;
   align-items: center;

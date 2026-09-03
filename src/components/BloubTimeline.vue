@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/vue'
 import BloubBot from '@/components/BloubBot.vue'
 import { clampDuration, moveBlock, offsetOf, removeBlock, type Block } from '@/bot/cycles'
+import type { GooSkin } from '@/bot/goo'
 import { POSES, type StateId } from '@/bot/states'
 
 /**
@@ -35,8 +36,10 @@ const props = withDefaults(
     shape: string
     color: string
     expression: string
+    /** la peau Goo (les yeux en couleur), posee sur chaque vignette */
+    goo?: GooSkin | null
   }>(),
-  { current: 0, elapsed: 0, playing: false }
+  { current: 0, elapsed: 0, playing: false, goo: null }
 )
 
 const emit = defineEmits<{
@@ -244,6 +247,7 @@ function clampT(t: number): number {
                 :shape="props.shape"
                 :color="props.color"
                 :expression="props.expression"
+                :goo="props.goo"
               />
             </div>
             <span class="bloub__dur">{{ b.duration.toFixed(1) }}秒</span>

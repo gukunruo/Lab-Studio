@@ -4,6 +4,7 @@ import {
   blushAttrs,
   antennaRig,
   eyeDecor,
+  GOO_EYES,
   GOO_GHOST,
   GOO_PUDDING,
   pupilSize,
@@ -123,6 +124,16 @@ test('ghost : dome haut comme la boule, jupe dentee en dessous', () => {
   for (let i = 0; i < 24; i++) jupe.push(radiusAtAngle(GOO_GHOST, Math.PI / 4 + (i / 24) * (Math.PI / 2)))
   assert.ok(Math.max(...jupe) > 0.16, `jupe trop plate : max ${Math.max(...jupe)}`)
   assert.ok(Math.min(...jupe) < Math.max(...jupe) * 0.5, 'la jupe doit avoir des creux (dents de scie)')
+})
+
+test('GOO_EYES : cinq teintes partagees, toutes completes et distinctes', () => {
+  const fills = new Set<string>()
+  for (const [id, eye] of Object.entries(GOO_EYES)) {
+    assert.ok(eye.fill.startsWith('#'), `${id} : fill invalide : ${eye.fill}`)
+    assert.ok(eye.fill2?.startsWith('#'), `${id} : le degrade exige fill2`)
+    fills.add(eye.fill)
+  }
+  assert.equal(fills.size, 5, 'les teintes doivent etre distinctes')
 })
 
 test('eyeDecor : les reflets restent DANS l oeil, le coeur est plus petit', () => {
