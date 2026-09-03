@@ -17,7 +17,7 @@ import {
   mixHex
 } from '@/bot/skins'
 import { blockAt, defaultCycle, offsetOf, type Block } from '@/bot/cycles'
-import { antennaRig, blushAttrs, pupilSize, roundifyExpression, type GooSkin } from '@/bot/goo'
+import { antennaRig, blushAttrs, eyeDecor, pupilSize, roundifyExpression, type GooSkin } from '@/bot/goo'
 import { DEMI_VIEWBOX, RAYON } from '@/bot/repere'
 import { STATE_BY_ID, type StateId } from '@/bot/states'
 
@@ -116,6 +116,11 @@ const R = RAYON
 const VB = computed(() => props.viewBox ?? DEMI_VIEWBOX)
 
 const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
+/**
+ * La peau Goo peut imposer SA silhouette (le labo de design explore des formes
+ * hors personnalisateur) : elle passe devant le choix du personnalisateur.
+ */
+const gooRadii = computed(() => props.goo?.shape ?? shapeRadii.value)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
 const expression = computed(() => {
   const e = EXPRESSION_BY_ID.get(props.expression) ?? null
@@ -135,7 +140,7 @@ const expression = computed(() => {
   return resolved
 })
 
-const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value)
+const engine = new BotEngine(R, state.value, gooRadii.value, expression.value)
 const frame = shallowRef<BotFrame>(engine.sample(props.frozenAt ?? 0))
 const uid = Math.random().toString(36).slice(2, 8)
 const maskId = `bot-mask-${uid}`
@@ -173,6 +178,14 @@ let last = 0
 let clock = 0
 /** Date d'horloge a laquelle le bloc courant a commence. */
 let blockStart = 0
+
+/* ---------------------------------------------------- l'oeil en couleur */
+
+const gooEyeGradId = `goo-eye-${uid}`
+const gooEyeFill = computed(() =>
+  props.goo?.eye?.fill2 ? `url(#${gooEyeGradId})` : (props.goo?.eye?.fill ?? '')
+)
+const gooHi = computed(() => props.goo?.eye?.hi ?? 0.9)
 
 /**
  * Pose le bloc `i` : etat, moteur, et date de fin. Appele aussi bien par la
@@ -478,7 +491,7 @@ watch(
   }
 )
 
-watch(shapeRadii, (radii) => {
+watch(gooRadii, (radii) => {
   // on passe l'horloge : le moteur morphe vers la nouvelle forme au lieu de
   // l'appliquer d'un coup
   engine.setShape(radii, clock)
@@ -607,6 +620,23 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
         />
       </mask>
 
+      <!--
+        Le degrade de l'oeil en couleur : en unites de bounding box du path,
+        donc il suit la matrice de l'oeil (rotation, clignement) sans rien
+        demander au moteur.
+      -->
+      <linearGradient
+        v-if="props.goo?.eye?.fill2"
+        :id="gooEyeGradId"
+        x1="0"
+        y1="0"
+        x2="0"
+        y2="1"
+      >
+        <stop offset="0" :stop-color="props.goo.eye.fill" />
+        <stop offset="1" :stop-color="props.goo.eye.fill2" />
+      </linearGradient>
+
       <linearGradient
         v-for="arc in frame.arcs"
         :id="`${uid}-${arc.id}`"
@@ -669,12 +699,49 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
       </g>
 
       <!--
-        La pupille : de l'encre DANS le trou de l'oeil. La matrice de l'oeil
-        lui transmet tout gratuitement — l'orientation de la tete, l'inclinaison
-        propre, et le clignement (la colonne y de la matrice porte deja
-        l'ecrasement) — et son opacite la fait s'effacer au limbe avec l'oeil.
+        L'oeil EN COULEUR : le meme path que le trou, pose par-dessus, donc il
+        le recouvre au pixel pres et herite de tout — orientation de tete,
+        inclinaison, clignement (la colonne y de la matrice ecrase), fondue au
+        limbe (l'alpha). Le coeur et les reflets vivent dans le meme repere
+        local, fournis par `eyeDecor`.
       -->
-      <g v-if="props.goo?.pupil && props.goo.pupil !== 'none'">
+      <g v-if="props.goo?.eye">
+        <template v-for="(eye, i) in frame.eyes" :key="`gooeye${i}`">
+          <path :d="eye.d" :transform="eye.matrix" :fill="gooEyeFill" :opacity="eye.alpha" />
+          <circle
+            v-if="props.goo.eye.core"
+            :transform="eye.matrix"
+            :cy="eyeDecor(eye).coreCy"
+            :r="eyeDecor(eye).coreR"
+            :fill="props.goo.eye.core"
+            :opacity="eye.alpha"
+          />
+          <template v-if="gooHi > 0">
+            <circle
+              :transform="eye.matrix"
+              :cx="eyeDecor(eye).hi1.cx"
+              :cy="eyeDecor(eye).hi1.cy"
+              :r="eyeDecor(eye).hi1.r"
+              fill="#fff"
+              :opacity="gooHi * eye.alpha"
+            />
+            <circle
+              :transform="eye.matrix"
+              :cx="eyeDecor(eye).hi2.cx"
+              :cy="eyeDecor(eye).hi2.cy"
+              :r="eyeDecor(eye).hi2.r"
+              fill="#fff"
+              :opacity="gooHi * eye.alpha"
+            />
+          </template>
+        </template>
+      </g>
+
+      <!--
+        La pupille encre : seulement sans oeil en couleur (l'oeil colore a son
+        propre coeur). La matrice de l'oeil lui transmet tout gratuitement.
+      -->
+      <g v-if="props.goo?.pupil && props.goo.pupil !== 'none' && !props.goo.eye">
         <template v-for="(eye, i) in frame.eyes" :key="`pupil${i}`">
           <rect
             v-if="props.goo.pupil === 'square'"

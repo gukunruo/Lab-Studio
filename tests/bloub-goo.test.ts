@@ -1,8 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { blushAttrs, antennaRig, pupilSize, roundifyExpression } from '../src/bot/goo'
+import {
+  blushAttrs,
+  antennaRig,
+  eyeDecor,
+  GOO_GHOST,
+  GOO_PUDDING,
+  pupilSize,
+  roundifyExpression
+} from '../src/bot/goo'
 import { BotEngine } from '../src/bot/engine'
 import { EXPRESSION_BY_ID } from '../src/bot/expressions'
+import { PROFILE_SAMPLES } from '../src/bot/profiles'
+import { radiusAtAngle } from '../src/bot/shape'
 
 // La peau Goo se pose sur le moteur sans le toucher : les yeux ronds sont une
 // reecriture d'expression, la pupille un carre d'encre dans le trou, l'antenne
@@ -91,5 +101,48 @@ test('le moteur expose le sommet du corps et la taille des yeux', () => {
   for (const eye of frame.eyes) {
     assert.ok(Math.abs(eye.w - 18.6) < 1e-9)
     assert.ok(Math.abs(eye.h - 41.2) < 1e-9)
+  }
+})
+
+test('pudding : etroit en haut, large en bas, profil complet', () => {
+  assert.equal(GOO_PUDDING.length, PROFILE_SAMPLES)
+  for (const r of GOO_PUDDING) assert.ok(Number.isFinite(r) && r > 0, `rayon invalide : ${r}`)
+  const top = radiusAtAngle(GOO_PUDDING, -Math.PI / 2)
+  const bottom = radiusAtAngle(GOO_PUDDING, Math.PI / 2)
+  assert.ok(top < bottom * 0.8, `dessus ${top} doit etre nettement plus etroit que dessous ${bottom}`)
+})
+
+test('ghost : dome haut comme la boule, jupe dentee en dessous', () => {
+  assert.equal(GOO_GHOST.length, PROFILE_SAMPLES)
+  for (const r of GOO_GHOST) assert.ok(Number.isFinite(r) && r > 0, `rayon invalide : ${r}`)
+  // le dome tient a peu pres dans la boule d'origine
+  const dome = radiusAtAngle(GOO_GHOST, -Math.PI / 2)
+  assert.ok(dome > 0.94 && dome < 1.03, `dome = ${dome}`)
+  // la jupe ondule : des rayons profonds ET des creux sur la moitie basse
+  const jupe: number[] = []
+  for (let i = 0; i < 24; i++) jupe.push(radiusAtAngle(GOO_GHOST, Math.PI / 4 + (i / 24) * (Math.PI / 2)))
+  assert.ok(Math.max(...jupe) > 0.16, `jupe trop plate : max ${Math.max(...jupe)}`)
+  assert.ok(Math.min(...jupe) < Math.max(...jupe) * 0.5, 'la jupe doit avoir des creux (dents de scie)')
+})
+
+test('eyeDecor : les reflets restent DANS l oeil, le coeur est plus petit', () => {
+  // (cx/(rx-r))^2 + (cy/(ry-r))^2 <= 1 : le cercle de rayon r est dans l'ellipse
+  const dansLOeil = (w: number, h: number, hi: { cx: number; cy: number; r: number }) => {
+    const rx = w / 2
+    const ry = h / 2
+    const ex = Math.max(rx - hi.r, 1e-9)
+    const ey = Math.max(ry - hi.r, 1e-9)
+    return (hi.cx / ex) ** 2 + (hi.cy / ey) ** 2
+  }
+  for (const [w, h] of [
+    [46, 46], // oeil rond Ø0,46
+    [52, 52], // grand oeil Ø0,52
+    [18.6, 41.2], // capsule d'origine
+    [46, 3] // oeil en pleine fermeture (clignement)
+  ] as const) {
+    const d = eyeDecor({ w, h })
+    assert.ok(d.coreR > 0 && d.coreR <= Math.min(w, h) / 2, `coeur hors de l'oeil : ${d.coreR}`)
+    assert.ok(dansLOeil(w, h, d.hi1) <= 1, `grand reflet sort de l'oeil ${w}x${h}`)
+    assert.ok(dansLOeil(w, h, d.hi2) <= 1, `petit reflet sort de l'oeil ${w}x${h}`)
   }
 })

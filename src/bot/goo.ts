@@ -1,6 +1,8 @@
 import type { RenderedEye } from './engine'
 import type { BotExpression } from './expressions'
+import { PROFILE_SAMPLES } from './profiles'
 import { r2, TAU } from './math'
+import { hullOfCircles, profileFromPolygon, type Point } from './shape'
 
 /**
  * La peau « Goo » : les choix d'identite du bot de G, poses SUR le moteur sans
@@ -23,6 +25,11 @@ import { r2, TAU } from './math'
 export interface GooSkin {
   /** diametre des yeux ronds, en unites de rayon de boule ; absent = capsules d'origine */
   round?: number
+  /**
+   * L'oeil EN COULEUR : un remplissage pose sur le trou (meme path, meme
+   * matrice), avec reflets. Present, il remplace la logique de pupille.
+   */
+  eye?: GooEye
   /** pupille dans l'oeil : carree (curseur de terminal) ou ronde */
   pupil?: 'none' | 'square' | 'round'
   /** antenne au sommet : tige droite ou en S (serpentin) */
@@ -31,7 +38,58 @@ export interface GooSkin {
   glow?: boolean
   /** deux points de joues, la chaleur de l'ESFJ */
   blush?: boolean
+  /**
+   * Silhouette du corps en remplacement du personnalisateur : un profil radial
+   * complet, comme ceux de `skins.ts`. La forme EST le caractere — c'est le
+   * premier axe du design Goo.
+   */
+  shape?: number[]
 }
+
+/** L'oeil en couleur : degrade vertical (ou pleine couleur), coeur, reflets. */
+export interface GooEye {
+  /** couleur pleine, ou premiere couleur du degrade (le HAUT de l'oeil) */
+  fill: string
+  /** deuxieme couleur du degrade (le BAS) ; absent = couleur pleine */
+  fill2?: string
+  /** coeur central plus sombre — la pupille; absent = pas de coeur */
+  core?: string
+  /** intensite des reflets blancs, 0 a 1 ; 0,9 par defaut */
+  hi?: number
+}
+
+/* --------------------------------------------------------- les silhouettes */
+
+/** Ramene le rayon maximal a `max` : deux formes pesent pareil a l'oeil. */
+function normalize(radii: number[], max = 1): number[] {
+  const peak = Math.max(...radii)
+  if (peak <= 0) return radii
+  const k = max / peak
+  return radii.map((r) => r * k)
+}
+
+/**
+ * Le pudding : gros socle, dome etroit — la goutte assise du « Goo ».
+ * Enveloppe convexe d'un disque large en bas et d'un plus etroit en haut.
+ */
+export const GOO_PUDDING = normalize(
+  profileFromPolygon(hullOfCircles(0, 0.24, 0.72, 0, -0.44, 0.3), 0, 0),
+  1.02
+)
+
+/**
+ * Le petit fantome : demi-sphere haute, jupe qui ondule en dents de scie.
+ * Pose en polygone puis re-projete en profil radial (l'origine voit chaque
+ * direction toucher un seul bord, donc le lancer de rayon suffit).
+ */
+const GHOST_PTS: Point[] = [
+  ...Array.from({ length: 25 }, (_, i) => {
+    const a = Math.PI + (i / 24) * Math.PI
+    return { x: Math.cos(a), y: Math.sin(a) }
+  }),
+  ...Array.from({ length: 11 }, (_, i) => ({ x: 1 - i * 0.2, y: i % 2 === 0 ? 0.22 : 0.04 }))
+]
+export const GOO_GHOST = normalize(profileFromPolygon(GHOST_PTS, 0, 0), 1.02)
 
 /**
  * Yeux ronds : chaque oeil devient un cercle de `diameter`, la hauteur de
@@ -60,6 +118,38 @@ export function roundifyExpression(expr: BotExpression, diameter: number): BotEx
  */
 export function pupilSize(eye: { w: number; h: number }): number {
   return Math.min(eye.w, eye.h) * 0.42
+}
+
+/* ------------------------------------------------------- l'oeil en couleur */
+
+export interface EyeDecor {
+  /** rayon du coeur central, en unites de viewBox */
+  coreR: number
+  /** descente du coeur sous le centre, en unites de viewBox */
+  coreCy: number
+  /** grand reflet, en haut a gauche */
+  hi1: { cx: number; cy: number; r: number }
+  /** petit reflet en contrebas a droite */
+  hi2: { cx: number; cy: number; r: number }
+}
+
+/**
+ * La decoration de l'oeil en couleur : un coeur, deux reflets. Tout est exprime
+ * en coordonnees LOCALES de l'oeil (la matrice du moteur les tourne et les
+ * ecrase avec lui, clignement compris). Les fractions sont calibrees pour que
+ * les reflets restent DANS l'oeil, quel que soit son rapport — un oeil qui se
+ * ferme (la hauteur fond) ne doit pas laisser fuir le reflet sur le corps.
+ */
+export function eyeDecor(eye: { w: number; h: number }): EyeDecor {
+  const rx = eye.w / 2
+  const ry = eye.h / 2
+  const unit = Math.min(rx, ry)
+  return {
+    coreR: 0.46 * unit,
+    coreCy: 0.12 * ry,
+    hi1: { cx: -0.3 * rx, cy: -0.35 * ry, r: 0.3 * unit },
+    hi2: { cx: 0.3 * rx, cy: 0.28 * ry, r: 0.15 * unit }
+  }
 }
 
 /* ------------------------------------------------------------ l'antenne */

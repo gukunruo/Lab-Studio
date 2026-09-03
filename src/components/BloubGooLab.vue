@@ -2,68 +2,103 @@
 import { ref } from 'vue'
 import BloubBot from '@/components/BloubBot.vue'
 import type { Block } from '@/bot/cycles'
-import type { GooSkin } from '@/bot/goo'
+import type { ExpressionId } from '@/bot/expressions'
+import { GOO_GHOST, GOO_PUDDING, type GooEye, type GooSkin } from '@/bot/goo'
 
 /**
- * Le labo de design de la peau Goo : chaque variante rendue VIVANTE par le vrai
- * moteur, cote a cote, pour choisir en regardant — pas en imaginant. Monte par
- * `/bloub?goo`, il ne touche a rien d'autre : la page normale reste en dessous.
+ * Le labo de design de la peau Goo, v2 : trois AXES de caractere, dans l'ordre
+ * ou ils comptent — la silhouette (c'est elle qui fait la premiere impression),
+ * l'oeil en couleur (plus jamais le trou blanc), l'expression et le mouvement.
+ * Chaque carte est rendue VIVANTE par le vrai moteur. Monte par `/bloub?goo`.
  */
 
 /** Chaque bot du labo respire en idle, seul : pas de montage, pas de suivi. */
 const IDLE: Block[] = [{ state: 'idle', duration: 6 }]
+/** La carte de mouvement : une boucle de quatre etats, la signature du moteur. */
+const DEMO: Block[] = [
+  { state: 'idle', duration: 2.2 },
+  { state: 'thinking', duration: 2.6 },
+  { state: 'wink', duration: 1.6 },
+  { state: 'wide', duration: 1.8 }
+]
 
 interface Variant {
   id: string
   label: string
   params: string
-  goo: GooSkin
+  goo?: GooSkin
+  shape?: string
+  expression?: ExpressionId
+  /** vignette figee (les tuiles d'expression) */
+  frozen?: boolean
+  cycle?: Block[]
 }
+
+/* Yeux en couleur : le haut plus clair que le bas, reflets blancs. */
+const AMBER: GooEye = { fill: '#f6c445', fill2: '#c67c05' }
+const MINT: GooEye = { fill: '#4ade8f', fill2: '#17915f' }
+const AURORA: GooEye = { fill: '#2fbfa0', fill2: '#8b5cf6' }
+const CORAL: GooEye = { fill: '#f06455', fill2: '#b02a20' }
+const BLUEVIOLET: GooEye = { fill: '#4f9df5', fill2: '#7c4fe0' }
 
 const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
   {
-    title: '一 · 眼睛形状',
-    hint: '竖胶囊是 bloub 的原样；圆眼是 ESFJ 的亲和。直径以球半径为单位。',
+    title: '一 · 形状',
+    hint: '轮廓是性格的第一眼——引擎支持任意径向轮廓，切换时平滑渐变。布丁和幽灵是 Goo 专属新形状。',
     variants: [
-      { id: 'A', label: 'A · 现状胶囊眼', params: 'bloub 原样', goo: {} },
-      { id: 'B', label: 'B · 圆眼 Ø0.30', params: '小巧 · 精灵感', goo: { round: 0.3 } },
-      { id: 'C', label: 'C · 圆眼 Ø0.36', params: '居中 · 推荐', goo: { round: 0.36 } },
-      { id: 'D', label: 'D · 圆眼 Ø0.42', params: '舒展 · 占满脸', goo: { round: 0.42 } }
+      { id: 'A', label: 'A · 球', params: '现状 · 基准', shape: 'cercle' },
+      { id: 'B', label: 'B · 鹅卵石', params: '随性 · 不规则', shape: 'galet' },
+      { id: 'C', label: 'C · 水滴', params: '坐着的 Goo', shape: 'goutte' },
+      { id: 'D', label: 'D · 饭团', params: '圆三角 · 憨', shape: 'triangle' },
+      { id: 'E', label: 'E · 胶囊', params: '横躺 · 慵懒', shape: 'capsule' },
+      { id: 'F', label: 'F · 布丁', params: '上窄下宽 · 会抖', goo: { shape: GOO_PUDDING } },
+      { id: 'G', label: 'G · 小幽灵', params: '波浪裙摆', goo: { shape: GOO_GHOST } },
+      { id: 'H', label: 'H · 云朵', params: '软 · 多丘', shape: 'nuage' }
     ]
   },
   {
-    title: '二 · 瞳点',
-    hint: '瞳点是眼洞里的一粒墨——方形即终端光标，是「极客」的签名。底座 Ø0.38。',
+    title: '二 · 全色眼睛',
+    hint: '整只眼睛是彩色渐变 + 双高光，不再是白洞黑瞳。高光和瞳心随眨眼一起被压扁。',
     variants: [
-      { id: 'E', label: 'E · 圆眼无瞳', params: 'Ø0.38 · 对照', goo: { round: 0.38 } },
-      { id: 'F', label: 'F · 方瞳', params: 'Ø0.38 · 终端光标', goo: { round: 0.38, pupil: 'square' } },
-      { id: 'G', label: 'G · 圆瞳', params: 'Ø0.38 · 保守', goo: { round: 0.38, pupil: 'round' } },
-      { id: 'H', label: 'H · 大底座方瞳', params: 'Ø0.42 + 方瞳', goo: { round: 0.42, pupil: 'square' } }
-    ]
-  },
-  {
-    title: '三 · 天线',
-    hint: '直杆是信号接收器；蛇形致辛巳年。发光珠（琥珀）只在「思考」时亮——这里是常亮示意。',
-    variants: [
-      { id: 'I', label: 'I · 直杆天线', params: 'Ø0.38 + 方瞳', goo: { round: 0.38, pupil: 'square', antenna: 'rod' } },
-      { id: 'J', label: 'J · 蛇形天线', params: 'Ø0.38 + 方瞳', goo: { round: 0.38, pupil: 'square', antenna: 'curl' } },
+      { id: 'A', label: 'A · 琥珀 · 原眼形', params: '竖胶囊上色', goo: { eye: AMBER } },
+      { id: 'B', label: 'B · 琥珀 · 圆眼', params: 'Ø0.46', goo: { round: 0.46, eye: AMBER } },
+      { id: 'C', label: 'C · 薄荷 · 圆眼', params: '终端绿 · 极客', goo: { round: 0.46, eye: MINT } },
+      { id: 'D', label: 'D · 极光 · 圆眼', params: '青→紫渐变', goo: { round: 0.46, eye: AURORA } },
+      { id: 'E', label: 'E · 珊瑚 · 圆眼', params: '暖 · 热情', goo: { round: 0.46, eye: CORAL } },
+      { id: 'F', label: 'F · 蓝紫 · 圆眼', params: '冷 · 理性', goo: { round: 0.46, eye: BLUEVIOLET } },
       {
-        id: 'K',
-        label: 'K · 直杆 + 发光',
-        params: '思考态琥珀光',
-        goo: { round: 0.38, pupil: 'square', antenna: 'rod', glow: true }
+        id: 'G',
+        label: 'G · 琥珀 + 深芯',
+        params: '圆眼 · 有瞳心',
+        goo: { round: 0.46, eye: { ...AMBER, core: '#6e4a02' } }
       },
+      { id: 'H', label: 'H · 琥珀 · 大圆眼', params: 'Ø0.52 · 占满脸', goo: { round: 0.52, eye: AMBER } }
+    ]
+  },
+  {
+    title: '三 · 表情与动效',
+    hint: '上色后几何不变——16 种表情全数可用，这是其中 8 个。最后一张是活的状态循环。',
+    variants: [
+      { id: 'excite', label: '兴奋', params: 'excite', expression: 'excite', frozen: true, goo: { eye: AMBER } },
+      { id: 'heureux', label: '开心', params: 'heureux', expression: 'heureux', frozen: true, goo: { eye: AMBER } },
+      { id: 'hilare', label: '大笑', params: 'hilare', expression: 'hilare', frozen: true, goo: { eye: AMBER } },
+      { id: 'colere', label: '生气', params: 'colere', expression: 'colere', frozen: true, goo: { eye: AMBER } },
+      { id: 'triste', label: '委屈', params: 'triste', expression: 'triste', frozen: true, goo: { eye: AMBER } },
+      { id: 'confus', label: '困惑', params: 'confus', expression: 'confus', frozen: true, goo: { eye: AMBER } },
+      { id: 'curieux', label: '好奇', params: 'curieux', expression: 'curieux', frozen: true, goo: { eye: AMBER } },
+      { id: 'somnolent', label: '困', params: 'somnolent', expression: 'somnolent', frozen: true, goo: { eye: AMBER } },
       {
-        id: 'L',
-        label: 'L · 全家福 + 腮红',
-        params: '蛇形 + 光 + 腮红',
-        goo: { round: 0.38, pupil: 'square', antenna: 'curl', glow: true, blush: true }
+        id: 'demo',
+        label: '状态循环 · 活的',
+        params: '待机→思考→眨眼→瞪圆',
+        cycle: DEMO,
+        goo: { eye: AMBER }
       }
     ]
   }
 ]
 
-/** 勾选备用：看中哪张，报字母即可。 */
+/** 勾选备用：看中哪张，报字母（或表情名）即可。 */
 const picked = ref<string | null>(null)
 
 function close() {
@@ -75,9 +110,9 @@ function close() {
   <div class="goolab" role="dialog" aria-label="Goo 设计实验室">
     <header class="goolab__head">
       <div>
-        <h1 class="goolab__title">Goo · 小咕 — 设计实验室</h1>
+        <h1 class="goolab__title">Goo · 小咕 — 设计实验室 v2</h1>
         <p class="goolab__sub">
-          全部由真引擎实时渲染（呼吸 · 眨眼 · 跟随同理）。点卡片做标记，报字母给我即可。
+          三个轴：形状 → 全色眼睛 → 表情动效，全部由真引擎实时渲染。看完报组合给我（如「D + B」）。
         </p>
       </div>
       <button class="goolab__close" type="button" @click="close">返回工作台</button>
@@ -95,7 +130,16 @@ function close() {
           :class="{ 'goolab__card--on': picked === v.id }"
           @click="picked = picked === v.id ? null : v.id"
         >
-          <BloubBot :size="200" :cycle="IDLE" :playing="true" :goo="v.goo" />
+          <BloubBot
+            :size="200"
+            :cycle="v.cycle ?? IDLE"
+            :playing="!v.frozen"
+            :frozen-at="v.frozen ? 1 : undefined"
+            :flat="v.frozen"
+            :expression="v.expression ?? 'neutre'"
+            :shape="v.shape ?? 'cercle'"
+            :goo="v.goo ?? null"
+          />
           <span class="goolab__label">{{ v.label }}</span>
           <span class="goolab__params">{{ v.params }}</span>
         </button>
