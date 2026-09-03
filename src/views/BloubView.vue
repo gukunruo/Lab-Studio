@@ -343,7 +343,9 @@ const shapeLabels: Record<string, string> = {
   triangle: '三角',
   hexagone: '六边形',
   nuage: '云朵',
-  goutte: '水滴'
+  goutte: '水滴',
+  pudding: '布丁',
+  fantome: '小幽灵'
 }
 
 const expressionLabels: Record<string, string> = {
@@ -1157,7 +1159,14 @@ const stateLabels: Record<string, string> = {
 }
 
 /* silhouettes encreees : le bot d'encre, pas un libelle */
-.bloub__shapes,
+/* Dix formes, cinq colonnes : deux rangees pleines — neuf formes ne se
+   poseraient nulle part (4+4+1 ou 5+4), dix se posent partout. */
+.bloub__shapes {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
 .bloub__exprs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

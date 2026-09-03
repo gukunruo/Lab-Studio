@@ -116,11 +116,6 @@ const R = RAYON
 const VB = computed(() => props.viewBox ?? DEMI_VIEWBOX)
 
 const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
-/**
- * La peau Goo peut imposer SA silhouette (le labo de design explore des formes
- * hors personnalisateur) : elle passe devant le choix du personnalisateur.
- */
-const gooRadii = computed(() => props.goo?.shape ?? shapeRadii.value)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
 const expression = computed(() => {
   const e = EXPRESSION_BY_ID.get(props.expression) ?? null
@@ -140,7 +135,7 @@ const expression = computed(() => {
   return resolved
 })
 
-const engine = new BotEngine(R, state.value, gooRadii.value, expression.value)
+const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value)
 const frame = shallowRef<BotFrame>(engine.sample(props.frozenAt ?? 0))
 const uid = Math.random().toString(36).slice(2, 8)
 const maskId = `bot-mask-${uid}`
@@ -491,7 +486,7 @@ watch(
   }
 )
 
-watch(gooRadii, (radii) => {
+watch(shapeRadii, (radii) => {
   // on passe l'horloge : le moteur morphe vers la nouvelle forme au lieu de
   // l'appliquer d'un coup
   engine.setShape(radii, clock)

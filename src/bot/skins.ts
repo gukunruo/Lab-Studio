@@ -33,6 +33,8 @@ export type ShapeId =
   | 'hexagone'
   | 'nuage'
   | 'goutte'
+  | 'pudding'
+  | 'fantome'
 
 export interface BotShape {
   id: ShapeId
@@ -76,6 +78,28 @@ const droplet = normalize(
 /** Capsule couchee : enveloppe de deux disques cote a cote. */
 const capsule = profileFromPolygon(hullOfCircles(-0.42, 0, 0.62, 0.42, 0, 0.62), 0, 0)
 
+/** Pudding : gros socle, dome etroit — la goutte assise, venue du labo Goo. */
+const pudding = normalize(
+  profileFromPolygon(hullOfCircles(0, 0.24, 0.72, 0, -0.44, 0.3), 0, 0),
+  1.02
+)
+
+/** Fantome : demi-sphere haute, jupe qui ondule en dents de scie. */
+const fantome = normalize(
+  profileFromPolygon(
+    [
+      ...Array.from({ length: 25 }, (_, i) => {
+        const a = Math.PI + (i / 24) * Math.PI
+        return { x: Math.cos(a), y: Math.sin(a) }
+      }),
+      ...Array.from({ length: 11 }, (_, i) => ({ x: 1 - i * 0.2, y: i % 2 === 0 ? 0.22 : 0.04 }))
+    ],
+    0,
+    0
+  ),
+  1.02
+)
+
 export const SHAPES: BotShape[] = [
   { id: 'cercle', radii: new Array(PROFILE_SAMPLES).fill(1) },
   { id: 'galet', radii: pebble },
@@ -88,7 +112,9 @@ export const SHAPES: BotShape[] = [
   // 0deg : sommets a gauche et a droite, donc aretes du haut et du bas plates
   { id: 'hexagone', radii: regularPolygonProfile(6, 1.04, 0.26, 0) },
   { id: 'nuage', radii: cloud },
-  { id: 'goutte', radii: droplet }
+  { id: 'goutte', radii: droplet },
+  { id: 'pudding', radii: pudding },
+  { id: 'fantome', radii: fantome }
 ]
 
 // Map indexee par `string` et non par `ShapeId` : les appelants interrogent avec

@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import BloubBot from '@/components/BloubBot.vue'
 import type { Block } from '@/bot/cycles'
 import type { ExpressionId } from '@/bot/expressions'
-import { GOO_EYES, GOO_GHOST, GOO_PUDDING, type GooSkin } from '@/bot/goo'
+import { GOO_EYES, type GooSkin } from '@/bot/goo'
 
 /**
  * Le labo de design de la peau Goo, v2 : trois AXES de caractere, dans l'ordre
@@ -44,15 +44,15 @@ const BLUEVIOLET = GOO_EYES.violet
 const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
   {
     title: '一 · 形状',
-    hint: '轮廓是性格的第一眼——引擎支持任意径向轮廓，切换时平滑渐变。布丁和幽灵是 Goo 专属新形状。',
+    hint: '轮廓是性格的第一眼——引擎支持任意径向轮廓，切换时平滑渐变。布丁和幽灵已晋升为自定义形状。',
     variants: [
       { id: 'A', label: 'A · 球', params: '现状 · 基准', shape: 'cercle' },
       { id: 'B', label: 'B · 鹅卵石', params: '随性 · 不规则', shape: 'galet' },
       { id: 'C', label: 'C · 水滴', params: '坐着的 Goo', shape: 'goutte' },
       { id: 'D', label: 'D · 饭团', params: '圆三角 · 憨', shape: 'triangle' },
       { id: 'E', label: 'E · 胶囊', params: '横躺 · 慵懒', shape: 'capsule' },
-      { id: 'F', label: 'F · 布丁', params: '上窄下宽 · 会抖', goo: { shape: GOO_PUDDING } },
-      { id: 'G', label: 'G · 小幽灵', params: '波浪裙摆', goo: { shape: GOO_GHOST } },
+      { id: 'F', label: 'F · 布丁', params: '上窄下宽 · 会抖', shape: 'pudding' },
+      { id: 'G', label: 'G · 小幽灵', params: '波浪裙摆', shape: 'fantome' },
       { id: 'H', label: 'H · 云朵', params: '软 · 多丘', shape: 'nuage' }
     ]
   },

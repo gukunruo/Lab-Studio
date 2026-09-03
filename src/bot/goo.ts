@@ -1,8 +1,6 @@
 import type { RenderedEye } from './engine'
 import type { BotExpression } from './expressions'
-import { PROFILE_SAMPLES } from './profiles'
 import { r2, TAU } from './math'
-import { hullOfCircles, profileFromPolygon, type Point } from './shape'
 
 /**
  * La peau « Goo » : les choix d'identite du bot de G, poses SUR le moteur sans
@@ -38,12 +36,6 @@ export interface GooSkin {
   glow?: boolean
   /** deux points de joues, la chaleur de l'ESFJ */
   blush?: boolean
-  /**
-   * Silhouette du corps en remplacement du personnalisateur : un profil radial
-   * complet, comme ceux de `skins.ts`. La forme EST le caractere — c'est le
-   * premier axe du design Goo.
-   */
-  shape?: number[]
 }
 
 /** L'oeil en couleur : degrade vertical (ou pleine couleur), coeur, reflets. */
@@ -71,39 +63,6 @@ export const GOO_EYES = {
   corail: { fill: '#f06455', fill2: '#b02a20' },
   violet: { fill: '#4f9df5', fill2: '#7c4fe0' }
 } satisfies Record<string, GooEye>
-
-/* --------------------------------------------------------- les silhouettes */
-
-/** Ramene le rayon maximal a `max` : deux formes pesent pareil a l'oeil. */
-function normalize(radii: number[], max = 1): number[] {
-  const peak = Math.max(...radii)
-  if (peak <= 0) return radii
-  const k = max / peak
-  return radii.map((r) => r * k)
-}
-
-/**
- * Le pudding : gros socle, dome etroit — la goutte assise du « Goo ».
- * Enveloppe convexe d'un disque large en bas et d'un plus etroit en haut.
- */
-export const GOO_PUDDING = normalize(
-  profileFromPolygon(hullOfCircles(0, 0.24, 0.72, 0, -0.44, 0.3), 0, 0),
-  1.02
-)
-
-/**
- * Le petit fantome : demi-sphere haute, jupe qui ondule en dents de scie.
- * Pose en polygone puis re-projete en profil radial (l'origine voit chaque
- * direction toucher un seul bord, donc le lancer de rayon suffit).
- */
-const GHOST_PTS: Point[] = [
-  ...Array.from({ length: 25 }, (_, i) => {
-    const a = Math.PI + (i / 24) * Math.PI
-    return { x: Math.cos(a), y: Math.sin(a) }
-  }),
-  ...Array.from({ length: 11 }, (_, i) => ({ x: 1 - i * 0.2, y: i % 2 === 0 ? 0.22 : 0.04 }))
-]
-export const GOO_GHOST = normalize(profileFromPolygon(GHOST_PTS, 0, 0), 1.02)
 
 /**
  * Yeux ronds : chaque oeil devient un cercle de `diameter`, la hauteur de
