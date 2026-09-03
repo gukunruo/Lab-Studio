@@ -18,19 +18,23 @@ test('pudding : etroit en haut, large en bas, profil complet', () => {
   assert.ok(top < bottom * 0.8, `dessus ${top} doit etre nettement plus etroit que dessous ${bottom}`)
 })
 
-test('fantome : dome haut comme la boule, jupe dentee en dessous', () => {
+test('fantome : plus grand que large, jupe a festons profonds', () => {
   const fantome = SHAPE_BY_ID.get('fantome')
   assert.ok(fantome, 'fantome doit etre une forme du personnalisateur')
   assert.equal(fantome.radii.length, PROFILE_SAMPLES)
   for (const r of fantome.radii) assert.ok(Number.isFinite(r) && r > 0, `rayon invalide : ${r}`)
-  // le dome tient a peu pres dans la boule d'origine
-  const dome = radiusAtAngle(fantome.radii, -Math.PI / 2)
-  assert.ok(dome > 0.94 && dome < 1.03, `dome = ${dome}`)
-  // la jupe ondule : des rayons profonds ET des creux sur la moitie basse
+  // la hauteur (dome + jupe) depasse nettement la largeur : un fantome trapu
+  // ressemble a un champignon, pas a un spectre
+  const up = radiusAtAngle(fantome.radii, -Math.PI / 2)
+  const down = radiusAtAngle(fantome.radii, Math.PI / 2)
+  const left = radiusAtAngle(fantome.radii, Math.PI)
+  const right = radiusAtAngle(fantome.radii, 0)
+  assert.ok(up + down > (left + right) * 1.15, `hauteur ${up + down} vs largeur ${left + right}`)
+  // la jupe ondule en festons larges et profonds (pas des dents de scie plates)
   const jupe: number[] = []
   for (let i = 0; i < 24; i++) jupe.push(radiusAtAngle(fantome.radii, Math.PI / 4 + (i / 24) * (Math.PI / 2)))
-  assert.ok(Math.max(...jupe) > 0.16, `jupe trop plate : max ${Math.max(...jupe)}`)
-  assert.ok(Math.min(...jupe) < Math.max(...jupe) * 0.5, 'la jupe doit avoir des creux (dents de scie)')
+  assert.ok(Math.min(...jupe) > 0.5, `jupe enfoncee : min ${Math.min(...jupe)}`)
+  assert.ok(Math.max(...jupe) > Math.min(...jupe) * 1.2, `festons trop plats : ${Math.min(...jupe)} -> ${Math.max(...jupe)}`)
 })
 
 test('le catalogue compte dix formes, toutes uniques', () => {

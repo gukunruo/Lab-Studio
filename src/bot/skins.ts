@@ -84,7 +84,12 @@ const pudding = normalize(
   1.02
 )
 
-/** Fantome : demi-sphere haute, jupe qui ondule en dents de scie. */
+/**
+ * Fantome : grand dome, flancs qui se resserrent, jupe a trois festons
+ * suspendus — un ourlet en cosinus (pointes rondes, creux remontes au niveau
+ * des flancs), pas des dents de scie. Le centre d'echantillonnage descend un
+ * peu (0, 0.1) pour equilibrer dome et jupe dans le profil radial.
+ */
 const fantome = normalize(
   profileFromPolygon(
     [
@@ -92,10 +97,16 @@ const fantome = normalize(
         const a = Math.PI + (i / 24) * Math.PI
         return { x: Math.cos(a), y: Math.sin(a) }
       }),
-      ...Array.from({ length: 11 }, (_, i) => ({ x: 1 - i * 0.2, y: i % 2 === 0 ? 0.22 : 0.04 }))
+      ...Array.from({ length: 37 }, (_, i) => {
+        const t = i / 36
+        return {
+          x: 0.86 - 1.72 * t,
+          y: 1.02 + 0.17 * (1 - Math.cos(6 * Math.PI * t))
+        }
+      })
     ],
     0,
-    0
+    0.1
   ),
   1.02
 )
