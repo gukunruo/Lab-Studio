@@ -482,7 +482,9 @@ const stateLabels: Record<string, string> = {
               :class="{ 'bloub__shape--active': shape === s.id }"
               @click="shape = s.id"
             >
-              <BloubBot :size="40" :shape="s.id" :frozen-at="1.2" :view-box="THUMB_VIEWBOX" />
+              <!-- Chaque vignette montre la VRAIE combinaison : la forme parcourue
+                   avec l'expression choisie, pas un bot neutre generique. -->
+              <BloubBot :size="40" :shape="s.id" :expression="expression" :frozen-at="1.2" :view-box="THUMB_VIEWBOX" />
               <span>{{ shapeLabels[s.id] }}</span>
             </button>
           </div>
@@ -502,7 +504,7 @@ const stateLabels: Record<string, string> = {
               <!-- Figé à 0,6 s, avant le premier clignement du calendrier (1,4 s) : à
                    1,5 s les yeux étaient en plein clignement, écrasés à ~24 %, et toutes
                    les émotions se ressemblaient. -->
-              <BloubBot :size="40" :state="'idle'" :frozen-at="0.6" :expression="e.id" :flat="true" :view-box="THUMB_VIEWBOX" />
+              <BloubBot :size="40" :state="'idle'" :frozen-at="0.6" :expression="e.id" :shape="shape" :flat="true" :view-box="THUMB_VIEWBOX" />
               <span>{{ expressionLabels[e.id] }}</span>
             </button>
           </div>
