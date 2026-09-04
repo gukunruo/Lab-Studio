@@ -117,7 +117,6 @@ const VB = computed(() => props.viewBox ?? DEMI_VIEWBOX)
 
 const shapeBot = computed(() => SHAPE_BY_ID.get(props.shape) ?? null)
 const shapeRadii = computed(() => shapeBot.value?.radii ?? null)
-const shapeSkirt = computed(() => shapeBot.value?.skirt ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
 const expression = computed(() => {
   const e = EXPRESSION_BY_ID.get(props.expression) ?? null
@@ -137,7 +136,7 @@ const expression = computed(() => {
   return resolved
 })
 
-const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value, shapeSkirt.value)
+const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value)
 const frame = shallowRef<BotFrame>(engine.sample(props.frozenAt ?? 0))
 const uid = Math.random().toString(36).slice(2, 8)
 const maskId = `bot-mask-${uid}`
@@ -179,19 +178,14 @@ let blockStart = 0
 /* ---------------------------------------------------- l'oeil en couleur */
 
 const gooEyeGradId = `goo-eye-${uid}`
-/**
- * L'oeil retenu : celui choisi par l'utilisateur, sinon celui que la forme
- * suggere (l'oeil sombre du gelee). La forme ne fait que proposer — un choix
- * Goo explicite gagne toujours.
- */
-const gooEye = computed(() => props.goo?.eye ?? shapeBot.value?.eye ?? null)
+/** L'oeil en couleur : un choix Goo explicite, ou rien. */
+const gooEye = computed(() => props.goo?.eye ?? null)
 const gooEyeFill = computed(() =>
   gooEye.value?.fill2 ? `url(#${gooEyeGradId})` : (gooEye.value?.fill ?? '')
 )
 const gooHi = computed(() => gooEye.value?.hi ?? 0.9)
-/** Joues : la peau Goo dilue l'encre ; sinon la couleur suggerée par la forme. */
-const blushColor = computed(() => (props.goo?.blush ? ink.value : (shapeBot.value?.blush ?? '')))
-const blushOpacity = computed(() => (props.goo?.blush ? 0.1 : 0.5))
+/** Joues : la peau Goo dilue l'encre. */
+const blushColor = computed(() => (props.goo?.blush ? ink.value : ''))
 
 /**
  * Pose le bloc `i` : etat, moteur, et date de fin. Appele aussi bien par la
@@ -499,9 +493,8 @@ watch(
 
 watch(shapeRadii, (radii) => {
   // on passe l'horloge : le moteur morphe vers la nouvelle forme au lieu de
-  // l'appliquer d'un coup. La jupe voyage toujours avec les rayons : changer
-  // de forme change l'identite de l'onde en meme temps.
-  engine.setShape(radii, clock, shapeSkirt.value)
+  // l'appliquer d'un coup.
+  engine.setShape(radii, clock)
   redrawFrozen()
 })
 
@@ -706,27 +699,6 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
       </g>
 
       <!--
-        Les reflets : suggestions de matiere portees par la forme (le gelee).
-        Poses au-dessus du corps, sous les yeux ; ils fondent quand on quitte la
-        forme, au rythme du morph (0.45s).
-      -->
-      <Transition name="goo-fade">
-        <g v-if="shapeBot?.gloss?.length">
-          <ellipse
-            v-for="(g, i) in shapeBot.gloss"
-            :key="i"
-            :cx="g.cx * R"
-            :cy="g.cy * R"
-            :rx="g.rx * R"
-            :ry="g.ry * R"
-            :transform="g.rot ? `rotate(${g.rot} ${g.cx * R} ${g.cy * R})` : undefined"
-            fill="#fff"
-            :opacity="g.opacity"
-          />
-        </g>
-      </Transition>
-
-      <!--
         L'oeil EN COULEUR : le meme path que le trou, pose par-dessus, donc il
         le recouvre au pixel pres et herite de tout — orientation de tete,
         inclinaison, clignement (la colonne y de la matrice ecrase), fondue au
@@ -792,7 +764,7 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
       </g>
 
       <!-- Les joues : encre diluee (peau Goo) ou couleur suggerée par la forme. -->
-      <g v-if="blushColor" :fill="blushColor" :opacity="blushOpacity">
+      <g v-if="blushColor" :fill="blushColor" :opacity="0.1">
         <ellipse v-for="(eye, i) in frame.eyes" :key="`blush${i}`" v-bind="blushAttrs(eye, R)" />
       </g>
     </g>

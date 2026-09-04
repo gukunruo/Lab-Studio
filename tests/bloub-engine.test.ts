@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import {
   BotEngine,
 } from '../src/bot/engine'
-import { skirtWave } from '../src/bot/shape'
 import { SHAPE_BY_ID } from '../src/bot/skins'
 import { EXPRESSION_BY_ID } from '../src/bot/expressions'
 
@@ -104,53 +103,3 @@ test('reset clears history so the first frame is a pure pose', () => {
   assert.deepEqual(e.sample(30.5), fresh.sample(30.5))
 })
 
-/* ---------------------------------------------------- la jupe ondulante */
-
-test('skirtWave : une onde pure, intacte hors bande, vivante au fond', () => {
-  const base = Array.from({ length: 64 }, (_, i) => 0.8 + (i % 8) * 0.02)
-  const copie = [...base]
-  const wave = { amp: 0.05, waves: 3, band: 1.0, period: 2.6 }
-
-  const out = skirtWave(base, wave, 0)
-  assert.notEqual(out, base, 'une liste NEUVE, jamais la meme')
-  assert.deepEqual(base, copie, 'l\'entree n\'est pas mutee')
-
-  // hors de la bande (angle 0 et PI : les flancs) : rayons intacts
-  assert.equal(out[0], base[0])
-  assert.equal(out[32], base[32])
-
-  // au fond (index 16 = PI/2), l'onde respire avec le temps : pics a +/- amp
-  const vals = [0, 0.65, 1.3, 1.95].map((t) => skirtWave(base, wave, t)[16]!)
-  assert.ok(Math.max(...vals) - Math.min(...vals) > base[16]! * 0.05 * 0.9,
-    `l'onde doit faire vivre le fond : ${Math.min(...vals)} -> ${Math.max(...vals)}`)
-
-  // deterministe : relire la meme date redonne la meme jupe
-  assert.deepEqual(skirtWave(base, wave, 1.3), skirtWave(base, wave, 1.3))
-})
-
-test('le moteur ondule la jupe du gelee, puis l\'eteint au morph vers une forme nue', () => {
-  const nue = Array.from({ length: 64 }).fill(1) as number[]
-  const onde = { amp: 0.2, waves: 2, band: Math.PI, period: 1 }
-
-  // deux moteurs gemellaux : la derive et la respiration de `liveliness` sont
-  // les memes aux memes dates, donc la difference isole l'onde
-  const ondee = new BotEngine(100, 'idle', nue, null, onde)
-  const nue2 = new BotEngine(100, 'idle', nue, null, null)
-  const ecart = (e: BotEngine, a: number, b: number) => {
-    const pa = e.sample(a).bodyPath.match(/-?[\d.]+/g)!.map(Number)
-    const pb = e.sample(b).bodyPath.match(/-?[\d.]+/g)!.map(Number)
-    return Math.max(...pa.map((v, i) => Math.abs(v - pb[i]!)))
-  }
-
-  // l'onde amplitude 0,2 sur tout le tour : bien plus que la derive seule
-  const vivant = ecart(ondee, 10, 10.5)
-  const fige = ecart(nue2, 10, 10.5)
-  assert.ok(vivant > fige * 3 + 5, `onde ${vivant} vs derive seule ${fige}`)
-
-  // on retire l'onde (memes rayons, jupe nulle) : apres le morph, plus de vie
-  // supplementaire — le corps retombe sur la derive seule
-  ondee.setShape(nue, 20, null)
-  const apres = ecart(ondee, 22, 22.5)
-  const fige2 = ecart(nue2, 22, 22.5)
-  assert.ok(apres < fige2 * 1.5 + 1, `onde eteinte ${apres} vs derive ${fige2}`)
-})

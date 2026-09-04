@@ -198,41 +198,6 @@ export function radiusAtAngle(radii: number[], angle: number): number {
 }
 
 /**
- * Une onde de JUPE : une modulation du profil radial qui fait vivre la base
- * d'une forme (le gelee) sans toucher au reste. Le rayon fluctue d'une
- * fraction `amp` de lui-meme dans une bande angulaire autour du bas (PI/2),
- * selon une onde qui voyage au fil du temps — pur : meme date, meme jupe.
- *
- * L'enveloppe est un cosinus eleve au carre sur la demi-largeur `band` : nulle
- * aux flancs, maximale au fond, sans marche. L'amplitude est une FRACTION du
- * rayon local (pas une valeur absolue) : une jupe large ondule plus loin en
- * pixels qu'un bord etroit, a capillarite egale.
- */
-export interface SkirtWave {
-  /** amplitude de l'ondulation, fraction du rayon local (0.05 = +/- 5 %) */
-  amp: number
-  /** longueurs d'onde sur le tour complet */
-  waves: number
-  /** demi-largeur de la bande active, en radians, autour du bas */
-  band: number
-  /** periode du va-et-vient, en secondes */
-  period: number
-}
-
-/** Renvoie une liste NEUVE ; les rayons d'entree ne sont jamais mutes. */
-export function skirtWave(radii: number[], wave: SkirtWave, t: number): number[] {
-  const n = radii.length
-  return radii.map((r, i) => {
-    const a = (i / n) * TAU
-    let d = Math.abs(a - Math.PI / 2) % TAU
-    if (d > Math.PI) d = TAU - d
-    if (d >= wave.band) return r
-    const env = 0.5 * (1 + Math.cos((Math.PI * d) / wave.band))
-    return r * (1 + wave.amp * env * Math.sin(wave.waves * a - (TAU * t) / wave.period))
-  })
-}
-
-/**
  * Superellipse : |x/sx|^n + |y/sy|^n = 1.
  * n = 2 donne une ellipse, n ~ 4 le squircle du personnalisateur.
  */

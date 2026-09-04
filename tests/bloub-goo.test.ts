@@ -105,12 +105,12 @@ test('GOO_EYES : cinq teintes partagees, toutes completes et distinctes', () => 
   const fills = new Set<string>()
   for (const [id, eye] of Object.entries(GOO_EYES)) {
     assert.ok(eye.fill.startsWith('#'), `${id} : fill invalide : ${eye.fill}`)
-    // le nuit est la couleur PLEINE suggeree par le gelee ; les autres degradent
+    // le nuit est la couleur PLEINE de la liste ; les autres degradent
     if (id !== 'nuit') assert.ok(eye.fill2?.startsWith('#'), `${id} : le degrade exige fill2`)
     fills.add(eye.fill)
   }
   assert.equal(fills.size, 5, 'les teintes doivent etre distinctes')
-  assert.equal(GOO_EYES.nuit?.fill, '#17171c', 'le nuit est l\'oeil sombre du gelee')
+  assert.equal(GOO_EYES.nuit?.fill, '#17171c', 'le nuit est l\'oeil sombre de la liste')
 })
 
 test('eyeDecor : les reflets restent DANS l oeil, le coeur est plus petit', () => {

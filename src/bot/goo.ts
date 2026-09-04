@@ -54,8 +54,8 @@ export interface GooEye {
  * Les teintes d'oeil en couleur, partagees par le labo de design et le
  * personnalisateur : le haut de l'oeil plus clair que le bas, reflets blancs.
  * Posees SUR la geometrie d'origine de l'oeil — les 16 expressions gardent
- * leur vocabulaire d'inclinaison et d'ecrasement. `nuit` est le noir profond
- * du gelee, proposee en couleur pleine (pas de degrade).
+ * leur vocabulaire d'inclinaison et d'ecrasement. `nuit` est le noir profond,
+ * propose en couleur pleine (pas de degrade).
  */
 export const GOO_EYES = {
   ambre: { fill: '#f6c445', fill2: '#c67c05' },

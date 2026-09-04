@@ -4,10 +4,8 @@ import {
   profileFromPolygon,
   regularPolygonProfile,
   superellipseProfile,
-  unionOfCirclesProfile,
-  type SkirtWave
+  unionOfCirclesProfile
 } from './shape'
-import { GOO_EYES, type GooEye } from './goo'
 
 /**
  * Formes et couleurs proposees par le personnalisateur du bot.
@@ -36,29 +34,10 @@ export type ShapeId =
   | 'nuage'
   | 'goutte'
   | 'pudding'
-  | 'gelee'
-
-/** Reflet de matiere : ellipse blanche posee sur le corps (unites de rayon). */
-export interface ShapeGloss {
-  cx: number
-  cy: number
-  rx: number
-  ry: number
-  rot?: number
-  opacity: number
-}
 
 export interface BotShape {
   id: ShapeId
   radii: number[]
-  /** onde de jupe (le gelee) : null par defaut, forme statique */
-  skirt?: SkirtWave
-  /** reflets de matiere proposes par la forme (le gelee) */
-  gloss?: ShapeGloss[]
-  /** oeil suggere par la forme : retenu seulement si l'utilisateur n'en a pas choisi un */
-  eye?: GooEye
-  /** couleur de joues suggeree par la forme (le gelee) */
-  blush?: string
 }
 
 /** Ramene le rayon maximal a `max` pour que toutes les formes pesent pareil a l'oeil. */
@@ -104,80 +83,6 @@ const pudding = normalize(
   1.02
 )
 
-/**
- * Gelee : blob gras a haut dome — la tete ronde du modele (ellipse plus haute
- * que large) domine, les flancs debordent en deux petites ailerons et le fond
- * fond en trois gouttes rondes, frange peue sous la masse. La silhouette
- * n'est pas figee : `skirt` decrit une onde qui parcourt toute la jupe a chaque
- * image (cf. skirtWave dans shape.ts). Le dome est une ellipse PURE (pas
- * d'exposant) sur 17 points : tout exposant aplatit le sommet, et 9 points
- * decalent leurs cassures par rapport aux 64 rayons — d'ou des vagues.
- * Le sommet porte un plat de 0.008 : un point unique a x=0 rend l'arete
- * miroir degenerique et le ray-cast vertical rate alors le sommet (rayon nul).
- */
-/** Demi-contour droit du gelee (dome + flanc + aileron + fonte) ; le reste par symetrie. */
-const DEMI_GELEE = [
-  // dome : quart d'ellipse vertical sur 17 points — la tete prend les deux tiers
-  ...Array.from({ length: 17 }, (_, i) => {
-    const a = -Math.PI / 2 + (i / 16) * (Math.PI / 2)
-    return { x: i === 0 ? 0.004 : 0.97 * Math.cos(a), y: 1.08 * Math.sin(a) }
-  }),
-  // flanc, aileron, puis fonte : trois gouttes (largeur > profondeur,
-  // fond arrondi sur deux points, creux remontes a 0.69)
-  { x: 1.01, y: 0.15 },
-  { x: 1.03, y: 0.32 },
-  { x: 1.04, y: 0.44 },
-  { x: 1.09, y: 0.53 },
-  { x: 0.96, y: 0.58 },
-  { x: 0.84, y: 0.63 },
-  { x: 0.72, y: 0.72 },
-  { x: 0.62, y: 0.82 },
-  { x: 0.52, y: 0.88 },
-  { x: 0.4, y: 0.87 },
-  { x: 0.32, y: 0.76 },
-  { x: 0.23, y: 0.69 },
-  { x: 0.13, y: 0.8 },
-  { x: 0.04, y: 0.9 },
-  { x: -0.06, y: 0.9 },
-  { x: -0.16, y: 0.8 },
-  { x: -0.25, y: 0.69 },
-  { x: -0.34, y: 0.76 },
-  { x: -0.44, y: 0.87 },
-  { x: -0.54, y: 0.88 },
-  { x: -0.64, y: 0.82 },
-  { x: -0.74, y: 0.72 },
-  { x: -0.86, y: 0.63 },
-  { x: -0.98, y: 0.58 },
-  { x: -1.09, y: 0.53 },
-  { x: -1.06, y: 0.44 },
-  { x: -1.05, y: 0.32 },
-  { x: -1.03, y: 0.15 }
-]
-
-const gelee = normalize(
-  profileFromPolygon(
-    [
-      ...DEMI_GELEE,
-      // fermeture par symetrie de la calotte (le sommet plat reste unique)
-      ...DEMI_GELEE.filter((p) => p.y < -0.01)
-        .map((p) => ({ x: -p.x, y: p.y }))
-        .reverse()
-    ],
-    0,
-    0.02
-  ),
-  1.02
-)
-
-/** Onde de jupe du gelee : deux cretes, la jupe entiere ondule d'un bloc. */
-const JUPE_GELEE: SkirtWave = { amp: 0.055, waves: 2, band: 1.1, period: 1.7 }
-
-/** Reflets du gelee : gros halo incline a gauche, petit eclat en haut a droite. */
-const REFLETS_GELEE: ShapeGloss[] = [
-  { cx: -0.4, cy: -0.55, rx: 0.15, ry: 0.095, rot: -35, opacity: 0.85 },
-  { cx: 0.38, cy: -0.62, rx: 0.07, ry: 0.045, opacity: 0.65 }
-]
-
 export const SHAPES: BotShape[] = [
   { id: 'cercle', radii: new Array(PROFILE_SAMPLES).fill(1) },
   { id: 'galet', radii: pebble },
@@ -191,15 +96,7 @@ export const SHAPES: BotShape[] = [
   { id: 'hexagone', radii: regularPolygonProfile(6, 1.04, 0.26, 0) },
   { id: 'nuage', radii: cloud },
   { id: 'goutte', radii: droplet },
-  { id: 'pudding', radii: pudding },
-  {
-    id: 'gelee',
-    radii: gelee,
-    skirt: JUPE_GELEE,
-    gloss: REFLETS_GELEE,
-    eye: GOO_EYES.nuit,
-    blush: '#ff8a70'
-  }
+  { id: 'pudding', radii: pudding }
 ]
 
 // Map indexee par `string` et non par `ShapeId` : les appelants interrogent avec

@@ -344,8 +344,7 @@ const shapeLabels: Record<string, string> = {
   hexagone: '六边形',
   nuage: '云朵',
   goutte: '水滴',
-  pudding: '布丁',
-  gelee: '果冻'
+  pudding: '布丁'
 }
 
 const expressionLabels: Record<string, string> = {

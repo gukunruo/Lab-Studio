@@ -44,7 +44,7 @@ const NUIT = GOO_EYES.nuit
 const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
   {
     title: '一 · 形状',
-    hint: '轮廓是性格的第一眼——引擎支持任意径向轮廓，切换时平滑渐变。布丁和果冻已晋升为自定义形状。',
+    hint: '轮廓是性格的第一眼——引擎支持任意径向轮廓，切换时平滑渐变。布丁已晋升为自定义形状。',
     variants: [
       { id: 'A', label: 'A · 球', params: '现状 · 基准', shape: 'cercle' },
       { id: 'B', label: 'B · 鹅卵石', params: '随性 · 不规则', shape: 'galet' },
@@ -52,7 +52,6 @@ const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
       { id: 'D', label: 'D · 饭团', params: '圆三角 · 憨', shape: 'triangle' },
       { id: 'E', label: 'E · 胶囊', params: '横躺 · 慵懒', shape: 'capsule' },
       { id: 'F', label: 'F · 布丁', params: '上窄下宽 · 会抖', shape: 'pudding' },
-      { id: 'G', label: 'G · 果冻', params: '融化裙摆 · 高光', shape: 'gelee' },
       { id: 'H', label: 'H · 云朵', params: '软 · 多丘', shape: 'nuage' }
     ]
   },
@@ -72,7 +71,7 @@ const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
         goo: { round: 0.46, eye: { ...AMBER, core: '#6e4a02' } }
       },
       { id: 'H', label: 'H · 琥珀 · 大圆眼', params: 'Ø0.52 · 占满脸', goo: { round: 0.52, eye: AMBER } },
-      { id: 'I', label: 'I · 墨黑 · 圆眼', params: '果冻同款 · 纯色', goo: { round: 0.46, eye: NUIT } }
+      { id: 'I', label: 'I · 墨黑 · 圆眼', params: '深黑纯色 · 不渐变', goo: { round: 0.46, eye: NUIT } }
     ]
   },
   {
