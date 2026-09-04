@@ -23,14 +23,14 @@ test('gelee : blob gras plus large que haut, fonte fondue, reflets et oeil sombr
   assert.ok(gelee, 'gelee doit etre une forme du personnalisateur')
   assert.equal(gelee.radii.length, PROFILE_SAMPLES)
   for (const r of gelee.radii) assert.ok(Number.isFinite(r) && r > 0, `rayon invalide : ${r}`)
-  // large et pose : le dome gras du modele (h/w mesure ~0.86), pas une colonne
-  // ni une galette
+  // grand et pose : le dome du modele est HAUT (revue 2026-09 : encore trop
+  // court), presque carre, mais jamais une colonne ni une galette
   const up = radiusAtAngle(gelee.radii, -Math.PI / 2)
   const down = radiusAtAngle(gelee.radii, Math.PI / 2)
   const left = radiusAtAngle(gelee.radii, Math.PI)
   const right = radiusAtAngle(gelee.radii, 0)
   const rapport = (up + down) / (left + right)
-  assert.ok(rapport > 0.7 && rapport < 0.95, `h/w ${rapport.toFixed(2)} : un blob large, pas une colonne`)
+  assert.ok(rapport > 0.9 && rapport < 1.08, `h/w ${rapport.toFixed(2)} : un blob haut, pas une galette`)
   // la fonte : trois gouttes rondes — le fond remonte entre les gouttes mais
   // reste bas, et les pointes descendent nettement (pas une assiette plate)
   const fond: number[] = []

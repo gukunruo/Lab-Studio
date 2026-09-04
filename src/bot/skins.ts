@@ -105,50 +105,51 @@ const pudding = normalize(
 )
 
 /**
- * Gelee : blob gras, plus large que haut — dome a epaules larges (superellipse),
- * flancs qui debordent en deux petites ailerons, fond qui fond en trois gouttes
- * rondes et peu profondes. La silhouette n'est pas figee : `skirt` decrit une
- * onde qui parcourt toute la jupe a chaque image (cf. skirtWave dans shape.ts).
- * Le sommet porte un plat de 0.008 : un point unique a x=0 rend l'arete miroir
- * degenerique et le ray-cast vertical rate alors le sommet (rayon nul).
+ * Gelee : blob gras a haut dome — la tete ronde du modele (superellipse plus
+ * haute que large) domine, les flancs debordent en deux petites ailerons et le
+ * fond fond en trois gouttes rondes, frange peue sous la masse. La silhouette
+ * n'est pas figee : `skirt` decrit une onde qui parcourt toute la jupe a chaque
+ * image (cf. skirtWave dans shape.ts). Le sommet porte un plat de 0.008 : un
+ * point unique a x=0 rend l'arete miroir degenerique et le ray-cast vertical
+ * rate alors le sommet (rayon nul).
  */
 /** Demi-contour droit du gelee (dome + flanc + aileron + fonte) ; le reste par symetrie. */
 const DEMI_GELEE = [
-  // dome : quart de superellipse, epaules plus larges qu'une ellipse
+  // dome : quart de superellipse vertical — la tete prend les deux tiers
   ...Array.from({ length: 9 }, (_, i) => {
     const a = -Math.PI / 2 + (i / 8) * (Math.PI / 2)
-    return { x: i === 0 ? 0.004 : 1.05 * Math.cos(a) ** 0.72, y: 0.94 * Math.sin(a) }
+    return { x: i === 0 ? 0.004 : 0.98 * Math.cos(a) ** 0.72, y: 1.08 * Math.sin(a) }
   }),
   // flanc, aileron, puis fonte : trois gouttes (largeur > profondeur,
-  // fond arrondi sur deux points, creux remontes a 0.68)
-  { x: 1.08, y: 0.14 },
-  { x: 1.1, y: 0.3 },
-  { x: 1.11, y: 0.42 },
-  { x: 1.17, y: 0.52 },
-  { x: 1.03, y: 0.57 },
-  { x: 0.9, y: 0.61 },
-  { x: 0.78, y: 0.7 },
-  { x: 0.68, y: 0.82 },
-  { x: 0.58, y: 0.87 },
-  { x: 0.44, y: 0.86 },
-  { x: 0.36, y: 0.74 },
-  { x: 0.26, y: 0.68 },
-  { x: 0.15, y: 0.79 },
-  { x: 0.05, y: 0.86 },
-  { x: -0.07, y: 0.86 },
-  { x: -0.16, y: 0.79 },
-  { x: -0.26, y: 0.68 },
-  { x: -0.36, y: 0.74 },
-  { x: -0.44, y: 0.86 },
-  { x: -0.58, y: 0.87 },
-  { x: -0.68, y: 0.82 },
-  { x: -0.78, y: 0.7 },
-  { x: -0.9, y: 0.61 },
-  { x: -1.03, y: 0.57 },
-  { x: -1.17, y: 0.52 },
-  { x: -1.11, y: 0.42 },
-  { x: -1.1, y: 0.3 },
-  { x: -1.08, y: 0.14 }
+  // fond arrondi sur deux points, creux remontes a 0.69)
+  { x: 1.01, y: 0.15 },
+  { x: 1.03, y: 0.32 },
+  { x: 1.04, y: 0.44 },
+  { x: 1.09, y: 0.53 },
+  { x: 0.96, y: 0.58 },
+  { x: 0.84, y: 0.63 },
+  { x: 0.72, y: 0.72 },
+  { x: 0.62, y: 0.82 },
+  { x: 0.52, y: 0.88 },
+  { x: 0.4, y: 0.87 },
+  { x: 0.32, y: 0.76 },
+  { x: 0.23, y: 0.69 },
+  { x: 0.13, y: 0.8 },
+  { x: 0.04, y: 0.9 },
+  { x: -0.06, y: 0.9 },
+  { x: -0.16, y: 0.8 },
+  { x: -0.25, y: 0.69 },
+  { x: -0.34, y: 0.76 },
+  { x: -0.44, y: 0.87 },
+  { x: -0.54, y: 0.88 },
+  { x: -0.64, y: 0.82 },
+  { x: -0.74, y: 0.72 },
+  { x: -0.86, y: 0.63 },
+  { x: -0.98, y: 0.58 },
+  { x: -1.09, y: 0.53 },
+  { x: -1.06, y: 0.44 },
+  { x: -1.05, y: 0.32 },
+  { x: -1.03, y: 0.15 }
 ]
 
 const gelee = normalize(
@@ -171,8 +172,8 @@ const JUPE_GELEE: SkirtWave = { amp: 0.055, waves: 2, band: 1.1, period: 1.7 }
 
 /** Reflets du gelee : gros halo incline a gauche, petit eclat en haut a droite. */
 const REFLETS_GELEE: ShapeGloss[] = [
-  { cx: -0.4, cy: -0.48, rx: 0.15, ry: 0.095, rot: -35, opacity: 0.85 },
-  { cx: 0.38, cy: -0.55, rx: 0.07, ry: 0.045, opacity: 0.65 }
+  { cx: -0.4, cy: -0.55, rx: 0.15, ry: 0.095, rot: -35, opacity: 0.85 },
+  { cx: 0.38, cy: -0.62, rx: 0.07, ry: 0.045, opacity: 0.65 }
 ]
 
 export const SHAPES: BotShape[] = [
