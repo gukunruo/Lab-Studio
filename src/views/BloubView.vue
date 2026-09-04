@@ -65,7 +65,8 @@ const EYE_LABELS: Record<string, string> = {
   menthe: '薄荷',
   aurore: '极光',
   corail: '珊瑚',
-  violet: '蓝紫'
+  violet: '蓝紫',
+  nuit: '墨黑'
 }
 const EYES: { id: string; label: string; goo: GooSkin | null }[] = [
   { id: 'origin', label: '原眼', goo: null },

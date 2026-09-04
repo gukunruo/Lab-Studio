@@ -40,6 +40,7 @@ const MINT = GOO_EYES.menthe
 const AURORA = GOO_EYES.aurore
 const CORAL = GOO_EYES.corail
 const BLUEVIOLET = GOO_EYES.violet
+const NUIT = GOO_EYES.nuit
 
 const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
   {
@@ -72,7 +73,8 @@ const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
         params: '圆眼 · 有瞳心',
         goo: { round: 0.46, eye: { ...AMBER, core: '#6e4a02' } }
       },
-      { id: 'H', label: 'H · 琥珀 · 大圆眼', params: 'Ø0.52 · 占满脸', goo: { round: 0.52, eye: AMBER } }
+      { id: 'H', label: 'H · 琥珀 · 大圆眼', params: 'Ø0.52 · 占满脸', goo: { round: 0.52, eye: AMBER } },
+      { id: 'I', label: 'I · 墨黑 · 圆眼', params: '果冻同款 · 纯色', goo: { round: 0.46, eye: NUIT } }
     ]
   },
   {

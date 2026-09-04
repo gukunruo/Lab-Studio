@@ -7,7 +7,7 @@ import {
   unionOfCirclesProfile,
   type SkirtWave
 } from './shape'
-import type { GooEye } from './goo'
+import { GOO_EYES, type GooEye } from './goo'
 
 /**
  * Formes et couleurs proposees par le personnalisateur du bot.
@@ -195,7 +195,7 @@ export const SHAPES: BotShape[] = [
     radii: gelee,
     skirt: JUPE_GELEE,
     gloss: REFLETS_GELEE,
-    eye: { fill: '#17171c' },
+    eye: GOO_EYES.nuit,
     blush: '#ff8a70'
   }
 ]
