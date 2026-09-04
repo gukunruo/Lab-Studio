@@ -199,7 +199,7 @@ export function radiusAtAngle(radii: number[], angle: number): number {
 
 /**
  * Une onde de JUPE : une modulation du profil radial qui fait vivre la base
- * d'une forme (le fantome) sans toucher au reste. Le rayon fluctue d'une
+ * d'une forme (le gelee) sans toucher au reste. Le rayon fluctue d'une
  * fraction `amp` de lui-meme dans une bande angulaire autour du bas (PI/2),
  * selon une onde qui voyage au fil du temps — pur : meme date, meme jupe.
  *

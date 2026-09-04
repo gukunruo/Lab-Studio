@@ -159,7 +159,7 @@ export class BotEngine {
   private shape: number[] | null = null
   private shapePrev: number[] | null = null
   private shapeAt = -10
-  /** onde de jupe de la forme courante (le fantome) ; nulle = forme statique */
+  /** onde de jupe de la forme courante (le gelee) ; nulle = forme statique */
   private skirt: SkirtWave | null = null
   private skirtPrev: SkirtWave | null = null
   private expr: BotExpression | null = null

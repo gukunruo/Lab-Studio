@@ -115,8 +115,9 @@ const R = RAYON
  */
 const VB = computed(() => props.viewBox ?? DEMI_VIEWBOX)
 
-const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
-const shapeSkirt = computed(() => SHAPE_BY_ID.get(props.shape)?.skirt ?? null)
+const shapeBot = computed(() => SHAPE_BY_ID.get(props.shape) ?? null)
+const shapeRadii = computed(() => shapeBot.value?.radii ?? null)
+const shapeSkirt = computed(() => shapeBot.value?.skirt ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
 const expression = computed(() => {
   const e = EXPRESSION_BY_ID.get(props.expression) ?? null
@@ -178,10 +179,19 @@ let blockStart = 0
 /* ---------------------------------------------------- l'oeil en couleur */
 
 const gooEyeGradId = `goo-eye-${uid}`
+/**
+ * L'oeil retenu : celui choisi par l'utilisateur, sinon celui que la forme
+ * suggere (l'oeil sombre du gelee). La forme ne fait que proposer — un choix
+ * Goo explicite gagne toujours.
+ */
+const gooEye = computed(() => props.goo?.eye ?? shapeBot.value?.eye ?? null)
 const gooEyeFill = computed(() =>
-  props.goo?.eye?.fill2 ? `url(#${gooEyeGradId})` : (props.goo?.eye?.fill ?? '')
+  gooEye.value?.fill2 ? `url(#${gooEyeGradId})` : (gooEye.value?.fill ?? '')
 )
-const gooHi = computed(() => props.goo?.eye?.hi ?? 0.9)
+const gooHi = computed(() => gooEye.value?.hi ?? 0.9)
+/** Joues : la peau Goo dilue l'encre ; sinon la couleur suggerée par la forme. */
+const blushColor = computed(() => (props.goo?.blush ? ink.value : (shapeBot.value?.blush ?? '')))
+const blushOpacity = computed(() => (props.goo?.blush ? 0.1 : 0.5))
 
 /**
  * Pose le bloc `i` : etat, moteur, et date de fin. Appele aussi bien par la
@@ -623,15 +633,15 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
         demander au moteur.
       -->
       <linearGradient
-        v-if="props.goo?.eye?.fill2"
+        v-if="gooEye?.fill2"
         :id="gooEyeGradId"
         x1="0"
         y1="0"
         x2="0"
         y2="1"
       >
-        <stop offset="0" :stop-color="props.goo.eye.fill" />
-        <stop offset="1" :stop-color="props.goo.eye.fill2" />
+        <stop offset="0" :stop-color="gooEye.fill" />
+        <stop offset="1" :stop-color="gooEye.fill2" />
       </linearGradient>
 
       <linearGradient
@@ -696,21 +706,54 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
       </g>
 
       <!--
+        La vitrine de visage et les reflets : suggestions de matiere portees par
+        la forme (le gelee). Posees au-dessus du corps, sous les yeux ; ils
+        fondent quand on quitte la forme, au rythme du morph (0.45s).
+      -->
+      <Transition name="goo-fade">
+        <rect
+          v-if="shapeBot?.face"
+          :x="shapeBot.face.x * R"
+          :y="shapeBot.face.y * R"
+          :width="shapeBot.face.w * R"
+          :height="shapeBot.face.h * R"
+          :rx="shapeBot.face.rx * R"
+          fill="#fff"
+          :opacity="shapeBot.face.opacity"
+        />
+      </Transition>
+      <Transition name="goo-fade">
+        <g v-if="shapeBot?.gloss?.length">
+          <ellipse
+            v-for="(g, i) in shapeBot.gloss"
+            :key="i"
+            :cx="g.cx * R"
+            :cy="g.cy * R"
+            :rx="g.rx * R"
+            :ry="g.ry * R"
+            :transform="g.rot ? `rotate(${g.rot} ${g.cx * R} ${g.cy * R})` : undefined"
+            fill="#fff"
+            :opacity="g.opacity"
+          />
+        </g>
+      </Transition>
+
+      <!--
         L'oeil EN COULEUR : le meme path que le trou, pose par-dessus, donc il
         le recouvre au pixel pres et herite de tout — orientation de tete,
         inclinaison, clignement (la colonne y de la matrice ecrase), fondue au
         limbe (l'alpha). Le coeur et les reflets vivent dans le meme repere
         local, fournis par `eyeDecor`.
       -->
-      <g v-if="props.goo?.eye">
+      <g v-if="gooEye">
         <template v-for="(eye, i) in frame.eyes" :key="`gooeye${i}`">
           <path :d="eye.d" :transform="eye.matrix" :fill="gooEyeFill" :opacity="eye.alpha" />
           <circle
-            v-if="props.goo.eye.core"
+            v-if="gooEye.core"
             :transform="eye.matrix"
             :cy="eyeDecor(eye).coreCy"
             :r="eyeDecor(eye).coreR"
-            :fill="props.goo.eye.core"
+            :fill="gooEye.core"
             :opacity="eye.alpha"
           />
           <template v-if="gooHi > 0">
@@ -738,7 +781,7 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
         La pupille encre : seulement sans oeil en couleur (l'oeil colore a son
         propre coeur). La matrice de l'oeil lui transmet tout gratuitement.
       -->
-      <g v-if="props.goo?.pupil && props.goo.pupil !== 'none' && !props.goo.eye">
+      <g v-if="props.goo?.pupil && props.goo.pupil !== 'none' && !gooEye">
         <template v-for="(eye, i) in frame.eyes" :key="`pupil${i}`">
           <rect
             v-if="props.goo.pupil === 'square'"
@@ -760,8 +803,8 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
         </template>
       </g>
 
-      <!-- Les joues : deux points d'encre diluee, pousses sous l'oeil vers l'exterieur. -->
-      <g v-if="props.goo?.blush" :fill="ink" opacity="0.1">
+      <!-- Les joues : encre diluee (peau Goo) ou couleur suggerée par la forme. -->
+      <g v-if="blushColor" :fill="blushColor" :opacity="blushOpacity">
         <ellipse v-for="(eye, i) in frame.eyes" :key="`blush${i}`" v-bind="blushAttrs(eye, R)" />
       </g>
     </g>
@@ -815,3 +858,15 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
     </g>
   </svg>
 </template>
+
+<style scoped>
+/* La vitrine et les reflets suivent le morph de forme (SHAPE_MORPH = 0.45s). */
+.goo-fade-enter-active,
+.goo-fade-leave-active {
+  transition: opacity 0.45s ease;
+}
+.goo-fade-enter-from,
+.goo-fade-leave-to {
+  opacity: 0;
+}
+</style>

@@ -7,6 +7,7 @@ import {
   unionOfCirclesProfile,
   type SkirtWave
 } from './shape'
+import type { GooEye } from './goo'
 
 /**
  * Formes et couleurs proposees par le personnalisateur du bot.
@@ -35,13 +36,41 @@ export type ShapeId =
   | 'nuage'
   | 'goutte'
   | 'pudding'
-  | 'fantome'
+  | 'gelee'
+
+/** La vitre de visage : une fenetre plus claire autour des yeux (le gelee). */
+export interface ShapeFace {
+  x: number
+  y: number
+  w: number
+  h: number
+  rx: number
+  opacity: number
+}
+
+/** Reflet de matiere : ellipse blanche posee sur le corps (unites de rayon). */
+export interface ShapeGloss {
+  cx: number
+  cy: number
+  rx: number
+  ry: number
+  rot?: number
+  opacity: number
+}
 
 export interface BotShape {
   id: ShapeId
   radii: number[]
-  /** onde de jupe (le fantome) : null par defaut, forme statique */
+  /** onde de jupe (le gelee) : null par defaut, forme statique */
   skirt?: SkirtWave
+  /** vitre de visage proposee par la forme (le gelee), en unites de rayon */
+  face?: ShapeFace
+  /** reflets de matiere proposes par la forme (le gelee) */
+  gloss?: ShapeGloss[]
+  /** oeil suggere par la forme : retenu seulement si l'utilisateur n'en a pas choisi un */
+  eye?: GooEye
+  /** couleur de joues suggeree par la forme (le gelee) */
+  blush?: string
 }
 
 /** Ramene le rayon maximal a `max` pour que toutes les formes pesent pareil a l'oeil. */
@@ -88,47 +117,78 @@ const pudding = normalize(
 )
 
 /**
- * Fantome : cloche de meduse — dome haut, flancs qui tombent en douceur vers
- * une jupe large a quatre festons (ourlet en cosinus : pointes rondes, creux
- * remontes au niveau des flancs). La silhouette n'est plus figee : `skirt`
- * decrit une onde qui parcourt la jupe a chaque image (cf. skirtWave dans
- * shape.ts). Le centre d'echantillonnage descend a (0, 0.05) pour equilibrer
- * dome et jupe dans le profil radial.
+ * Gelee : blob gras, plus large que haut — dome a epaules larges (superellipse),
+ * flancs qui debordent en deux petites ailerons, fond qui fond en trois gouttes
+ * rondes et peu profondes. La silhouette n'est pas figee : `skirt` decrit une
+ * onde qui parcourt toute la jupe a chaque image (cf. skirtWave dans shape.ts).
+ * Le sommet porte un plat de 0.008 : un point unique a x=0 rend l'arete miroir
+ * degenerique et le ray-cast vertical rate alors le sommet (rayon nul).
  */
-const fantome = normalize(
+/** Demi-contour droit du gelee (dome + flanc + aileron + fonte) ; le reste par symetrie. */
+const DEMI_GELEE = [
+  // dome : quart de superellipse, epaules plus larges qu'une ellipse
+  ...Array.from({ length: 9 }, (_, i) => {
+    const a = -Math.PI / 2 + (i / 8) * (Math.PI / 2)
+    return { x: i === 0 ? 0.004 : 1.05 * Math.cos(a) ** 0.72, y: 0.94 * Math.sin(a) }
+  }),
+  // flanc, aileron, puis fonte : trois gouttes (largeur > profondeur,
+  // fond arrondi sur deux points, creux remontes a 0.68)
+  { x: 1.08, y: 0.14 },
+  { x: 1.1, y: 0.3 },
+  { x: 1.11, y: 0.42 },
+  { x: 1.17, y: 0.52 },
+  { x: 1.03, y: 0.57 },
+  { x: 0.9, y: 0.61 },
+  { x: 0.78, y: 0.7 },
+  { x: 0.68, y: 0.82 },
+  { x: 0.58, y: 0.87 },
+  { x: 0.44, y: 0.86 },
+  { x: 0.36, y: 0.74 },
+  { x: 0.26, y: 0.68 },
+  { x: 0.15, y: 0.79 },
+  { x: 0.05, y: 0.86 },
+  { x: -0.07, y: 0.86 },
+  { x: -0.16, y: 0.79 },
+  { x: -0.26, y: 0.68 },
+  { x: -0.36, y: 0.74 },
+  { x: -0.44, y: 0.86 },
+  { x: -0.58, y: 0.87 },
+  { x: -0.68, y: 0.82 },
+  { x: -0.78, y: 0.7 },
+  { x: -0.9, y: 0.61 },
+  { x: -1.03, y: 0.57 },
+  { x: -1.17, y: 0.52 },
+  { x: -1.11, y: 0.42 },
+  { x: -1.1, y: 0.3 },
+  { x: -1.08, y: 0.14 }
+]
+
+const gelee = normalize(
   profileFromPolygon(
     [
-      // dome : demi-ellipse haute
-      ...Array.from({ length: 25 }, (_, i) => {
-        const a = Math.PI + (i / 24) * Math.PI
-        return { x: 0.97 * Math.cos(a), y: 0.95 * Math.sin(a) }
-      }),
-      // flanc : bezier qui amorce la chute de l'equateur vers la jupe
-      ...Array.from({ length: 12 }, (_, i) => {
-        const t = i / 11
-        const u = 1 - t
-        return {
-          x: u * u * 0.97 + 2 * u * t * 0.95 + t * t * 0.86,
-          y: 2 * u * t * 0.42 + t * t * 0.72
-        }
-      }),
-      // jupe : quatre festons, creux a 0.70, pointes a 0.98
-      ...Array.from({ length: 41 }, (_, i) => {
-        const t = i / 40
-        return {
-          x: 0.86 - 1.72 * t,
-          y: 0.7 + (0.28 * (1 - Math.cos(8 * Math.PI * t))) / 2
-        }
-      })
+      ...DEMI_GELEE,
+      // fermeture par symetrie de la calotte (le sommet plat reste unique)
+      ...DEMI_GELEE.filter((p) => p.y < -0.01)
+        .map((p) => ({ x: -p.x, y: p.y }))
+        .reverse()
     ],
     0,
-    0.05
+    0.02
   ),
   1.02
 )
 
-/** Onde de jupe du fantome : l'amplitude est une fraction du rayon local. */
-const JUPE_FANTOME: SkirtWave = { amp: 0.055, waves: 3, band: 1.05, period: 2.6 }
+/** Onde de jupe du gelee : deux cretes, la jupe entiere ondule d'un bloc. */
+const JUPE_GELEE: SkirtWave = { amp: 0.055, waves: 2, band: 1.1, period: 1.7 }
+
+/** Vitrine de visage du gelee : fenetre claire autour des yeux (unites de rayon). */
+const VISAGE_GELEE = { x: -0.48, y: -0.6, w: 0.96, h: 0.8, rx: 0.3, opacity: 0.45 }
+
+/** Reflets du gelee : gros halo incline a gauche, petit eclat en haut a droite. */
+const REFLETS_GELEE: ShapeGloss[] = [
+  { cx: -0.4, cy: -0.48, rx: 0.15, ry: 0.095, rot: -35, opacity: 0.85 },
+  { cx: 0.38, cy: -0.55, rx: 0.07, ry: 0.045, opacity: 0.65 }
+]
 
 export const SHAPES: BotShape[] = [
   { id: 'cercle', radii: new Array(PROFILE_SAMPLES).fill(1) },
@@ -144,7 +204,15 @@ export const SHAPES: BotShape[] = [
   { id: 'nuage', radii: cloud },
   { id: 'goutte', radii: droplet },
   { id: 'pudding', radii: pudding },
-  { id: 'fantome', radii: fantome, skirt: JUPE_FANTOME }
+  {
+    id: 'gelee',
+    radii: gelee,
+    skirt: JUPE_GELEE,
+    face: VISAGE_GELEE,
+    gloss: REFLETS_GELEE,
+    eye: { fill: '#17171c' },
+    blush: '#ff8a70'
+  }
 ]
 
 // Map indexee par `string` et non par `ShapeId` : les appelants interrogent avec

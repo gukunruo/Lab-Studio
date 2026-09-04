@@ -128,7 +128,7 @@ test('skirtWave : une onde pure, intacte hors bande, vivante au fond', () => {
   assert.deepEqual(skirtWave(base, wave, 1.3), skirtWave(base, wave, 1.3))
 })
 
-test('le moteur ondule la jupe du fantome, puis l\'eteint au morph vers une forme nue', () => {
+test('le moteur ondule la jupe du gelee, puis l\'eteint au morph vers une forme nue', () => {
   const nue = Array.from({ length: 64 }).fill(1) as number[]
   const onde = { amp: 0.2, waves: 2, band: Math.PI, period: 1 }
 
