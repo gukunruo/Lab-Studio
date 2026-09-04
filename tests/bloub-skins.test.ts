@@ -33,7 +33,16 @@ test('le gelee est raye du catalogue', () => {
   assert.ok(!SHAPES.some((s) => 'blush' in s), 'plus de joues suggerees par la forme')
 })
 
-test('le catalogue compte neuf formes, toutes uniques', () => {
-  assert.equal(SHAPES.length, 9)
-  assert.equal(new Set(SHAPES.map((s) => s.id)).size, 9)
+test('le catalogue compte dix formes, toutes uniques', () => {
+  assert.equal(SHAPES.length, 10)
+  assert.equal(new Set(SHAPES.map((s) => s.id)).size, 10)
+})
+
+test('l\'etincelle est au catalogue, et elle scintille', () => {
+  const spark = SHAPE_BY_ID.get('etincelle')
+  assert.ok(spark, 'l\'etincelle doit etre une forme du personnalisateur')
+  probeForme(spark, 'etincelle')
+  // la seule forme animee : son onde de scintillement voyage avec elle
+  assert.ok(spark!.wave, 'l\'etincelle doit porter son onde')
+  assert.ok(!SHAPES.filter((s) => s.id !== 'etincelle').some((s) => s.wave), 'aucune autre forme n\'est animee')
 })

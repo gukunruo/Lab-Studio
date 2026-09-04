@@ -210,6 +210,52 @@ export function superellipseProfile(n: number, sx = 1, sy = 1): number[] {
 }
 
 /**
+ * Etincelle : superformule de Gielis avec m = 4 et n2 = n3 = `n`, evaluee
+ * directement sur les 64 angles. Les quatre pointes sont identiques par
+ * construction (l'exposant symetrique est ce qui distingue une etincelle d'un
+ * coussin a deux aiguilles), et la concavite des vallees se regle avec `n1` :
+ * plus il est petit, plus la vallee creuse. n < 1 donne des pointes en crete,
+ * n > 1 des pointes arrondies ; 1 est le compromis « mignon ».
+ */
+export function sparkleProfile(n1: number, n: number): number[] {
+  return ANGLES.map((_, i) => {
+    const c = Math.abs(COS[i] ?? 0) ** n
+    const s = Math.abs(SIN[i] ?? 0) ** n
+    return (c + s) ** (-1 / n1)
+  })
+}
+
+/**
+ * L'onde d'une forme animee : une vibration stationnaire posee sur le profil.
+ * `lobes` dit combien de cretes porte l'enveloppe (4 pour les pointes de
+ * l'etincelle, posees sur les axes), `focus` la serre autour, `amp` la hauteur
+ * en fraction de rayon, `period` la duree d'un pouls. Pure donnee : le moteur
+ * l'applique image par image, le catalogue la porte.
+ */
+export interface ShapeWave {
+  amp: number
+  period: number
+  lobes: number
+  focus: number
+  phase: number
+}
+
+/**
+ * Le profil au temps `t` : chaque rayon est module par l'enveloppe
+ * |cos(lobes·θ/2)|^focus — maxima sur les pointes, nulle sur les vallees quand
+ * `focus` les annule. Retourne un tableau NEUF (les profils du catalogue sont
+ * partages entre moteurs, il est hors de question de les muter) ; `amp` peut
+ * etre passe explicitement pour que le morph de silhouette fonde l'onde avec lui.
+ */
+export function waveRadii(radii: number[], wave: ShapeWave, t: number, amp = wave.amp): number[] {
+  if (amp <= 0) return radii
+  return radii.map((r, i) => {
+    const env = Math.abs(Math.cos((wave.lobes / 2) * (ANGLES[i] ?? 0))) ** wave.focus
+    return r * (1 + amp * env * Math.sin((TAU * t) / wave.period + wave.phase))
+  })
+}
+
+/**
  * Profil radial de l'UNION de disques : r(theta) = la plus lointaine des
  * intersections rayon/cercle. Exact tant que l'origine est dans l'union — c'est
  * ce qui donne les bosses du nuage sans booleen de path.

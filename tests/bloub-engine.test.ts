@@ -103,3 +103,27 @@ test('reset clears history so the first frame is a pure pose', () => {
   assert.deepEqual(e.sample(30.5), fresh.sample(30.5))
 })
 
+test('the spark wave animates the body and sample stays replayable', () => {
+  const spark = SHAPE_BY_ID.get('etincelle')!
+  assert.ok(spark.wave)
+  const e = new BotEngine(100, 'idle', spark.radii, null, spark.wave!)
+  const a = e.sample(0)
+  const b = e.sample(spark.wave!.period / 4)
+  assert.notEqual(a.bodyPath, b.bodyPath, 'the wave moves the silhouette')
+  assert.equal(e.sample(0).bodyPath, a.bodyPath, 'sample stays a pure function of time')
+})
+
+test('the wave dies out when returning to a waveless shape', () => {
+  const cercle = SHAPE_BY_ID.get('cercle')!
+  const spark = SHAPE_BY_ID.get('etincelle')!
+  const e = new BotEngine(100, 'idle', cercle.radii, null)
+  const plain = new BotEngine(100, 'idle', cercle.radii, null)
+  e.setShape(spark.radii, 0, spark.wave!)
+  e.sample(1)
+  e.setShape(cercle.radii, 2)
+  // long after the second morph, the waved engine must coincide exactly with
+  // an engine that never left the circle — the wave must leave no echo.
+  const later = 2 + BotEngine.SHAPE_MORPH + 1
+  assert.equal(e.sample(later).bodyPath, plain.sample(later).bodyPath)
+})
+

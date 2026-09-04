@@ -117,6 +117,7 @@ const VB = computed(() => props.viewBox ?? DEMI_VIEWBOX)
 
 const shapeBot = computed(() => SHAPE_BY_ID.get(props.shape) ?? null)
 const shapeRadii = computed(() => shapeBot.value?.radii ?? null)
+const shapeWave = computed(() => shapeBot.value?.wave ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
 const expression = computed(() => {
   const e = EXPRESSION_BY_ID.get(props.expression) ?? null
@@ -136,7 +137,7 @@ const expression = computed(() => {
   return resolved
 })
 
-const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value)
+const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value, shapeWave.value)
 const frame = shallowRef<BotFrame>(engine.sample(props.frozenAt ?? 0))
 const uid = Math.random().toString(36).slice(2, 8)
 const maskId = `bot-mask-${uid}`
@@ -491,10 +492,10 @@ watch(
   }
 )
 
-watch(shapeRadii, (radii) => {
+watch([shapeRadii, shapeWave], ([radii, wave]) => {
   // on passe l'horloge : le moteur morphe vers la nouvelle forme au lieu de
   // l'appliquer d'un coup.
-  engine.setShape(radii, clock)
+  engine.setShape(radii, clock, wave ?? null)
   redrawFrozen()
 })
 

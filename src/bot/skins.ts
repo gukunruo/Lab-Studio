@@ -3,8 +3,10 @@ import {
   hullOfCircles,
   profileFromPolygon,
   regularPolygonProfile,
+  sparkleProfile,
   superellipseProfile,
-  unionOfCirclesProfile
+  unionOfCirclesProfile,
+  type ShapeWave
 } from './shape'
 
 /**
@@ -34,10 +36,13 @@ export type ShapeId =
   | 'nuage'
   | 'goutte'
   | 'pudding'
+  | 'etincelle'
 
 export interface BotShape {
   id: ShapeId
   radii: number[]
+  /** onde propre a la forme : presente, le moteur fait vivre le profil */
+  wave?: ShapeWave
 }
 
 /** Ramene le rayon maximal a `max` pour que toutes les formes pesent pareil a l'oeil. */
@@ -83,6 +88,16 @@ const pudding = normalize(
   1.02
 )
 
+/**
+ * Etincelle : quatre pointes sur les axes, vallees concaves — la superformule
+ * de Gielis evaluee sur les 64 angles. n1 = 0,6 et n = 1 donnent le rapport
+ * vallee/pointe mesure sur la feuille de candidats (~0,56) : le character
+ * « ✨ » avec des pointes assez douces pour un bot, et de la place pour les yeux.
+ * C'est la seule forme animee : son onde fait pulser les pointes, vallees fixes.
+ */
+const SCINTILLE: ShapeWave = { amp: 0.05, period: 1.8, lobes: 4, focus: 2, phase: 0 }
+const spark = normalize(sparkleProfile(0.6, 1), 1.04)
+
 export const SHAPES: BotShape[] = [
   { id: 'cercle', radii: new Array(PROFILE_SAMPLES).fill(1) },
   { id: 'galet', radii: pebble },
@@ -96,7 +111,8 @@ export const SHAPES: BotShape[] = [
   { id: 'hexagone', radii: regularPolygonProfile(6, 1.04, 0.26, 0) },
   { id: 'nuage', radii: cloud },
   { id: 'goutte', radii: droplet },
-  { id: 'pudding', radii: pudding }
+  { id: 'pudding', radii: pudding },
+  { id: 'etincelle', radii: spark, wave: SCINTILLE }
 ]
 
 // Map indexee par `string` et non par `ShapeId` : les appelants interrogent avec

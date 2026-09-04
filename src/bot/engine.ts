@@ -9,7 +9,9 @@ import {
   closedPath,
   radiusAtAngle,
   toPoints,
+  waveRadii,
   type Point,
+  type ShapeWave,
   type Silhouette
 } from './shape'
 import { STATE_BY_ID, type Pose, type StateDef, type StateId } from './states'
@@ -157,6 +159,9 @@ export class BotEngine {
   private shape: number[] | null = null
   private shapePrev: number[] | null = null
   private shapeAt = -10
+  /** l'onde de la forme cible, et celle quittee — voyagent avec `setShape` */
+  private wave: ShapeWave | null = null
+  private wavePrev: ShapeWave | null = null
   private expr: BotExpression | null = null
   private exprPrev: BotExpression | null = null
   private exprAt = -10
@@ -181,12 +186,14 @@ export class BotEngine {
     scale = 100,
     initial: StateId = 'idle',
     shape: number[] | null = null,
-    expression: BotExpression | null = null
+    expression: BotExpression | null = null,
+    wave: ShapeWave | null = null
   ) {
     this.scale = scale
     this.cur = initial
     this.shape = shape
     this.expr = expression
+    this.wave = wave
   }
 
   /**
@@ -218,10 +225,12 @@ export class BotEngine {
    * Le changement se fait en morph, pas d'un coup : comme toutes les formes sont
    * echantillonnees aux memes angles, il suffit d'interpoler les rayons.
    */
-  setShape(radii: number[] | null, now = 0) {
-    if (radii === this.shape) return
+  setShape(radii: number[] | null, now = 0, wave: ShapeWave | null = null) {
+    if (radii === this.shape && wave === this.wave) return
     this.shapePrev = this.shape
     this.shape = radii
+    this.wavePrev = this.wave
+    this.wave = wave
     this.shapeAt = now
   }
 
@@ -235,12 +244,39 @@ export class BotEngine {
   private shapeAtTime(now: number): number[] | null {
     const to = this.shape
     const from = this.shapePrev
-    if (!to || !from) return to
-    const k = (now - this.shapeAt) / BotEngine.SHAPE_MORPH
-    if (k >= 1) return to
-    const t = easings.easeOutQuint(clamp(k))
-    // alloue seulement pendant le morph ; hors morph on rend le tableau tel quel
-    return to.map((r, i) => lerp(from[i] ?? r, r, t))
+    let radii: number[] | null
+    if (!to || !from) radii = to
+    else {
+      const k = (now - this.shapeAt) / BotEngine.SHAPE_MORPH
+      if (k >= 1) radii = to
+      else {
+        const t = easings.easeOutQuint(clamp(k))
+        // alloue seulement pendant le morph ; hors morph on rend le tableau tel quel
+        radii = to.map((r, i) => lerp(from[i] ?? r, r, t))
+      }
+    }
+    return this.scintille(now, radii)
+  }
+
+  /**
+   * L'onde de la forme, posee sur le profil effectif. Son amplitude fond avec
+   * le morph de silhouette : entrer dans une forme animee allume l'onde, en
+   * sortir l'eteint — sans ce fondu, les pointes sauteraient de 5 % a l'instant
+   * du changement. La cible sans onde utilise l'enveloppe quittee le temps du
+   * morph, pour mourir en glissant au lieu de sauter.
+   */
+  private scintille(now: number, radii: number[] | null): number[] | null {
+    if (!radii) return radii
+    const wave = this.wave ?? this.wavePrev
+    if (!wave) return radii
+    const ampTo = this.wave?.amp ?? 0
+    const ampFrom = this.wavePrev?.amp ?? 0
+    let amp = ampTo
+    if (ampFrom !== ampTo) {
+      const k = (now - this.shapeAt) / BotEngine.SHAPE_MORPH
+      if (k < 1) amp = lerp(ampFrom, ampTo, easings.easeOutQuint(clamp(k)))
+    }
+    return waveRadii(radii, wave, now, amp)
   }
 
   /**
