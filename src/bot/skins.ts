@@ -37,6 +37,7 @@ export type ShapeId =
   | 'goutte'
   | 'pudding'
   | 'etincelle'
+  | 'flamme'
 
 export interface BotShape {
   id: ShapeId
@@ -93,10 +94,29 @@ const pudding = normalize(
  * de Gielis evaluee sur les 64 angles. n1 = 0,6 et n = 1 donnent le rapport
  * vallee/pointe mesure sur la feuille de candidats (~0,56) : le character
  * « ✨ » avec des pointes assez douces pour un bot, et de la place pour les yeux.
- * C'est la seule forme animee : son onde fait pulser les pointes, vallees fixes.
+ * Son onde fait pulser les pointes, vallees fixes.
  */
 const SCINTILLE: ShapeWave = { amp: 0.05, period: 1.8, lobes: 4, focus: 2, phase: 0 }
 const spark = normalize(sparkleProfile(0.6, 1), 1.04)
+
+/**
+ * Flamme : contour TRACE sur le vrai emoji 🔥 (rendu canvas 640 px, puis
+ * echantillonnage radial — 64 rayons, max sur 8 sous-rayons par secteur pour
+ * ne pas rater les pointes fines ; origine = centre du glyphe). Cinq series
+ * de construction analytique (cônes de puissance sur boule) n'avaient jamais
+ * produit la lecture « feu » — le trace, si. L'onde est orientee vers le haut
+ * (rot = -pi/2) : la couronne ondule comme un feu, la base du corps reste
+ * posee.
+ */
+const VACILLE: ShapeWave = { amp: 0.09, period: 1.4, lobes: 1, focus: 3, phase: 0, rot: -Math.PI / 2 }
+const FLAMME_TRACE = [
+  0.743, 0.778, 0.805, 0.831, 0.854, 0.87, 0.87, 0.874, 0.958, 0.966, 0.962, 0.966, 0.966, 0.969,
+  0.977, 0.985, 0.985, 0.996, 1, 0.996, 0.989, 0.985, 0.985, 0.977, 0.969, 0.866, 0.858, 0.851,
+  0.835, 0.808, 0.778, 0.743, 0.716, 0.682, 0.713, 0.736, 0.762, 0.766, 0.759, 0.77, 0.785, 0.513,
+  0.548, 0.602, 0.605, 0.582, 0.651, 0.985, 0.966, 0.9, 0.854, 0.812, 0.778, 0.755, 0.732, 0.705,
+  0.667, 0.644, 0.598, 0.563, 0.517, 0.686, 0.705, 0.728
+]
+const flamme = normalize(FLAMME_TRACE, 1.02)
 
 export const SHAPES: BotShape[] = [
   { id: 'cercle', radii: new Array(PROFILE_SAMPLES).fill(1) },
@@ -112,7 +132,8 @@ export const SHAPES: BotShape[] = [
   { id: 'nuage', radii: cloud },
   { id: 'goutte', radii: droplet },
   { id: 'pudding', radii: pudding },
-  { id: 'etincelle', radii: spark, wave: SCINTILLE }
+  { id: 'etincelle', radii: spark, wave: SCINTILLE },
+  { id: 'flamme', radii: flamme, wave: VACILLE }
 ]
 
 // Map indexee par `string` et non par `ShapeId` : les appelants interrogent avec

@@ -43,3 +43,18 @@ test('waveRadii : les pointes pulsent, les vallees restent, pur et sans effet de
   // amplitude nulle : identite exacte
   assert.deepEqual(waveRadii(base, WAVE, 0.3, 0), base)
 })
+
+test('waveRadii : rot oriente l\'enveloppe — la flamme ondule en haut, la base tient', () => {
+  const base = new Array(64).fill(1)
+  const FLAMME: ShapeWave = { amp: 0.06, period: 1.4, lobes: 1, focus: 3, phase: 0, rot: -Math.PI / 2 }
+  const a = waveRadii(base, FLAMME, 0)
+  const b = waveRadii(base, FLAMME, FLAMME.period / 4)
+  // index 48 = theta 3pi/2 = le haut de l'ecran : le panache vit
+  assert.ok(Math.abs(a[48]! - b[48]!) > 0.005, `haut : ${a[48]} vs ${b[48]}`)
+  // index 16 = theta pi/2 = le bas : la base du feu reste posee
+  assert.ok(Math.abs(a[16]! - b[16]!) < 1e-12, `bas : ${a[16]} vs ${b[16]}`)
+  // sans rot, l'enveloppe ne bouge pas : l'etincelle garde son comportement
+  const sansRot = waveRadii(base, WAVE, 0)
+  const axe = waveRadii(base, { ...WAVE, rot: 0 }, 0)
+  assert.deepEqual(sansRot, axe)
+})

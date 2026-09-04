@@ -229,8 +229,9 @@ export function sparkleProfile(n1: number, n: number): number[] {
  * L'onde d'une forme animee : une vibration stationnaire posee sur le profil.
  * `lobes` dit combien de cretes porte l'enveloppe (4 pour les pointes de
  * l'etincelle, posees sur les axes), `focus` la serre autour, `amp` la hauteur
- * en fraction de rayon, `period` la duree d'un pouls. Pure donnee : le moteur
- * l'applique image par image, le catalogue la porte.
+ * en fraction de rayon, `period` la duree d'un pouls. `rot` oriente l'enveloppe
+ * (la flamme vise le haut du corps, -pi/2). Pure donnee : le moteur l'applique
+ * image par image, le catalogue la porte.
  */
 export interface ShapeWave {
   amp: number
@@ -238,19 +239,23 @@ export interface ShapeWave {
   lobes: number
   focus: number
   phase: number
+  /** orientation de l'enveloppe, en radians ; 0 par defaut */
+  rot?: number
 }
 
 /**
  * Le profil au temps `t` : chaque rayon est module par l'enveloppe
- * |cos(lobes·θ/2)|^focus — maxima sur les pointes, nulle sur les vallees quand
- * `focus` les annule. Retourne un tableau NEUF (les profils du catalogue sont
- * partages entre moteurs, il est hors de question de les muter) ; `amp` peut
- * etre passe explicitement pour que le morph de silhouette fonde l'onde avec lui.
+ * |cos(lobes·(θ-rot)/2)|^focus — maxima sur les cretes, nulle sur les nœuds
+ * quand `focus` les annule. Retourne un tableau NEUF (les profils du catalogue
+ * sont partages entre moteurs, il est hors de question de les muter) ; `amp`
+ * peut etre passe explicitement pour que le morph de silhouette fonde l'onde
+ * avec lui.
  */
 export function waveRadii(radii: number[], wave: ShapeWave, t: number, amp = wave.amp): number[] {
   if (amp <= 0) return radii
+  const rot = wave.rot ?? 0
   return radii.map((r, i) => {
-    const env = Math.abs(Math.cos((wave.lobes / 2) * (ANGLES[i] ?? 0))) ** wave.focus
+    const env = Math.abs(Math.cos((wave.lobes / 2) * ((ANGLES[i] ?? 0) - rot))) ** wave.focus
     return r * (1 + amp * env * Math.sin((TAU * t) / wave.period + wave.phase))
   })
 }

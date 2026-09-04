@@ -33,16 +33,32 @@ test('le gelee est raye du catalogue', () => {
   assert.ok(!SHAPES.some((s) => 'blush' in s), 'plus de joues suggerees par la forme')
 })
 
-test('le catalogue compte dix formes, toutes uniques', () => {
-  assert.equal(SHAPES.length, 10)
-  assert.equal(new Set(SHAPES.map((s) => s.id)).size, 10)
+test('le catalogue compte onze formes, toutes uniques', () => {
+  assert.equal(SHAPES.length, 11)
+  assert.equal(new Set(SHAPES.map((s) => s.id)).size, 11)
 })
 
 test('l\'etincelle est au catalogue, et elle scintille', () => {
   const spark = SHAPE_BY_ID.get('etincelle')
   assert.ok(spark, 'l\'etincelle doit etre une forme du personnalisateur')
   probeForme(spark, 'etincelle')
-  // la seule forme animee : son onde de scintillement voyage avec elle
+  // son onde de scintillement voyage avec elle
   assert.ok(spark!.wave, 'l\'etincelle doit porter son onde')
-  assert.ok(!SHAPES.filter((s) => s.id !== 'etincelle').some((s) => s.wave), 'aucune autre forme n\'est animee')
+})
+
+test('la flamme : base large, panache en haut, et elle vacille', () => {
+  const flamme = SHAPE_BY_ID.get('flamme')
+  assert.ok(flamme, 'la flamme doit etre une forme du personnalisateur')
+  probeForme(flamme, 'flamme')
+  const { radii } = flamme!
+  // le bas du feu est large (le corps pose), le panache monte a peine plus haut
+  const bas = radiusAtAngle(radii, Math.PI / 2)
+  const haut = radiusAtAngle(radii, -Math.PI / 2)
+  assert.ok(bas > 0.55, `base large : ${bas}`)
+  assert.ok(haut > 0.5 && haut < bas * 1.05, `panache present, sans basculer : ${haut} vs ${bas}`)
+  // les flammes vivent : le panache ondule, porte par une onde avec rot
+  assert.ok(flamme!.wave, 'la flamme doit porter son onde')
+  assert.ok(flamme!.wave!.rot, 'l\'onde de la flamme vise le haut du corps')
+  // deux formes animees au total : etincelle + flamme
+  assert.equal(SHAPES.filter((s) => s.wave).length, 2, 'deux formes animees')
 })
