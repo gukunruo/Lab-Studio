@@ -105,20 +105,22 @@ const pudding = normalize(
 )
 
 /**
- * Gelee : blob gras a haut dome — la tete ronde du modele (superellipse plus
- * haute que large) domine, les flancs debordent en deux petites ailerons et le
- * fond fond en trois gouttes rondes, frange peue sous la masse. La silhouette
+ * Gelee : blob gras a haut dome — la tete ronde du modele (ellipse plus haute
+ * que large) domine, les flancs debordent en deux petites ailerons et le fond
+ * fond en trois gouttes rondes, frange peue sous la masse. La silhouette
  * n'est pas figee : `skirt` decrit une onde qui parcourt toute la jupe a chaque
- * image (cf. skirtWave dans shape.ts). Le sommet porte un plat de 0.008 : un
- * point unique a x=0 rend l'arete miroir degenerique et le ray-cast vertical
- * rate alors le sommet (rayon nul).
+ * image (cf. skirtWave dans shape.ts). Le dome est une ellipse PURE (pas
+ * d'exposant) sur 17 points : tout exposant aplatit le sommet, et 9 points
+ * decalent leurs cassures par rapport aux 64 rayons — d'ou des vagues.
+ * Le sommet porte un plat de 0.008 : un point unique a x=0 rend l'arete
+ * miroir degenerique et le ray-cast vertical rate alors le sommet (rayon nul).
  */
 /** Demi-contour droit du gelee (dome + flanc + aileron + fonte) ; le reste par symetrie. */
 const DEMI_GELEE = [
-  // dome : quart de superellipse vertical — la tete prend les deux tiers
-  ...Array.from({ length: 9 }, (_, i) => {
-    const a = -Math.PI / 2 + (i / 8) * (Math.PI / 2)
-    return { x: i === 0 ? 0.004 : 0.98 * Math.cos(a) ** 0.72, y: 1.08 * Math.sin(a) }
+  // dome : quart d'ellipse vertical sur 17 points — la tete prend les deux tiers
+  ...Array.from({ length: 17 }, (_, i) => {
+    const a = -Math.PI / 2 + (i / 16) * (Math.PI / 2)
+    return { x: i === 0 ? 0.004 : 0.97 * Math.cos(a), y: 1.08 * Math.sin(a) }
   }),
   // flanc, aileron, puis fonte : trois gouttes (largeur > profondeur,
   // fond arrondi sur deux points, creux remontes a 0.69)
