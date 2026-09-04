@@ -4,7 +4,8 @@ import {
   profileFromPolygon,
   regularPolygonProfile,
   superellipseProfile,
-  unionOfCirclesProfile
+  unionOfCirclesProfile,
+  type SkirtWave
 } from './shape'
 
 /**
@@ -39,6 +40,8 @@ export type ShapeId =
 export interface BotShape {
   id: ShapeId
   radii: number[]
+  /** onde de jupe (le fantome) : null par defaut, forme statique */
+  skirt?: SkirtWave
 }
 
 /** Ramene le rayon maximal a `max` pour que toutes les formes pesent pareil a l'oeil. */
@@ -85,31 +88,47 @@ const pudding = normalize(
 )
 
 /**
- * Fantome : grand dome, flancs qui se resserrent, jupe a trois festons
- * suspendus — un ourlet en cosinus (pointes rondes, creux remontes au niveau
- * des flancs), pas des dents de scie. Le centre d'echantillonnage descend un
- * peu (0, 0.1) pour equilibrer dome et jupe dans le profil radial.
+ * Fantome : cloche de meduse — dome haut, flancs qui tombent en douceur vers
+ * une jupe large a quatre festons (ourlet en cosinus : pointes rondes, creux
+ * remontes au niveau des flancs). La silhouette n'est plus figee : `skirt`
+ * decrit une onde qui parcourt la jupe a chaque image (cf. skirtWave dans
+ * shape.ts). Le centre d'echantillonnage descend a (0, 0.05) pour equilibrer
+ * dome et jupe dans le profil radial.
  */
 const fantome = normalize(
   profileFromPolygon(
     [
+      // dome : demi-ellipse haute
       ...Array.from({ length: 25 }, (_, i) => {
         const a = Math.PI + (i / 24) * Math.PI
-        return { x: Math.cos(a), y: Math.sin(a) }
+        return { x: 0.97 * Math.cos(a), y: 0.95 * Math.sin(a) }
       }),
-      ...Array.from({ length: 37 }, (_, i) => {
-        const t = i / 36
+      // flanc : bezier qui amorce la chute de l'equateur vers la jupe
+      ...Array.from({ length: 12 }, (_, i) => {
+        const t = i / 11
+        const u = 1 - t
+        return {
+          x: u * u * 0.97 + 2 * u * t * 0.95 + t * t * 0.86,
+          y: 2 * u * t * 0.42 + t * t * 0.72
+        }
+      }),
+      // jupe : quatre festons, creux a 0.70, pointes a 0.98
+      ...Array.from({ length: 41 }, (_, i) => {
+        const t = i / 40
         return {
           x: 0.86 - 1.72 * t,
-          y: 1.02 + 0.17 * (1 - Math.cos(6 * Math.PI * t))
+          y: 0.7 + (0.28 * (1 - Math.cos(8 * Math.PI * t))) / 2
         }
       })
     ],
     0,
-    0.1
+    0.05
   ),
   1.02
 )
+
+/** Onde de jupe du fantome : l'amplitude est une fraction du rayon local. */
+const JUPE_FANTOME: SkirtWave = { amp: 0.055, waves: 3, band: 1.05, period: 2.6 }
 
 export const SHAPES: BotShape[] = [
   { id: 'cercle', radii: new Array(PROFILE_SAMPLES).fill(1) },
@@ -125,7 +144,7 @@ export const SHAPES: BotShape[] = [
   { id: 'nuage', radii: cloud },
   { id: 'goutte', radii: droplet },
   { id: 'pudding', radii: pudding },
-  { id: 'fantome', radii: fantome }
+  { id: 'fantome', radii: fantome, skirt: JUPE_FANTOME }
 ]
 
 // Map indexee par `string` et non par `ShapeId` : les appelants interrogent avec

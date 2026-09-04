@@ -116,6 +116,7 @@ const R = RAYON
 const VB = computed(() => props.viewBox ?? DEMI_VIEWBOX)
 
 const shapeRadii = computed(() => SHAPE_BY_ID.get(props.shape)?.radii ?? null)
+const shapeSkirt = computed(() => SHAPE_BY_ID.get(props.shape)?.skirt ?? null)
 const ink = computed(() => COLOR_BY_ID.get(props.color)?.hex ?? '#0a0a0c')
 const expression = computed(() => {
   const e = EXPRESSION_BY_ID.get(props.expression) ?? null
@@ -135,7 +136,7 @@ const expression = computed(() => {
   return resolved
 })
 
-const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value)
+const engine = new BotEngine(R, state.value, shapeRadii.value, expression.value, shapeSkirt.value)
 const frame = shallowRef<BotFrame>(engine.sample(props.frozenAt ?? 0))
 const uid = Math.random().toString(36).slice(2, 8)
 const maskId = `bot-mask-${uid}`
@@ -488,8 +489,9 @@ watch(
 
 watch(shapeRadii, (radii) => {
   // on passe l'horloge : le moteur morphe vers la nouvelle forme au lieu de
-  // l'appliquer d'un coup
-  engine.setShape(radii, clock)
+  // l'appliquer d'un coup. La jupe voyage toujours avec les rayons : changer
+  // de forme change l'identite de l'onde en meme temps.
+  engine.setShape(radii, clock, shapeSkirt.value)
   redrawFrozen()
 })
 

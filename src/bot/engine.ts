@@ -8,9 +8,11 @@ import {
   capsulePath,
   closedPath,
   radiusAtAngle,
+  skirtWave,
   toPoints,
   type Point,
-  type Silhouette
+  type Silhouette,
+  type SkirtWave
 } from './shape'
 import { STATE_BY_ID, type Pose, type StateDef, type StateId } from './states'
 
@@ -157,6 +159,9 @@ export class BotEngine {
   private shape: number[] | null = null
   private shapePrev: number[] | null = null
   private shapeAt = -10
+  /** onde de jupe de la forme courante (le fantome) ; nulle = forme statique */
+  private skirt: SkirtWave | null = null
+  private skirtPrev: SkirtWave | null = null
   private expr: BotExpression | null = null
   private exprPrev: BotExpression | null = null
   private exprAt = -10
@@ -181,12 +186,14 @@ export class BotEngine {
     scale = 100,
     initial: StateId = 'idle',
     shape: number[] | null = null,
-    expression: BotExpression | null = null
+    expression: BotExpression | null = null,
+    skirt: SkirtWave | null = null
   ) {
     this.scale = scale
     this.cur = initial
     this.shape = shape
     this.expr = expression
+    this.skirt = skirt
   }
 
   /**
@@ -218,11 +225,31 @@ export class BotEngine {
    * Le changement se fait en morph, pas d'un coup : comme toutes les formes sont
    * echantillonnees aux memes angles, il suffit d'interpoler les rayons.
    */
-  setShape(radii: number[] | null, now = 0) {
-    if (radii === this.shape) return
+  setShape(radii: number[] | null, now = 0, skirt: SkirtWave | null = null) {
+    if (radii === this.shape && skirt === this.skirt) return
     this.shapePrev = this.shape
     this.shape = radii
     this.shapeAt = now
+    this.skirtPrev = this.skirt
+    this.skirt = skirt
+  }
+
+  /**
+   * Onde de jupe effective a l'instant `now`. L'AMPLITUDE seule est morphee —
+   * sur l'axe et la courbe du morph de silhouette (c'est la meme cause : la
+   * forme change) — pendant que la bande, la longueur d'onde et la periode
+   * restent celles de la forme d'arrivee (ou de depart quand elle s'eteint).
+   * A amplitude nulle la modulation existe encore mais ne change aucun rayon.
+   */
+  private skirtAtTime(now: number): SkirtWave | null {
+    const fromAmp = this.skirtPrev?.amp ?? 0
+    const toAmp = this.skirt?.amp ?? 0
+    if (fromAmp === 0 && toAmp === 0) return null
+    const base = this.skirt ?? this.skirtPrev!
+    if (fromAmp === toAmp) return base
+    const k = (now - this.shapeAt) / BotEngine.SHAPE_MORPH
+    const t = k >= 1 ? 1 : easings.easeOutQuint(clamp(k))
+    return { ...base, amp: lerp(fromAmp, toAmp, t) }
   }
 
   /**
@@ -503,6 +530,12 @@ export class BotEngine {
       cy: pose.sil.cy + offY,
       sy: pose.sil.sy * life.breath
     }
+    // l'onde de jupe vit APRES la pose (et la respiration) : elle module les
+    // rayons de la forme courante, donc les exports GIF et la reclame
+    // l'heritent gratuitement. Les yeux lisent pose.sil.radii : leurs angles
+    // sont hors bande, le profil module ne les concerne pas.
+    const jupe = this.skirtAtTime(now)
+    if (jupe) sil.radii = skirtWave(sil.radii, jupe, now)
     const pts = toPoints(sil, R, this.pts)
     const bodyPath = closedPath(pts)
 
