@@ -18,7 +18,7 @@ test('pudding : etroit en haut, large en bas, profil complet', () => {
   assert.ok(top < bottom * 0.8, `dessus ${top} doit etre nettement plus etroit que dessous ${bottom}`)
 })
 
-test('gelee : blob gras plus large que haut, fonte fondue, vitrine et oeil sombre', () => {
+test('gelee : blob gras plus large que haut, fonte fondue, reflets et oeil sombre', () => {
   const gelee = SHAPE_BY_ID.get('gelee')
   assert.ok(gelee, 'gelee doit etre une forme du personnalisateur')
   assert.equal(gelee.radii.length, PROFILE_SAMPLES)
@@ -44,20 +44,14 @@ test('gelee : blob gras plus large que haut, fonte fondue, vitrine et oeil sombr
   assert.ok(waves >= 2, `waves ${waves} : au moins deux cretes dans la bande`)
   assert.ok(band > 0.5, `bande ${band} : la jupe entiere, pas un feston seul`)
   assert.ok(period > 0.5, `periode ${period} : assez lente pour lire l'onde`)
-  // la vitrine de visage : une fenetre claire aux coins arrondis, debordant
-  // sous les yeux pour porter les joues
-  assert.ok(gelee.face, 'le gelee propose une vitre de visage')
-  const { x, w, h, rx, opacity } = gelee.face!
-  assert.ok(x < 0 && w > 0.6 && h > 0.5, `vitre ${x}/${w}/${h} : fenetre large centree`)
-  assert.ok(rx > 0.1, `rx ${rx} : coins arrondis`)
-  assert.ok(opacity > 0.2 && opacity < 0.7, `opacite ${opacity} : voile translucide`)
+  // la vitrine de visage a ete rejetee en revue : plus aucune forme n'en porte
+  assert.ok(!SHAPES.some((s) => s.face), 'plus de vitrine de visage sur aucune forme')
   // reflets de matiere, oeil sombre suggere, joues corail
   assert.ok(gelee.gloss && gelee.gloss.length >= 2, 'le gelee porte ses reflets')
   assert.equal(gelee.eye?.fill, '#17171c', 'oeil sombre suggere par la forme')
   assert.ok(gelee.blush, 'joues corail suggerees par la forme')
   // les suggestions ne concernent que le gelee
   assert.equal(SHAPES.filter((s) => s.skirt).length, 1, 'seul le gelee ondule')
-  assert.equal(SHAPES.filter((s) => s.face).length, 1, 'seul le gelee a une vitrine')
   assert.equal(SHAPES.filter((s) => s.eye).length, 1, 'seul le gelee suggere un oeil')
 })
 

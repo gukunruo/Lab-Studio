@@ -706,22 +706,10 @@ function dotAttrs(dot: BotFrame['dots'][number]) {
       </g>
 
       <!--
-        La vitrine de visage et les reflets : suggestions de matiere portees par
-        la forme (le gelee). Posees au-dessus du corps, sous les yeux ; ils
-        fondent quand on quitte la forme, au rythme du morph (0.45s).
+        Les reflets : suggestions de matiere portees par la forme (le gelee).
+        Poses au-dessus du corps, sous les yeux ; ils fondent quand on quitte la
+        forme, au rythme du morph (0.45s).
       -->
-      <Transition name="goo-fade">
-        <rect
-          v-if="shapeBot?.face"
-          :x="shapeBot.face.x * R"
-          :y="shapeBot.face.y * R"
-          :width="shapeBot.face.w * R"
-          :height="shapeBot.face.h * R"
-          :rx="shapeBot.face.rx * R"
-          fill="#fff"
-          :opacity="shapeBot.face.opacity"
-        />
-      </Transition>
       <Transition name="goo-fade">
         <g v-if="shapeBot?.gloss?.length">
           <ellipse

@@ -38,16 +38,6 @@ export type ShapeId =
   | 'pudding'
   | 'gelee'
 
-/** La vitre de visage : une fenetre plus claire autour des yeux (le gelee). */
-export interface ShapeFace {
-  x: number
-  y: number
-  w: number
-  h: number
-  rx: number
-  opacity: number
-}
-
 /** Reflet de matiere : ellipse blanche posee sur le corps (unites de rayon). */
 export interface ShapeGloss {
   cx: number
@@ -63,8 +53,6 @@ export interface BotShape {
   radii: number[]
   /** onde de jupe (le gelee) : null par defaut, forme statique */
   skirt?: SkirtWave
-  /** vitre de visage proposee par la forme (le gelee), en unites de rayon */
-  face?: ShapeFace
   /** reflets de matiere proposes par la forme (le gelee) */
   gloss?: ShapeGloss[]
   /** oeil suggere par la forme : retenu seulement si l'utilisateur n'en a pas choisi un */
@@ -181,9 +169,6 @@ const gelee = normalize(
 /** Onde de jupe du gelee : deux cretes, la jupe entiere ondule d'un bloc. */
 const JUPE_GELEE: SkirtWave = { amp: 0.055, waves: 2, band: 1.1, period: 1.7 }
 
-/** Vitrine de visage du gelee : fenetre claire autour des yeux (unites de rayon). */
-const VISAGE_GELEE = { x: -0.48, y: -0.6, w: 0.96, h: 0.8, rx: 0.3, opacity: 0.45 }
-
 /** Reflets du gelee : gros halo incline a gauche, petit eclat en haut a droite. */
 const REFLETS_GELEE: ShapeGloss[] = [
   { cx: -0.4, cy: -0.48, rx: 0.15, ry: 0.095, rot: -35, opacity: 0.85 },
@@ -208,7 +193,6 @@ export const SHAPES: BotShape[] = [
     id: 'gelee',
     radii: gelee,
     skirt: JUPE_GELEE,
-    face: VISAGE_GELEE,
     gloss: REFLETS_GELEE,
     eye: { fill: '#17171c' },
     blush: '#ff8a70'
