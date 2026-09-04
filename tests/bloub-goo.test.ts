@@ -101,7 +101,7 @@ test('le moteur expose le sommet du corps et la taille des yeux', () => {
   }
 })
 
-test('GOO_EYES : six teintes partagees, toutes completes et distinctes', () => {
+test('GOO_EYES : cinq teintes partagees, toutes completes et distinctes', () => {
   const fills = new Set<string>()
   for (const [id, eye] of Object.entries(GOO_EYES)) {
     assert.ok(eye.fill.startsWith('#'), `${id} : fill invalide : ${eye.fill}`)
@@ -109,7 +109,7 @@ test('GOO_EYES : six teintes partagees, toutes completes et distinctes', () => {
     if (id !== 'nuit') assert.ok(eye.fill2?.startsWith('#'), `${id} : le degrade exige fill2`)
     fills.add(eye.fill)
   }
-  assert.equal(fills.size, 6, 'les teintes doivent etre distinctes')
+  assert.equal(fills.size, 5, 'les teintes doivent etre distinctes')
   assert.equal(GOO_EYES.nuit?.fill, '#17171c', 'le nuit est l\'oeil sombre du gelee')
 })
 

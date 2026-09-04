@@ -63,7 +63,6 @@ const expression = ref(DEFAULT_EXPRESSION)
 const EYE_LABELS: Record<string, string> = {
   ambre: '琥珀',
   menthe: '薄荷',
-  aurore: '极光',
   corail: '珊瑚',
   violet: '蓝紫',
   nuit: '墨黑'

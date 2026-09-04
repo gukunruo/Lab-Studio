@@ -37,7 +37,6 @@ interface Variant {
 /* Yeux en couleur : les teintes partagees avec le personnalisateur. */
 const AMBER = GOO_EYES.ambre
 const MINT = GOO_EYES.menthe
-const AURORA = GOO_EYES.aurore
 const CORAL = GOO_EYES.corail
 const BLUEVIOLET = GOO_EYES.violet
 const NUIT = GOO_EYES.nuit
@@ -59,12 +58,11 @@ const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
   },
   {
     title: '二 · 全色眼睛',
-    hint: '整只眼睛是彩色渐变 + 双高光，不再是白洞黑瞳。高光和瞳心随眨眼一起被压扁。',
+    hint: '整只眼睛上色 + 双高光，不再是白洞黑瞳。高光和瞳心随眨眼一起被压扁。',
     variants: [
       { id: 'A', label: 'A · 琥珀 · 原眼形', params: '竖胶囊上色', goo: { eye: AMBER } },
       { id: 'B', label: 'B · 琥珀 · 圆眼', params: 'Ø0.46', goo: { round: 0.46, eye: AMBER } },
       { id: 'C', label: 'C · 薄荷 · 圆眼', params: '终端绿 · 极客', goo: { round: 0.46, eye: MINT } },
-      { id: 'D', label: 'D · 极光 · 圆眼', params: '青→紫渐变', goo: { round: 0.46, eye: AURORA } },
       { id: 'E', label: 'E · 珊瑚 · 圆眼', params: '暖 · 热情', goo: { round: 0.46, eye: CORAL } },
       { id: 'F', label: 'F · 蓝紫 · 圆眼', params: '冷 · 理性', goo: { round: 0.46, eye: BLUEVIOLET } },
       {
