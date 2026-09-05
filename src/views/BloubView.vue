@@ -345,7 +345,7 @@ const shapeLabels: Record<string, string> = {
   nuage: '云朵',
   goutte: '水滴',
   pudding: '布丁',
-  etincelle: '火花'
+  etincelle: '四角星'
 }
 
 const expressionLabels: Record<string, string> = {
