@@ -53,8 +53,7 @@ const ROWS: { title: string; hint: string; variants: Variant[] }[] = [
       { id: 'E', label: 'E · 胶囊', params: '横躺 · 慵懒', shape: 'capsule' },
       { id: 'F', label: 'F · 布丁', params: '上窄下宽 · 会抖', shape: 'pudding' },
       { id: 'G', label: 'G · 火花', params: '四角 · 会闪', shape: 'etincelle' },
-      { id: 'H', label: 'H · 云朵', params: '软 · 多丘', shape: 'nuage' },
-      { id: 'I', label: 'I · 火苗', params: '描 🔥 形 · 会摇曳', shape: 'flamme' }
+      { id: 'H', label: 'H · 云朵', params: '软 · 多丘', shape: 'nuage' }
     ]
   },
   {

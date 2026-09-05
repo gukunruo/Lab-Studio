@@ -5,7 +5,8 @@ import { PROFILE_SAMPLES } from '../src/bot/profiles'
 import { radiusAtAngle } from '../src/bot/shape'
 
 // Les formes du personnalisateur : chaque silhouette doit etre un profil radial
-// complet. Le gelee a ete rejete en revue (silhouette sans caractere) — le
+// complet. Le gelee a ete rejete en revue (silhouette sans caractere), la flamme
+// retiree du projet (trace fidele au emoji mais sans le charme du rendu) — le
 // catalogue ne garde que les formes qui ont passe l'epreuve du rendu.
 
 /** Chaque forme declaree : profil plein, finis, sans accesoire mort. */
@@ -33,9 +34,9 @@ test('le gelee est raye du catalogue', () => {
   assert.ok(!SHAPES.some((s) => 'blush' in s), 'plus de joues suggerees par la forme')
 })
 
-test('le catalogue compte onze formes, toutes uniques', () => {
-  assert.equal(SHAPES.length, 11)
-  assert.equal(new Set(SHAPES.map((s) => s.id)).size, 11)
+test('le catalogue compte dix formes, toutes uniques', () => {
+  assert.equal(SHAPES.length, 10)
+  assert.equal(new Set(SHAPES.map((s) => s.id)).size, 10)
 })
 
 test('l\'etincelle est au catalogue, et elle scintille', () => {
@@ -44,21 +45,6 @@ test('l\'etincelle est au catalogue, et elle scintille', () => {
   probeForme(spark, 'etincelle')
   // son onde de scintillement voyage avec elle
   assert.ok(spark!.wave, 'l\'etincelle doit porter son onde')
-})
-
-test('la flamme : base large, panache en haut, et elle vacille', () => {
-  const flamme = SHAPE_BY_ID.get('flamme')
-  assert.ok(flamme, 'la flamme doit etre une forme du personnalisateur')
-  probeForme(flamme, 'flamme')
-  const { radii } = flamme!
-  // le bas du feu est large (le corps pose), le panache monte a peine plus haut
-  const bas = radiusAtAngle(radii, Math.PI / 2)
-  const haut = radiusAtAngle(radii, -Math.PI / 2)
-  assert.ok(bas > 0.55, `base large : ${bas}`)
-  assert.ok(haut > 0.5 && haut < bas * 1.05, `panache present, sans basculer : ${haut} vs ${bas}`)
-  // les flammes vivent : le panache ondule, porte par une onde avec rot
-  assert.ok(flamme!.wave, 'la flamme doit porter son onde')
-  assert.ok(flamme!.wave!.rot, 'l\'onde de la flamme vise le haut du corps')
-  // deux formes animees au total : etincelle + flamme
-  assert.equal(SHAPES.filter((s) => s.wave).length, 2, 'deux formes animees')
+  // depuis le retrait de la flamme, elle est la seule forme animee du catalogue
+  assert.equal(SHAPES.filter((s) => s.wave).length, 1, 'une seule forme animee')
 })
