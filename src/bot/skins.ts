@@ -100,22 +100,21 @@ const SCINTILLE: ShapeWave = { amp: 0.05, period: 1.8, lobes: 4, focus: 2, phase
 const spark = normalize(sparkleProfile(0.6, 1), 1.04)
 
 /**
- * Flamme : contour TRACE sur le vrai emoji 🔥 puis affine — 512 rayons sur un
- * rendu canvas 1400 px, re-echantillonnes en 64 secteurs dans le cadre valide
- * (origine ajustee pour reproduire le contour approuve) : base reguliere sans
- * marche, langue gauche nette, encoche droite bien creusee, pointe fidele.
- * Cinq series de construction analytique (cônes de puissance sur boule)
- * n'avaient jamais produit la lecture « feu » — le trace, si. L'onde est
- * orientee vers le haut (rot = -pi/2) : la couronne ondule comme un feu, la
- * base du corps reste posee.
+ * Flamme : contour TRACE sur le vrai emoji 🔥 (rendu canvas 640 px, puis
+ * echantillonnage radial — 64 rayons, max sur 8 sous-rayons par secteur pour
+ * ne pas rater les pointes fines ; origine = centre du glyphe). Cinq series
+ * de construction analytique (cônes de puissance sur boule) n'avaient jamais
+ * produit la lecture « feu » — le trace, si. L'onde est orientee vers le haut
+ * (rot = -pi/2) : la couronne ondule comme un feu, la base du corps reste
+ * posee.
  */
 const VACILLE: ShapeWave = { amp: 0.09, period: 1.4, lobes: 1, focus: 3, phase: 0, rot: -Math.PI / 2 }
 const FLAMME_TRACE = [
-  0.742, 0.77, 0.794, 0.816, 0.844, 0.865, 0.87, 0.873, 0.873, 0.97, 0.97, 0.969, 0.97, 0.977,
-  0.982, 0.991, 1.0, 1.005, 1.02, 1.017, 1.014, 1.014, 1.012, 1.008, 1.008, 0.899, 0.898, 0.891,
-  0.88, 0.862, 0.839, 0.802, 0.773, 0.739, 0.711, 0.758, 0.794, 0.819, 0.82, 0.813, 0.837, 0.534,
-  0.569, 0.611, 0.651, 0.628, 0.647, 0.877, 1.012, 0.943, 0.892, 0.849, 0.814, 0.782, 0.753, 0.722,
-  0.681, 0.641, 0.596, 0.548, 0.521, 0.692, 0.708, 0.726
+  0.743, 0.778, 0.805, 0.831, 0.854, 0.87, 0.87, 0.874, 0.958, 0.966, 0.962, 0.966, 0.966, 0.969,
+  0.977, 0.985, 0.985, 0.996, 1, 0.996, 0.989, 0.985, 0.985, 0.977, 0.969, 0.866, 0.858, 0.851,
+  0.835, 0.808, 0.778, 0.743, 0.716, 0.682, 0.713, 0.736, 0.762, 0.766, 0.759, 0.77, 0.785, 0.513,
+  0.548, 0.602, 0.605, 0.582, 0.651, 0.985, 0.966, 0.9, 0.854, 0.812, 0.778, 0.755, 0.732, 0.705,
+  0.667, 0.644, 0.598, 0.563, 0.517, 0.686, 0.705, 0.728
 ]
 const flamme = normalize(FLAMME_TRACE, 1.02)
 
